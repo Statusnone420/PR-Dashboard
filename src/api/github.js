@@ -1,5 +1,5 @@
 import { store } from '../state/store.js';
-import { mockSearchIssues } from '../data/mockData.js';
+import { isGitHubApiUrl } from '../security.js';
 
 // Simple in-memory cache
 let recentSearchCache = null;
@@ -68,6 +68,40 @@ export function buildQueryString(queryText, filters) {
   return parts.join(' ');
 }
 
+export function createGitHubHeaders(url, token = '') {
+  const headers = {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+
+  const trimmedToken = String(token || '').trim();
+  if (trimmedToken && isGitHubApiUrl(url)) {
+    headers.Authorization = `Bearer ${trimmedToken}`;
+  }
+
+  return headers;
+}
+
+export function createGitHubRequestOptions(url, token = '', init = {}) {
+  if (!isGitHubApiUrl(url)) {
+    throw new Error('GitHub API request blocked: only https://api.github.com requests are allowed.');
+  }
+
+  const method = String(init.method || 'GET').toUpperCase();
+  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+    throw new Error('GitHub API request blocked: v0.1 is read-only.');
+  }
+
+  return {
+    ...init,
+    method,
+    headers: {
+      ...createGitHubHeaders(url, token),
+      ...(init.headers || {})
+    }
+  };
+}
+
 /**
  * Query GitHub REST API
  */
@@ -90,7 +124,6 @@ export async function searchGitHubIssues(queryText, forceRefresh = false) {
   // Check in-memory cache
   const cacheKey = `${q}::${sortParam}::${orderParam}`;
   if (!forceRefresh && recentSearchCache && recentSearchCache.key === cacheKey) {
-    console.log("Serving search results from in-memory cache.");
     // Update store with cached rate limits
     if (recentSearchCache.rateLimit) {
       store.setRateLimit(recentSearchCache.rateLimit);
@@ -100,23 +133,14 @@ export async function searchGitHubIssues(queryText, forceRefresh = false) {
 
   store.setSearchState(true, null);
 
-  const headers = {
-    'Accept': 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28'
-  };
-
   const token = store.githubToken;
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
   let url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}`;
   if (sortParam) {
     url += `&sort=${sortParam}&order=${orderParam}`;
   }
 
   try {
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, createGitHubRequestOptions(url, token));
 
     // Parse rate limits from headers
     const remaining = response.headers.get('x-ratelimit-remaining');
@@ -163,17 +187,8 @@ export async function searchGitHubIssues(queryText, forceRefresh = false) {
     return items;
 
   } catch (error) {
-    console.error("GitHub search API error:", error);
-    store.setSearchState(false, error.message, null);
-    
-    // If API fails due to rate limits or offline, we can fall back to mockData only if there's no cached data
-    if (!token && (!recentSearchCache || recentSearchCache.results.length === 0)) {
-      console.warn("Using mock search results fallback due to network/API error.");
-      // Seed mock results
-      store.setSearchState(false, `${error.message} (Fallback Mock Data shown below)`, mockSearchIssues);
-      return mockSearchIssues;
-    }
-    
+    const message = error instanceof Error ? error.message : 'GitHub API request failed.';
+    store.setSearchState(false, message, null);
     throw error;
   }
 }

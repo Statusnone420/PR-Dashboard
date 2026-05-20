@@ -1,6 +1,6 @@
 import { mockBoardCards } from '../data/mockData.js';
 
-class AppStore {
+export class AppStore {
   constructor() {
     // 1. Navigation State
     this.currentScreen = 'dashboard'; // 'dashboard' | 'find-issues' | 'board' | 'settings'
@@ -67,7 +67,7 @@ class AppStore {
       try {
         listener(this);
       } catch (e) {
-        console.error("Store notification listener error:", e);
+        console.error("Store notification listener error.");
       }
     }
   }

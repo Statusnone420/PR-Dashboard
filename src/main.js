@@ -1,7 +1,9 @@
 import { store } from './state/store.js';
-import { searchGitHubIssues } from './api/github.js';
+import { createGitHubRequestOptions, searchGitHubIssues } from './api/github.js';
 import { mockActivePRs, mockSearchIssues } from './data/mockData.js';
 import { screenFromHash } from './routing.js';
+import { applyFilterPatch, applyPresetSearch } from './searchInteractions.js';
+import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -329,6 +331,10 @@ function renderDashboard(container) {
 
   if (resumeReviewCard) {
     const isWorking = workingCards.includes(resumeReviewCard);
+    const resumeTitle = escapeHTML(resumeReviewCard.title);
+    const resumeRepo = escapeHTML(resumeReviewCard.repository?.full_name || resumeReviewCard.repository?.name || 'github');
+    const resumeNumber = safeInteger(resumeReviewCard.number);
+    const resumeId = safeInteger(resumeReviewCard.id);
     heroHTML = `
       <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -337,10 +343,10 @@ function renderDashboard(container) {
               <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
               <span class="text-primary font-semibold text-sm tracking-wide uppercase">${isWorking ? 'Active Assignment' : 'Next Recommended Action'}</span>
             </div>
-            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">${isWorking ? 'Resume Working: ' : 'Read Docs: '}${resumeReviewCard.title}</h2>
-            <p class="text-on-surface-variant max-w-xl">${resumeReviewCard.repository.full_name} #${resumeReviewCard.number} - You tagged this card in your Contribution Board. Open it to proceed with tasks.</p>
+            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">${isWorking ? 'Resume Working: ' : 'Read Docs: '}${resumeTitle}</h2>
+            <p class="text-on-surface-variant max-w-xl">${resumeRepo} #${resumeNumber} - You tagged this card in your Contribution Board. Open it to proceed with tasks.</p>
           </div>
-          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-resume-btn" data-id="${resumeReviewCard.id}">
+          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-resume-btn" data-id="${resumeId}">
             Resume Review
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
@@ -366,23 +372,27 @@ function renderDashboard(container) {
       const rating = getFitScoreRating(score);
       const labelsSlice = (issue.labels || []).slice(0, 2);
       const labelsHTML = labelsSlice.map(l => {
-        const name = typeof l === 'object' ? l.name : l;
-        return `<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">sell</span> ${name}</span>`;
+        const name = String(typeof l === 'object' ? l.name : l || '');
+        return `<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">sell</span> ${escapeHTML(name)}</span>`;
       }).join(' ');
+      const issueId = safeInteger(issue.id);
+      const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
+      const issueTitle = escapeHTML(issue.title);
+      const issueDate = escapeHTML(formatDate(issue.updated_at));
 
       return `
-        <div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group dashboard-issue-card" data-id="${issue.id}">
+        <div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group dashboard-issue-card" data-id="${issueId}">
           <div class="flex justify-between items-start mb-1">
-            <span class="text-xs font-mono text-on-surface-variant">${issue.repository.full_name}</span>
+            <span class="text-xs font-mono text-on-surface-variant">${repoName}</span>
             <div class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border ${rating.bgClass}">
               <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
               ${score}% Match
             </div>
           </div>
-          <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issue.title}</h4>
+          <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
           <div class="mt-3 flex items-center gap-3">
             ${labelsHTML}
-            <span class="text-xs text-on-surface-variant flex items-center gap-1 ml-auto"><span class="material-symbols-outlined text-[14px]">schedule</span> ${new Date(issue.updated_at).toLocaleDateString()}</span>
+            <span class="text-xs text-on-surface-variant flex items-center gap-1 ml-auto"><span class="material-symbols-outlined text-[14px]">schedule</span> ${issueDate}</span>
           </div>
         </div>
       `;
@@ -412,13 +422,13 @@ function renderDashboard(container) {
           <span class="material-symbols-outlined ${prColor} text-[18px]">${prIcon}</span>
         </div>
         <div>
-          <h4 class="text-sm font-medium text-on-surface hover:text-primary cursor-pointer mb-0.5 pr-link-card" data-repo="${pr.repository}" data-num="${pr.number}">${pr.title}</h4>
+          <h4 class="text-sm font-medium text-on-surface hover:text-primary cursor-pointer mb-0.5 pr-link-card" data-repo="${escapeHTML(pr.repository)}" data-num="${safeInteger(pr.number)}">${escapeHTML(pr.title)}</h4>
           <div class="flex items-center gap-2 text-xs">
-            <span class="text-on-surface-variant font-mono">${pr.repository} #${pr.number}</span>
+            <span class="text-on-surface-variant font-mono">${escapeHTML(pr.repository)} #${safeInteger(pr.number)}</span>
             <span class="w-1 h-1 rounded-full bg-outline-variant"></span>
-            <span class="${prColor} font-medium">${statusText}</span>
+            <span class="${prColor} font-medium">${escapeHTML(statusText)}</span>
             <span class="w-1 h-1 rounded-full bg-outline-variant"></span>
-            <span class="text-on-surface-variant">${pr.reviews}</span>
+            <span class="text-on-surface-variant">${escapeHTML(pr.reviews)}</span>
           </div>
         </div>
       </div>
@@ -574,10 +584,11 @@ function renderFindIssues(container) {
   const languages = ['TypeScript', 'Rust', 'Go', 'JavaScript', 'CSS', 'HTML'];
   const languageCheckboxes = languages.map(lang => {
     const checked = filters.languages.includes(lang) ? 'checked' : '';
+    const safeLang = escapeHTML(lang);
     return `
       <label class="flex items-center gap-3 group cursor-pointer">
-        <input class="lang-filter-checkbox" type="checkbox" data-lang="${lang}" ${checked} />
-        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${lang}</span>
+        <input class="lang-filter-checkbox" type="checkbox" data-lang="${safeLang}" ${checked} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${safeLang}</span>
       </label>
     `;
   }).join('');
@@ -589,8 +600,9 @@ function renderFindIssues(container) {
     const btnClass = active 
       ? 'border-primary bg-primary/10 text-primary' 
       : 'border-outline-variant bg-surface-container hover:border-primary text-on-surface-variant hover:text-on-surface';
+    const safeLabel = escapeHTML(label);
     return `
-      <button class="px-2.5 py-1 text-xs rounded border preset-badge label-filter-btn ${btnClass}" data-label="${label}">${label}</button>
+      <button class="px-2.5 py-1 text-xs rounded border preset-badge label-filter-btn ${btnClass}" data-label="${safeLabel}">${safeLabel}</button>
     `;
   }).join('');
 
@@ -598,10 +610,11 @@ function renderFindIssues(container) {
   const starOptions = ['Any', '1k+', '5k+', '10k+'];
   const starsRadioHTML = starOptions.map(starOpt => {
     const checked = filters.stars === starOpt ? 'checked' : '';
+    const safeStarOpt = escapeHTML(starOpt);
     return `
       <label class="flex items-center gap-3 group cursor-pointer">
-        <input class="stars-filter-radio" type="radio" name="stars" data-value="${starOpt}" ${checked} />
-        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${starOpt}</span>
+        <input class="stars-filter-radio" type="radio" name="stars" data-value="${safeStarOpt}" ${checked} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${safeStarOpt}</span>
       </label>
     `;
   }).join('');
@@ -619,23 +632,20 @@ function renderFindIssues(container) {
     `;
     countText = 'Searching GitHub...';
   } else if (error) {
-    // Check if error is fall back mock data
-    const isFallback = error.includes('Fallback');
     resultsHTML = `
       <div class="flex flex-col gap-6">
         <div class="bg-error-container/15 border border-error/30 rounded-lg p-5 flex items-start gap-4">
           <span class="material-symbols-outlined text-error mt-0.5">warning</span>
           <div>
             <h3 class="text-sm font-semibold text-error mb-1">Search Connection Failure</h3>
-            <p class="text-sm text-on-error-container leading-relaxed">${error}</p>
+            <p class="text-sm text-on-error-container leading-relaxed">${escapeHTML(error)}</p>
           </div>
         </div>
         
-        <!-- Fallback contents if present -->
         ${results ? renderIssueCardsList(results) : ''}
       </div>
     `;
-    countText = results ? `Showing ${results.length} fallback issues` : 'Request failed';
+    countText = results ? `Showing ${results.length} issues` : 'Request failed';
   } else if (results !== null) {
     countText = `Showing ${results.length} issues`;
     if (results.length === 0) {
@@ -696,7 +706,7 @@ function renderFindIssues(container) {
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
               </div>
-              <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="Search issues, labels, or repositories..." type="text" value="${store.searchQuery}"/>
+              <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="Search issues, labels, or repositories..." type="text" value="${escapeHTML(store.searchQuery)}"/>
             </div>
             <button class="px-6 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary-container transition-colors active:scale-95 shrink-0" id="search-trigger-btn">
               Search
@@ -825,26 +835,7 @@ function renderFindIssues(container) {
   document.querySelectorAll('.preset-search-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const preset = btn.getAttribute('data-preset');
-      if (preset === 'quick-wins') {
-        store.setFilters({
-          labels: ['good first issue', 'help wanted'],
-          comments: 'Low (0-5)',
-          stars: '1k+'
-        });
-      } else if (preset === 'deep-dives') {
-        store.setFilters({
-          labels: ['help wanted'],
-          comments: 'High (15+)',
-          stars: '5k+'
-        });
-      } else if (preset === 'docs-only') {
-        store.setFilters({
-          labels: ['docs'],
-          comments: 'Any',
-          stars: 'Any'
-        });
-      }
-      searchGitHubIssues(store.searchQuery, true);
+      applyPresetSearch(store, preset, searchGitHubIssues);
     });
   });
 
@@ -855,7 +846,7 @@ function renderFindIssues(container) {
       document.querySelectorAll('.lang-filter-checkbox').forEach(c => {
         if (c.checked) selected.push(c.getAttribute('data-lang'));
       });
-      store.setFilters({ languages: selected });
+      applyFilterPatch(store, { languages: selected });
     });
   });
 
@@ -869,7 +860,7 @@ function renderFindIssues(container) {
       } else {
         current.push(label);
       }
-      store.setFilters({ labels: current });
+      applyFilterPatch(store, { labels: current });
     });
   });
 
@@ -877,7 +868,7 @@ function renderFindIssues(container) {
   document.querySelectorAll('.stars-filter-radio').forEach(radio => {
     radio.addEventListener('change', () => {
       if (radio.checked) {
-        store.setFilters({ stars: radio.getAttribute('data-value') });
+        applyFilterPatch(store, { stars: radio.getAttribute('data-value') });
       }
     });
   });
@@ -886,21 +877,21 @@ function renderFindIssues(container) {
   const commentsSelect = document.getElementById('comments-filter-select');
   if (commentsSelect) {
     commentsSelect.addEventListener('change', () => {
-      store.setFilters({ comments: commentsSelect.value });
+      applyFilterPatch(store, { comments: commentsSelect.value });
     });
   }
 
   const updatedSelect = document.getElementById('updated-filter-select');
   if (updatedSelect) {
     updatedSelect.addEventListener('change', () => {
-      store.setFilters({ updatedDate: updatedSelect.value });
+      applyFilterPatch(store, { updatedDate: updatedSelect.value });
     });
   }
 
   const sortSelect = document.getElementById('sort-filter-select');
   if (sortSelect) {
     sortSelect.addEventListener('change', () => {
-      store.setFilters({ sortMode: sortSelect.value });
+      applyFilterPatch(store, { sortMode: sortSelect.value });
     });
   }
 
@@ -935,39 +926,45 @@ function renderIssueCardsList(issuesList) {
   const cardsHTML = sorted.map((issue, index) => {
     const fitObj = issue.fitRating;
     const rating = getFitScoreRating(fitObj.score);
-    const repoName = issue.repository.full_name || issue.repository.name || 'github';
+    const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
     const isFeatured = index === 0 && sorted.length > 1;
-    const updatedText = new Date(issue.updated_at).toLocaleDateString();
+    const updatedText = escapeHTML(formatDate(issue.updated_at));
     const stars = issue.repository && issue.repository.stargazers_count ? issue.repository.stargazers_count : 0;
     const starsText = stars >= 1000 ? `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k` : `${stars}`;
+    const issueId = safeInteger(issue.id);
+    const issueNumber = safeInteger(issue.number);
+    const issueComments = safeInteger(issue.comments);
+    const issueTitle = escapeHTML(issue.title);
+    const issueBody = escapeHTML(issue.body || 'No summary description provided.');
+    const issueUrl = getSafeIssueHtmlUrl(issue);
 
     const labelsHTML = (issue.labels || []).slice(0, 3).map(l => {
-      const name = typeof l === 'object' ? l.name : l;
+      const name = String(typeof l === 'object' ? l.name : l || '');
       const tone = name.includes('help wanted') || name.includes('good first') 
         ? 'border-primary/30 bg-primary/10 text-primary' 
         : name.includes('enhancement') || name.includes('feature') 
           ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
           : 'border-outline-variant bg-surface-dim text-on-surface-variant';
-      return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${name}</span>`;
+      return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${escapeHTML(name)}</span>`;
     }).join(' ');
 
     const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
 
     return `
-      <article class="issue-card group rounded-xl border border-outline-variant bg-surface-container p-5 cursor-pointer flex flex-col gap-3 transition-colors ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issue.id}">
+      <article class="issue-card group rounded-xl border border-outline-variant bg-surface-container p-5 cursor-pointer flex flex-col gap-3 transition-colors ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issueId}">
         <div class="flex items-start justify-between gap-4">
           <div class="flex min-w-0 items-center gap-2">
             <span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
-            <span class="truncate text-xs font-mono text-on-surface-variant">${repoName} #${issue.number}</span>
+            <span class="truncate text-xs font-mono text-on-surface-variant">${repoName} #${issueNumber}</span>
           </div>
           <span class="shrink-0 text-xs text-on-surface-variant">Updated ${updatedText}</span>
         </div>
         
-        <h3 class="${isFeatured ? 'text-lg' : 'text-base'} font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight pr-title-click" data-id="${issue.id}">
-          ${issue.title}
+        <h3 class="${isFeatured ? 'text-lg' : 'text-base'} font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight pr-title-click" data-id="${issueId}">
+          ${issueTitle}
         </h3>
         
-        <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issue.body || 'No summary description provided.'}</p>
+        <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issueBody}</p>
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
@@ -977,24 +974,24 @@ function renderIssueCardsList(issuesList) {
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/40 pt-4">
           <div class="flex items-center gap-4 text-xs text-on-surface-variant">
             <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">star</span>${starsText}</span>
-            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">chat_bubble</span>${issue.comments || 0}</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">chat_bubble</span>${issueComments}</span>
             <span class="flex items-center gap-1 ${fitObj.isAssigned ? 'text-primary' : 'text-tertiary'}">
               <span class="material-symbols-outlined text-[15px]">${fitObj.isAssigned ? 'person' : 'person_off'}</span>
               ${fitObj.isAssigned ? 'Assigned' : 'Unassigned'}
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <button class="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors inspect-issue-btn" data-id="${issue.id}">
+            <button class="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors inspect-issue-btn" data-id="${issueId}">
             Inspect
             </button>
-            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/20' : 'bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant'}" data-id="${issue.id}">
+            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/20' : 'bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant'}" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'Saved' : 'Save'}
             </button>
-            <a class="px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors flex items-center justify-center gap-1" href="${issue.html_url}" target="_blank" rel="noopener">
+            ${issueUrl ? `<a class="px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors flex items-center justify-center gap-1" href="${escapeHTML(issueUrl)}" target="_blank" rel="noopener noreferrer">
               GitHub
               <span class="material-symbols-outlined text-[12px]">open_in_new</span>
-            </a>
+            </a>` : '<span class="px-3 py-1.5 text-on-surface-variant border border-outline-variant rounded text-xs">GitHub link unavailable</span>'}
           </div>
         </div>
       </article>
@@ -1084,16 +1081,22 @@ function renderBoard(container) {
     else if (col === 'Merged') dotColor = 'bg-tertiary';
 
     const cardsHTML = cards.map(card => {
-      const repoName = card.repository.full_name || card.repository.name || 'github';
+      const repoName = escapeHTML(card.repository?.full_name || card.repository?.name || 'github');
+      const cardId = safeInteger(card.id);
+      const cardNumber = safeInteger(card.number);
+      const cardTitle = escapeHTML(card.title);
+      const cardDate = escapeHTML(formatDate(card.updated_at));
+      const cardProgress = safePercent(card.progress || 0);
       
       // Inline checklist for Working column
       let workingChecklistHTML = '';
       if (col === 'Working' && card.checklist && card.checklist.length > 0) {
         const tasksHTML = card.checklist.map(task => {
+          const taskText = escapeHTML(task.text);
           return `
             <div class="flex items-center gap-2 text-xs mb-1">
-              <input class="board-task-checkbox" type="checkbox" data-cardid="${card.id}" data-task="${task.text}" ${task.completed ? 'checked' : ''} />
-              <span class="${task.completed ? 'line-through opacity-70 text-on-surface-variant' : 'text-on-surface'}">${task.text}</span>
+              <input class="board-task-checkbox" type="checkbox" data-cardid="${cardId}" data-task="${taskText}" ${task.completed ? 'checked' : ''} />
+              <span class="${task.completed ? 'line-through opacity-70 text-on-surface-variant' : 'text-on-surface'}">${taskText}</span>
             </div>
           `;
         }).join('');
@@ -1101,7 +1104,7 @@ function renderBoard(container) {
         workingChecklistHTML = `
           <!-- Inline checklist progress bar -->
           <div class="w-full bg-surface-container-lowest rounded-full h-1 mb-2.5 overflow-hidden">
-            <div class="bg-primary h-1 rounded-full" style="width: ${card.progress || 0}%"></div>
+            <div class="bg-primary h-1 rounded-full" style="width: ${cardProgress}%"></div>
           </div>
           <div class="flex flex-col gap-1 mb-3">
             ${tasksHTML}
@@ -1147,18 +1150,18 @@ function renderBoard(container) {
 
       return `
         <!-- Card -->
-        <div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group mb-3 relative board-card-item" data-id="${card.id}">
-          <button class="absolute top-2 right-2 text-on-surface-variant hover:text-error bg-transparent border-none delete-card-btn" data-id="${card.id}" style="padding:2px;"><span class="material-symbols-outlined text-[14px]">close</span></button>
+        <div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
+          <button class="absolute top-2 right-2 text-on-surface-variant hover:text-error bg-transparent border-none delete-card-btn" data-id="${cardId}" style="padding:2px;"><span class="material-symbols-outlined text-[14px]">close</span></button>
           
           <div class="flex justify-between items-start mb-2 pr-4">
             <span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
               <span class="material-symbols-outlined text-[12px] filled-icon">bookmark</span>
               ${repoName}
             </span>
-            <span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#${card.number}</span>
+            <span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#${cardNumber}</span>
           </div>
           
-          <h4 class="text-sm font-medium text-on-surface leading-snug mb-3 ${col === 'Merged' ? 'line-through opacity-70' : ''}">${card.title}</h4>
+          <h4 class="text-sm font-medium text-on-surface leading-snug mb-3 ${col === 'Merged' ? 'line-through opacity-70' : ''}">${cardTitle}</h4>
           
           ${workingChecklistHTML}
           ${prOpenHTML}
@@ -1167,13 +1170,13 @@ function renderBoard(container) {
           
           <!-- Card Footer & Direction arrows -->
           <div class="flex justify-between items-center mt-auto pt-2 border-t border-outline-variant/50">
-            <span class="text-[10px] text-on-surface-variant">${new Date(card.updated_at).toLocaleDateString()}</span>
+            <span class="text-[10px] text-on-surface-variant">${cardDate}</span>
             
             <div class="flex items-center gap-1">
-              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-left-btn" data-id="${card.id}" ${leftArrowDisabled}>
+              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-left-btn" data-id="${cardId}" ${leftArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_left</span>
               </button>
-              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-right-btn" data-id="${card.id}" ${rightArrowDisabled}>
+              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-right-btn" data-id="${cardId}" ${rightArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_right</span>
               </button>
             </div>
@@ -1342,7 +1345,7 @@ function renderSettings(container) {
             <div class="space-y-3">
               <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">Token Value</label>
               <div class="relative group">
-                <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" type="password" value="${token}"/>
+                <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password"/>
                 <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" style="background:none; border:none;">
                   <span class="material-symbols-outlined" id="visibility-icon">visibility</span>
                 </button>
@@ -1350,7 +1353,7 @@ function renderSettings(container) {
               
               <div class="flex justify-between items-center text-xs text-on-surface-variant">
                 <span>Supports fine-grained or classic developer tokens. No private repository scopes required.</span>
-                <a class="text-primary hover:underline flex items-center gap-1" href="https://github.com/settings/tokens" target="_blank" rel="noopener">Generate on GitHub <span class="material-symbols-outlined text-[14px]">open_in_new</span></a>
+                <a class="text-primary hover:underline flex items-center gap-1" href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">Generate on GitHub <span class="material-symbols-outlined text-[14px]">open_in_new</span></a>
               </div>
             </div>
             
@@ -1426,6 +1429,9 @@ function renderSettings(container) {
   const patInput = document.getElementById('settings-pat-input');
   const rememberCheckbox = document.getElementById('settings-remember-checkbox');
   const warningBanner = document.getElementById('settings-storage-warning');
+  if (patInput) {
+    patInput.value = token;
+  }
 
   // Interactive toggle check box warning display
   if (rememberCheckbox && warningBanner) {
@@ -1462,7 +1468,7 @@ function renderSettings(container) {
       if (statusDiv) {
         statusDiv.style.display = 'block';
         statusDiv.className = 'p-3.5 rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-xs';
-        statusDiv.innerHTML = `Token saved! Current rate-limit thresholds cleared. Retention mode set to: ${remVal ? 'Persistent localStorage' : 'Session Memory'}`;
+        statusDiv.textContent = `Token saved! Current rate-limit thresholds cleared. Retention mode set to: ${remVal ? 'Persistent localStorage' : 'Session Memory'}`;
       }
     });
   }
@@ -1486,24 +1492,15 @@ function renderSettings(container) {
       statusDiv.textContent = "Testing connection with GitHub User API /user...";
 
       try {
-        const res = await fetch('https://api.github.com/user', {
-          headers: {
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-            'Authorization': `Bearer ${tokVal}`
-          }
-        });
+        const res = await fetch('https://api.github.com/user', createGitHubRequestOptions('https://api.github.com/user', tokVal));
 
         if (res.ok) {
           const userObj = await res.json();
           statusDiv.className = 'p-3.5 rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-xs flex items-center gap-2';
-          statusDiv.innerHTML = `
-            <span class="material-symbols-outlined text-[16px] filled-icon">check_circle</span>
-            Connection active! Welcome, <strong>${userObj.login}</strong> (Rate limits verified).
-          `;
+          statusDiv.textContent = `Connection active! Welcome, ${userObj.login || 'GitHub user'} (Rate limits verified).`;
           
           // Update avatar initial initials dynamically based on username
-          const initials = userObj.login.slice(0, 2).toUpperCase();
+          const initials = String(userObj.login || 'GH').slice(0, 2).toUpperCase();
           const avatarInitial = document.getElementById('user-avatar-initials');
           if (avatarInitial) avatarInitial.textContent = initials;
           
@@ -1512,10 +1509,7 @@ function renderSettings(container) {
         }
       } catch (e) {
         statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs flex items-center gap-2';
-        statusDiv.innerHTML = `
-          <span class="material-symbols-outlined text-[16px]">warning</span>
-          Connection failed: ${e.message}. Double check credentials.
-        `;
+        statusDiv.textContent = `Connection failed: ${e.message}. Double check credentials.`;
       }
     });
   }
@@ -1554,15 +1548,24 @@ function openInspector() {
 
   const { score, logs } = calculateFitScore(issue);
   const rating = getFitScoreRating(score);
-  const repoName = issue.repository.full_name || issue.repository.name || 'github';
+  const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
+  const safeIssueTitle = escapeHTML(issue.title);
+  const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
+  const safeIssueNumber = safeInteger(issue.number);
+  const safeIssueUser = escapeHTML(issue.user ? issue.user.login : 'anonymous');
+  const safeIssueDate = escapeHTML(formatDate(issue.updated_at));
+  const safeIssueState = escapeHTML(issue.state || 'Open');
+  const safeIssueBody = escapeHTML(issue.body || 'No detailed issue summary description offered.');
+  const safeIssueUrl = getSafeIssueHtmlUrl(issue);
+  const safeProgress = safePercent(issue.progress || 0);
 
   // Render match score explanations
   const fitScoreReasonsHTML = logs.map(log => {
     return `
       <li class="flex items-start gap-2 text-sm text-on-surface-variant">
         <span class="material-symbols-outlined text-tertiary text-[16px] mt-0.5 filled-icon">check</span>
-        <span>${log}</span>
+        <span>${escapeHTML(log)}</span>
       </li>
     `;
   }).join('');
@@ -1570,10 +1573,11 @@ function openInspector() {
   // Checklist Action plan
   const checklist = issue.checklist || [];
   const actionPlanHTML = checklist.map(task => {
+    const taskText = escapeHTML(task.text);
     return `
       <label class="flex items-start gap-3 cursor-pointer group">
-        <input class="mt-0.5 inspector-task-checkbox" type="checkbox" data-task="${task.text}" ${task.completed ? 'checked' : ''} />
-        <span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors ${task.completed ? 'line-through opacity-70' : ''}">${task.text}</span>
+        <input class="mt-0.5 inspector-task-checkbox" type="checkbox" data-task="${taskText}" ${task.completed ? 'checked' : ''} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors ${task.completed ? 'line-through opacity-70' : ''}">${taskText}</span>
       </label>
     `;
   }).join('');
@@ -1583,23 +1587,23 @@ function openInspector() {
     <div class="sticky top-0 bg-surface-dim/95 backdrop-blur-md border-b border-outline-variant p-6 z-20 flex justify-between items-start shrink-0">
       <div class="max-w-2xl">
         <div class="flex items-center flex-wrap gap-2 mb-3">
-          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${issue.repository.language || 'Code'}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${safeIssueLanguage}</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${rating.rating}</span>
-          <span class="text-xs text-on-surface-variant font-mono">${repoName} #${issue.number}</span>
+          <span class="text-xs text-on-surface-variant font-mono">${repoName} #${safeIssueNumber}</span>
         </div>
-        <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${issue.title}</h2>
+        <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${safeIssueTitle}</h2>
         <div class="flex items-center gap-4 mt-4 text-xs text-on-surface-variant">
           <div class="flex items-center gap-1.5">
             <span class="material-symbols-outlined text-[18px]">account_circle</span>
-            <span>Opened by <strong class="text-on-background">${issue.user ? issue.user.login : 'anonymous'}</strong></span>
+            <span>Opened by <strong class="text-on-background">${safeIssueUser}</strong></span>
           </div>
           <div class="flex items-center gap-1.5">
             <span class="material-symbols-outlined text-[18px]">schedule</span>
-            <span>Updated ${new Date(issue.updated_at).toLocaleDateString()}</span>
+            <span>Updated ${safeIssueDate}</span>
           </div>
           <div class="flex items-center gap-1.5 text-tertiary">
             <span class="material-symbols-outlined text-[18px] filled-icon">check_circle</span>
-            <span>${issue.state || 'Open'}</span>
+            <span>${safeIssueState}</span>
           </div>
         </div>
       </div>
@@ -1621,10 +1625,10 @@ function openInspector() {
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
           
-          <a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5" href="${issue.html_url}" target="_blank" rel="noopener">
+          ${safeIssueUrl ? `<a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
             Open on GitHub
             <span class="material-symbols-outlined text-[16px]">open_in_new</span>
-          </a>
+          </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}
         </div>
       </div>
 
@@ -1634,7 +1638,7 @@ function openInspector() {
           <span class="material-symbols-outlined text-primary">description</span>
           Issue Description
         </h3>
-        <div class="prose prose-invert text-xs text-on-surface-variant font-body leading-relaxed whitespace-pre-wrap select-text">${issue.body || 'No detailed issue summary description offered.'}</div>
+        <div class="prose prose-invert text-xs text-on-surface-variant font-body leading-relaxed whitespace-pre-wrap select-text">${safeIssueBody}</div>
       </section>
       
       <!-- Fit Details & Analytics Bento -->
@@ -1666,10 +1670,10 @@ function openInspector() {
             <div class="mt-4 pt-3 border-t border-outline-variant/30">
               <div class="flex justify-between items-center text-[10px] text-on-surface-variant mb-1">
                 <span>Interactive Progress</span>
-                <span>${issue.progress || 0}%</span>
+                <span>${safeProgress}%</span>
               </div>
               <div class="w-full bg-surface-container-lowest rounded-full h-1 overflow-hidden">
-                <div class="bg-primary h-1 rounded-full" style="width: ${issue.progress || 0}%"></div>
+                <div class="bg-primary h-1 rounded-full" style="width: ${safeProgress}%"></div>
               </div>
             </div>
           ` : ''}

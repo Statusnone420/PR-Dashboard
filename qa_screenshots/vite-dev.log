@@ -12,3 +12,22 @@ Re-optimizing dependencies because lockfile has changed
 [2m5:32:19 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
 [2m5:33:13 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
 [2m5:34:44 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles.css?direct[22m
+[2m5:49:27 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/state/store.js[22m
+[2m5:49:41 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/api/github.js[22m
+[2m5:49:46 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:50:17 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:50:44 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:51:12 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:51:36 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:51:56 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:52:26 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:52:33 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:53:06 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m5:53:09 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/state/store.js[22m
+[2m5:53:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mdocs/design/1.0 Implementation/Contribution Board/code.html[22m
+[2m5:53:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mdocs/design/1.0 Implementation/Dashboard/code.html[22m
+[2m5:53:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mdocs/design/1.0 Implementation/Find Issues/code.html[22m
+[2m5:53:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mdocs/design/1.0 Implementation/Issue Inspector/code.html[22m
+[2m5:53:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mdocs/design/1.0 Implementation/Issue Search Results/code.html[22m
+[2m5:53:30 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mdocs/design/1.0 Implementation/Settings/code.html[22m
+[2m5:53:36 PM[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
