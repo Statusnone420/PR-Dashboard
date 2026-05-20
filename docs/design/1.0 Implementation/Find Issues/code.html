@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Find Issues - Obsidian Workbench</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary": "#34d399",
+                        "surface-dim": "#0c0c0f",
+                        "on-secondary-container": "#a1a1aa",
+                        "surface-variant": "#18181b",
+                        "on-background": "#fafafa",
+                        "primary": "#a78bfa",
+                        "on-secondary-fixed-variant": "#3f3f46",
+                        "on-primary-container": "#ede9fe",
+                        "tertiary-container": "#065f46",
+                        "surface-tint": "#a78bfa",
+                        "surface-container-high": "#18181b",
+                        "primary-fixed": "#ede9fe",
+                        "on-tertiary-fixed-variant": "#047857",
+                        "secondary-fixed-dim": "#71717a",
+                        "on-primary": "#0a0012",
+                        "outline-variant": "#27272a",
+                        "secondary-fixed": "#a1a1aa",
+                        "on-surface": "#fafafa",
+                        "tertiary-fixed-dim": "#6ee7b7",
+                        "inverse-on-surface": "#09090b",
+                        "on-surface-variant": "#a1a1aa",
+                        "surface-container": "#121215",
+                        "background": "#09090b",
+                        "surface": "#0c0c0f",
+                        "on-secondary-fixed": "#18181b",
+                        "error": "#ef4444",
+                        "error-container": "#3b1111",
+                        "surface-container-highest": "#1e1e22",
+                        "surface-bright": "#18181b",
+                        "on-error-container": "#fca5a5",
+                        "primary-fixed-dim": "#c4b5fd",
+                        "inverse-surface": "#fafafa",
+                        "tertiary-fixed": "#bbf7d0",
+                        "surface-container-low": "#0f0f12",
+                        "on-primary-fixed": "#2e1065",
+                        "on-secondary": "#09090b",
+                        "on-error": "#1a0000",
+                        "inverse-primary": "#5b21b6",
+                        "on-tertiary-container": "#bbf7d0",
+                        "on-tertiary-fixed": "#003318",
+                        "surface-container-lowest": "#09090b",
+                        "primary-container": "#7c3aed",
+                        "secondary-container": "#27272a",
+                        "on-primary-fixed-variant": "#5b21b6",
+                        "on-tertiary": "#001a12",
+                        "secondary": "#71717a",
+                        "outline": "#52525b"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    fontFamily: {
+                        "headline": ["Geist", "sans-serif"],
+                        "display": ["Geist", "sans-serif"],
+                        "body": ["Geist", "sans-serif"],
+                        "label": ["Geist", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Geist', sans-serif; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen overflow-hidden flex font-body">
+<!-- TopNavBar component -->
+<header class="flex justify-between items-center w-full px-6 h-14 z-50 bg-surface-dim border-b border-outline-variant dark:border-outline-variant docked full-width top-0 fixed transition-colors duration-200 ease-in-out font-body text-on-surface dark:text-on-surface">
+<div class="flex items-center gap-4 w-64">
+<span class="text-xl font-headline font-bold text-on-background dark:text-on-background tracking-tighter">pr-dashboard</span>
+</div>
+<div class="flex-1 flex items-center max-w-md ml-4">
+<!-- Left Search Bar as per JSON -->
+<div class="relative w-full max-w-sm hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full bg-surface-container border border-outline-variant rounded-md pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-on-surface placeholder:text-on-surface-variant transition-all" placeholder="Search..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary duration-200 ease-in-out">
+<span class="material-symbols-outlined text-lg">notifications</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary duration-200 ease-in-out">
+<span class="material-symbols-outlined text-lg">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-2 cursor-pointer ring-2 ring-transparent hover:ring-primary transition-all duration-200 ease-in-out">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="A close-up, high-contrast headshot of a professional in a minimalist setting. The lighting is moody and cinematic, emphasizing sharp facial features against a very dark, near-black background. The overall aesthetic is clean, modern, and aligns with a premium, developer-focused dark mode UI." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxWny8VXfOtTlMtkZtp2OZqKCfw2yx1gm9KjieanTcu730vTtrPjdEzMyy7fR0TSIXHO1DKLJvzbQ2jG3tmcftOWeMgd3TNhGVcM_tsKzJIRPWycd9uzz4jGvMWv3hbTpSVACnJ5rLma7lo8kylFcnQLrpPkAm9ptS3dzdKZBwG4qNDMY2sfXPY4MDC1hsPP9Yt7zZsJjBuHcxqtSJm1MB8KXprJUyxCgi4bxpUVSLMiiY_zY-EFpH00AkcG8NXOPGj8BDTOoPzvk5"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar component -->
+<aside class="flex flex-col h-screen fixed left-0 top-0 pt-14 pb-4 z-40 bg-surface dark:bg-surface border-r border-outline-variant dark:border-outline-variant docked left-0 w-64 font-body text-label-sm">
+<div class="px-6 py-5 border-b border-outline-variant/50">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">terminal</span>
+</div>
+<div>
+<h2 class="font-headline font-bold text-on-surface leading-tight tracking-tight">Obsidian</h2>
+<p class="text-xs text-on-surface-variant mt-0.5">Workbench</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 overflow-y-auto hide-scrollbar py-4 px-3 flex flex-col gap-1">
+<!-- Inactive Tab -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined text-lg">dashboard</span>
+<span class="font-medium">Dashboard</span>
+</a>
+<!-- Active Tab -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-md bg-surface-container-high dark:bg-surface-container-high text-primary dark:text-primary border-l-2 border-primary transition-all cursor-pointer active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined text-lg" style="font-variation-settings: 'FILL' 1;">search</span>
+<span class="font-medium">Find Issues</span>
+</a>
+<!-- Inactive Tab -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined text-lg">view_kanban</span>
+<span class="font-medium">Board</span>
+</a>
+</nav>
+<div class="px-3 pt-4 border-t border-outline-variant/50 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined text-lg">help_outline</span>
+<span class="font-medium">Help</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined text-lg">chat_bubble_outline</span>
+<span class="font-medium">Feedback</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 ml-64 mt-14 overflow-y-auto bg-background flex flex-col relative hide-scrollbar">
+<!-- Command Palette Hero Section -->
+<section class="w-full pt-16 pb-8 px-8 border-b border-outline-variant/30 bg-surface-lowest relative">
+<!-- Subtle gradient background effect -->
+<div class="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+<div class="max-w-3xl mx-auto relative z-10">
+<h1 class="text-3xl font-headline font-bold text-on-surface mb-6 tracking-tight text-center">Find your next contribution</h1>
+<!-- Central Command Bar -->
+<div class="relative w-full group">
+<div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
+</div>
+<input class="block w-full pl-12 pr-16 py-4 bg-surface-container border border-outline-variant rounded-xl text-lg text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-[0_4px_24px_rgba(0,0,0,0.4)] transition-all duration-200" placeholder="Search issues, labels, or repositories..." type="text"/>
+<div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+<kbd class="hidden sm:inline-block border border-outline-variant rounded px-2 py-1 text-xs font-medium text-on-surface-variant bg-surface-dim">⌘K</kbd>
+</div>
+</div>
+<!-- Search Presets -->
+<div class="flex flex-wrap items-center justify-center gap-3 mt-6">
+<button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">bolt</span> Quick Wins
+                    </button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
+                    </button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">description</span> Documentation Only
+                    </button>
+</div>
+</div>
+</section>
+<!-- Main Workspace: Filters + Results -->
+<div class="flex-1 p-8 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-8">
+<!-- Left Sidebar Filters -->
+<aside class="w-full lg:w-56 shrink-0 flex flex-col gap-8">
+<!-- Language Filter -->
+<div class="flex flex-col gap-3">
+<h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Language</h3>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-3 group cursor-pointer">
+<div class="relative flex items-center justify-center w-4 h-4 rounded border border-outline-variant bg-surface-container group-hover:border-primary transition-colors">
+<input checked="" class="absolute opacity-0 w-full h-full cursor-pointer peer" type="checkbox"/>
+<span class="material-symbols-outlined text-[12px] text-background opacity-0 peer-checked:opacity-100 peer-checked:text-primary transition-opacity" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">TypeScript</span>
+<span class="ml-auto text-xs text-on-surface-variant/50">4.2k</span>
+</label>
+<label class="flex items-center gap-3 group cursor-pointer">
+<div class="relative flex items-center justify-center w-4 h-4 rounded border border-outline-variant bg-surface-container group-hover:border-primary transition-colors">
+<input class="absolute opacity-0 w-full h-full cursor-pointer peer" type="checkbox"/>
+<span class="material-symbols-outlined text-[12px] text-background opacity-0 peer-checked:opacity-100 peer-checked:text-primary transition-opacity" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Rust</span>
+<span class="ml-auto text-xs text-on-surface-variant/50">1.8k</span>
+</label>
+<label class="flex items-center gap-3 group cursor-pointer">
+<div class="relative flex items-center justify-center w-4 h-4 rounded border border-outline-variant bg-surface-container group-hover:border-primary transition-colors">
+<input class="absolute opacity-0 w-full h-full cursor-pointer peer" type="checkbox"/>
+<span class="material-symbols-outlined text-[12px] text-background opacity-0 peer-checked:opacity-100 peer-checked:text-primary transition-opacity" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Go</span>
+<span class="ml-auto text-xs text-on-surface-variant/50">950</span>
+</label>
+</div>
+</div>
+<!-- Labels Filter -->
+<div class="flex flex-col gap-3">
+<h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Labels</h3>
+<div class="flex flex-wrap gap-2">
+<button class="px-2.5 py-1 text-xs rounded border border-outline-variant bg-surface-container hover:border-primary text-on-surface-variant hover:text-on-surface transition-colors">good first issue</button>
+<button class="px-2.5 py-1 text-xs rounded border border-primary bg-primary/10 text-primary transition-colors">help wanted</button>
+<button class="px-2.5 py-1 text-xs rounded border border-outline-variant bg-surface-container hover:border-primary text-on-surface-variant hover:text-on-surface transition-colors">bug</button>
+<button class="px-2.5 py-1 text-xs rounded border border-outline-variant bg-surface-container hover:border-primary text-on-surface-variant hover:text-on-surface transition-colors">enhancement</button>
+</div>
+</div>
+<!-- Stars Filter -->
+<div class="flex flex-col gap-3">
+<h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Stars</h3>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-3 group cursor-pointer">
+<input class="appearance-none w-4 h-4 rounded-full border border-outline-variant bg-surface-container checked:border-primary checked:border-4 transition-all" name="stars" type="radio"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Any</span>
+</label>
+<label class="flex items-center gap-3 group cursor-pointer">
+<input checked="" class="appearance-none w-4 h-4 rounded-full border border-outline-variant bg-surface-container checked:border-primary checked:border-4 transition-all" name="stars" type="radio"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">1k+</span>
+</label>
+<label class="flex items-center gap-3 group cursor-pointer">
+<input class="appearance-none w-4 h-4 rounded-full border border-outline-variant bg-surface-container checked:border-primary checked:border-4 transition-all" name="stars" type="radio"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">5k+</span>
+</label>
+<label class="flex items-center gap-3 group cursor-pointer">
+<input class="appearance-none w-4 h-4 rounded-full border border-outline-variant bg-surface-container checked:border-primary checked:border-4 transition-all" name="stars" type="radio"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">10k+</span>
+</label>
+</div>
+</div>
+<!-- Comments Filter -->
+<div class="flex flex-col gap-3">
+<h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Comments</h3>
+<select class="bg-surface-container border border-outline-variant text-sm rounded text-on-surface focus:ring-primary focus:border-primary w-full p-2">
+<option>Any</option>
+<option>Low (0-5)</option>
+<option>Medium (6-15)</option>
+<option>High (15+)</option>
+</select>
+</div>
+</aside>
+<!-- Results Bento Grid -->
+<div class="flex-1">
+<div class="flex items-center justify-between mb-6">
+<h2 class="text-sm font-medium text-on-surface-variant">Showing 241 issues</h2>
+<div class="flex items-center gap-2 text-sm text-on-surface-variant">
+<span>Sort by:</span>
+<select class="bg-transparent border-none text-on-surface focus:ring-0 cursor-pointer font-medium p-0 pr-4">
+<option>Updated Date</option>
+<option>Most Commented</option>
+<option>Recently Created</option>
+</select>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
+<!-- Issue Card 1 (Spans 2 cols on xl) -->
+<div class="xl:col-span-2 group bg-surface-container border border-outline-variant rounded-xl p-5 hover:bg-surface-container-high hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-3 relative overflow-hidden">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-110"></div>
+<div class="flex justify-between items-start gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+<span class="text-xs font-mono text-on-surface-variant">obsidian/core #142</span>
+</div>
+<span class="text-xs text-on-surface-variant">Updated 2h ago</span>
+</div>
+<h3 class="text-lg font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight">Implement concurrent rendering mode for complex views</h3>
+<p class="text-sm text-on-surface-variant line-clamp-2">The current rendering pipeline blocks the main thread during heavy computations. We need to implement a segmented rendering approach to maintain 60fps during intense view updates.</p>
+<div class="flex items-center justify-between mt-2 pt-4 border-t border-outline-variant/30">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">TypeScript</span>
+<span class="px-2 py-0.5 rounded text-xs bg-primary/10 border border-primary/30 text-primary">help wanted</span>
+<span class="px-2 py-0.5 rounded text-xs bg-tertiary/10 border border-tertiary/30 text-tertiary">enhancement</span>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant text-sm">
+<div class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">star</span> 12.4k</div>
+<div class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">chat_bubble</span> 34</div>
+</div>
+</div>
+</div>
+<!-- Issue Card 2 -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl p-5 hover:bg-surface-container-high hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-3">
+<div class="flex justify-between items-start gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+<span class="text-xs font-mono text-on-surface-variant">vercel/next.js #4521</span>
+</div>
+</div>
+<h3 class="text-base font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight">Hydration mismatch on dynamic SVG imports</h3>
+<div class="mt-auto pt-4 flex items-center justify-between">
+<div class="flex flex-wrap gap-2">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">Rust</span>
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">good first issue</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs"><span class="material-symbols-outlined text-[14px]">chat_bubble</span> 5</div>
+</div>
+</div>
+<!-- Issue Card 3 -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl p-5 hover:bg-surface-container-high hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-3">
+<div class="flex justify-between items-start gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+<span class="text-xs font-mono text-on-surface-variant">golang/go #8912</span>
+</div>
+</div>
+<h3 class="text-base font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight">net/http: improve error message on malformed headers</h3>
+<div class="mt-auto pt-4 flex items-center justify-between">
+<div class="flex flex-wrap gap-2">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">Go</span>
+<span class="px-2 py-0.5 rounded text-xs bg-primary/10 border border-primary/30 text-primary">help wanted</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs"><span class="material-symbols-outlined text-[14px]">chat_bubble</span> 12</div>
+</div>
+</div>
+<!-- Issue Card 4 -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl p-5 hover:bg-surface-container-high hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-3">
+<div class="flex justify-between items-start gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+<span class="text-xs font-mono text-on-surface-variant">tailwindlabs/tailwindcss #1102</span>
+</div>
+</div>
+<h3 class="text-base font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight">Add utility classes for container query ranges</h3>
+<div class="mt-auto pt-4 flex items-center justify-between">
+<div class="flex flex-wrap gap-2">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">TypeScript</span>
+<span class="px-2 py-0.5 rounded text-xs bg-tertiary/10 border border-tertiary/30 text-tertiary">feature</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs"><span class="material-symbols-outlined text-[14px]">chat_bubble</span> 89</div>
+</div>
+</div>
+<!-- Issue Card 5 -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl p-5 hover:bg-surface-container-high hover:border-primary/50 transition-all cursor-pointer flex flex-col gap-3">
+<div class="flex justify-between items-start gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+<span class="text-xs font-mono text-on-surface-variant">facebook/react #24110</span>
+</div>
+</div>
+<h3 class="text-base font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight">Warning: Cannot update a component while rendering a different component</h3>
+<div class="mt-auto pt-4 flex items-center justify-between">
+<div class="flex flex-wrap gap-2">
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">TypeScript</span>
+<span class="px-2 py-0.5 rounded text-xs bg-surface-dim border border-outline-variant text-on-surface-variant">bug</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant text-xs"><span class="material-symbols-outlined text-[14px]">chat_bubble</span> 210</div>
+</div>
+</div>
+</div>
+<div class="mt-8 flex justify-center">
+<button class="px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface hover:bg-surface-container transition-colors">Load more issues</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Find Issues - Obsidian</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#34d399",
+                        "surface-dim": "#0c0c0f",
+                        "on-secondary-container": "#a1a1aa",
+                        "surface-variant": "#18181b",
+                        "on-background": "#fafafa",
+                        "primary": "#a78bfa",
+                        "on-secondary-fixed-variant": "#3f3f46",
+                        "on-primary-container": "#ede9fe",
+                        "tertiary-container": "#065f46",
+                        "surface-tint": "#a78bfa",
+                        "surface-container-high": "#18181b",
+                        "primary-fixed": "#ede9fe",
+                        "on-tertiary-fixed-variant": "#047857",
+                        "secondary-fixed-dim": "#71717a",
+                        "on-primary": "#0a0012",
+                        "outline-variant": "#27272a",
+                        "secondary-fixed": "#a1a1aa",
+                        "on-surface": "#fafafa",
+                        "tertiary-fixed-dim": "#6ee7b7",
+                        "inverse-on-surface": "#09090b",
+                        "on-surface-variant": "#a1a1aa",
+                        "surface-container": "#121215",
+                        "background": "#09090b",
+                        "surface": "#0c0c0f",
+                        "on-secondary-fixed": "#18181b",
+                        "error": "#ef4444",
+                        "error-container": "#3b1111",
+                        "surface-container-highest": "#1e1e22",
+                        "surface-bright": "#18181b",
+                        "on-error-container": "#fca5a5",
+                        "primary-fixed-dim": "#c4b5fd",
+                        "inverse-surface": "#fafafa",
+                        "tertiary-fixed": "#bbf7d0",
+                        "surface-container-low": "#0f0f12",
+                        "on-primary-fixed": "#2e1065",
+                        "on-secondary": "#09090b",
+                        "on-error": "#1a0000",
+                        "inverse-primary": "#5b21b6",
+                        "on-tertiary-container": "#bbf7d0",
+                        "on-tertiary-fixed": "#003318",
+                        "surface-container-lowest": "#09090b",
+                        "primary-container": "#7c3aed",
+                        "secondary-container": "#27272a",
+                        "on-primary-fixed-variant": "#5b21b6",
+                        "on-tertiary": "#001a12",
+                        "secondary": "#71717a",
+                        "outline": "#52525b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Geist", "sans-serif"],
+                        "display": ["Geist", "sans-serif"],
+                        "body": ["Geist", "sans-serif"],
+                        "label": ["Geist", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Geist', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        
+        /* Subtle glow for fit score */
+        .glow-emerald { text-shadow: 0 0 10px rgba(52, 211, 153, 0.5); }
+        .glow-violet { text-shadow: 0 0 10px rgba(167, 139, 250, 0.5); }
+        
+        /* Hover reveal for action buttons */
+        .issue-card .action-buttons { opacity: 0; transition: opacity 0.2s ease; }
+        .issue-card:hover .action-buttons { opacity: 1; }
+        
+        /* Custom scrollbar for dark mode */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #09090b; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased flex">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen fixed left-0 top-0 pt-14 pb-4 z-40 bg-surface dark:bg-surface border-r border-outline-variant dark:border-outline-variant w-64">
+<div class="px-6 mb-8 flex items-center space-x-3 mt-4">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center text-on-primary-container font-bold">O</div>
+<div>
+<h1 class="font-headline font-bold text-on-surface leading-tight tracking-tighter">Obsidian</h1>
+<p class="font-body text-xs text-on-surface-variant">Workbench</p>
+</div>
+</div>
+<ul class="flex-1 space-y-1 px-3">
+<li>
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 font-body text-label-sm" href="#">
+<span class="material-symbols-outlined text-xl">dashboard</span>
+<span>Dashboard</span>
+</a>
+</li>
+<li>
+<!-- Active State -->
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg bg-surface-container-high dark:bg-surface-container-high text-primary dark:text-primary border-l-2 border-primary transition-all cursor-pointer active:scale-95 font-body text-label-sm font-medium" href="#">
+<span class="material-symbols-outlined text-xl">search</span>
+<span>Find Issues</span>
+</a>
+</li>
+<li>
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 font-body text-label-sm" href="#">
+<span class="material-symbols-outlined text-xl">view_kanban</span>
+<span>Board</span>
+</a>
+</li>
+</ul>
+<ul class="space-y-1 px-3 mt-auto">
+<li>
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 font-body text-label-sm" href="#">
+<span class="material-symbols-outlined text-xl">help_outline</span>
+<span>Help</span>
+</a>
+</li>
+<li>
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 font-body text-label-sm" href="#">
+<span class="material-symbols-outlined text-xl">chat_bubble_outline</span>
+<span>Feedback</span>
+</a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 ml-0 md:ml-64 flex flex-col min-h-screen">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center w-full px-6 h-14 z-50 bg-surface-dim border-b border-outline-variant dark:border-outline-variant sticky top-0">
+<!-- Search Bar (Left) -->
+<div class="flex-1 max-w-md hidden md:flex items-center bg-surface-container rounded-lg border border-outline-variant focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all duration-200">
+<span class="material-symbols-outlined text-on-surface-variant pl-3 pr-2 text-lg">search</span>
+<input class="bg-transparent border-none text-on-surface text-sm w-full py-1.5 focus:ring-0 placeholder-on-surface-variant" placeholder="Search issues, repos..." type="text"/>
+<div class="px-2 text-xs text-on-surface-variant font-mono mr-1 border border-outline-variant rounded bg-surface-container-high">/</div>
+</div>
+<div class="md:hidden font-headline font-bold text-on-background dark:text-on-background tracking-tighter text-xl">
+                pr-dashboard
+            </div>
+<!-- Actions -->
+<div class="flex items-center space-x-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-200 ease-in-out p-1 rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors duration-200 ease-in-out p-1 rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-2">
+<img alt="User profile avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHU02zepsxkiXO63efQMJJ-2ZpMiXY8nl2OGkIzHm99vAd76eEepTUosdrjW7KPw6TIA838r14Ivtqgc8qO6IppXO25ElCYrUfUKoXYKl11wRU4IuNFQwXim-xKKajOH-m654oSiUlxgpECfKsw9AOzCTAknZdQDGfOcpC-n0PQA4T7NYbHW3-UDA_E_48TL5ihuiIP0AaM4X9FoNDf2xBPfgxym5vQ_6P8mtULDC6JKipwotmVM3JjctbKK4BWAkHJZcc6ZLxfNlt"/>
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-6 lg:p-8 flex-1 max-w-7xl mx-auto w-full flex flex-col gap-6">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-outline-variant pb-6">
+<div>
+<h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-1">Recommended Issues</h2>
+<p class="text-on-surface-variant text-sm font-body">Based on your recent activity in React and TypeScript ecosystems.</p>
+</div>
+<div class="flex space-x-2">
+<button class="flex items-center space-x-1 px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant text-sm hover:text-on-surface hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+<span>Filter</span>
+</button>
+<button class="flex items-center space-x-1 px-3 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant text-sm hover:text-on-surface hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-sm">sort</span>
+<span>Sort: Fit Score</span>
+</button>
+</div>
+</div>
+<!-- Issue Cards Grid/List Hybrid -->
+<div class="grid grid-cols-1 gap-3">
+<!-- Issue Card 1 -->
+<div class="issue-card group bg-surface-container border border-outline-variant rounded-lg p-4 flex flex-col sm:flex-row gap-4 hover:bg-surface-container-high hover:border-primary/50 transition-all duration-200 relative">
+<!-- Fit Score -->
+<div class="flex-shrink-0 flex items-center sm:items-start justify-center sm:w-16">
+<div class="flex flex-col items-center">
+<span class="text-tertiary font-headline font-bold text-xl glow-emerald">98%</span>
+<span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold mt-1">Match</span>
+</div>
+</div>
+<!-- Main Info -->
+<div class="flex-1 min-w-0">
+<div class="flex flex-wrap items-center gap-2 mb-1.5">
+<span class="text-xs font-mono text-on-surface-variant">facebook/react</span>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-blue-500/30 text-blue-400 bg-blue-500/10">Type: Bug</span>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-tertiary/30 text-tertiary bg-tertiary/10">good first issue</span>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-purple-500/30 text-purple-400 bg-purple-500/10">Component: React DOM</span>
+</div>
+<a class="text-lg font-headline font-medium text-on-surface group-hover:text-primary transition-colors line-clamp-2 leading-tight mb-2" href="#">
+                            Hydration mismatch when rendering dynamic script tags in ``
+                        </a>
+<div class="flex flex-wrap items-center gap-4 text-xs text-on-surface-variant font-body">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">error_circle_rounded</span>
+<span>#28541 opened 2h ago by sebmarkbage</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span>
+<span>12</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-yellow-500">person_off</span>
+<span>Unassigned</span>
+</div>
+</div>
+</div>
+<!-- Action Buttons (Hover Reveal) -->
+<div class="action-buttons flex sm:flex-col gap-2 justify-center sm:justify-start flex-shrink-0 sm:w-24 absolute sm:static right-4 top-4 sm:right-auto sm:top-auto bg-surface-container-high sm:bg-transparent p-2 sm:p-0 rounded-lg shadow-lg sm:shadow-none border border-outline-variant sm:border-none">
+<button class="w-full px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors text-center">
+                            Inspect
+                        </button>
+<button class="w-full px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors text-center flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">bookmark</span>
+                            Save
+                        </button>
+</div>
+</div>
+<!-- Issue Card 2 -->
+<div class="issue-card group bg-surface-container border border-outline-variant rounded-lg p-4 flex flex-col sm:flex-row gap-4 hover:bg-surface-container-high hover:border-primary/50 transition-all duration-200 relative">
+<div class="flex-shrink-0 flex items-center sm:items-start justify-center sm:w-16">
+<div class="flex flex-col items-center">
+<span class="text-tertiary font-headline font-bold text-xl glow-emerald">92%</span>
+<span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold mt-1">Match</span>
+</div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex flex-wrap items-center gap-2 mb-1.5">
+<span class="text-xs font-mono text-on-surface-variant">vercel/next.js</span>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-tertiary/30 text-tertiary bg-tertiary/10">help wanted</span>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-orange-500/30 text-orange-400 bg-orange-500/10">area: routing</span>
+</div>
+<a class="text-lg font-headline font-medium text-on-surface group-hover:text-primary transition-colors line-clamp-2 leading-tight mb-2" href="#">
+                            App Router: Intercepted routes lose state on fast navigation
+                        </a>
+<div class="flex flex-wrap items-center gap-4 text-xs text-on-surface-variant font-body">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">error_circle_rounded</span>
+<span>#60124 opened 5h ago by timneutkens</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span>
+<span>4</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-yellow-500">person_off</span>
+<span>Unassigned</span>
+</div>
+</div>
+</div>
+<div class="action-buttons flex sm:flex-col gap-2 justify-center sm:justify-start flex-shrink-0 sm:w-24 absolute sm:static right-4 top-4 sm:right-auto sm:top-auto bg-surface-container-high sm:bg-transparent p-2 sm:p-0 rounded-lg shadow-lg sm:shadow-none border border-outline-variant sm:border-none">
+<button class="w-full px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors text-center">
+                            Inspect
+                        </button>
+<button class="w-full px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors text-center flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">bookmark</span>
+                            Save
+                        </button>
+</div>
+</div>
+<!-- Issue Card 3 (Assigned) -->
+<div class="issue-card group bg-surface-container border border-outline-variant rounded-lg p-4 flex flex-col sm:flex-row gap-4 hover:bg-surface-container-high transition-all duration-200 relative opacity-75">
+<div class="flex-shrink-0 flex items-center sm:items-start justify-center sm:w-16">
+<div class="flex flex-col items-center">
+<span class="text-primary font-headline font-bold text-xl glow-violet">85%</span>
+<span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold mt-1">Match</span>
+</div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex flex-wrap items-center gap-2 mb-1.5">
+<span class="text-xs font-mono text-on-surface-variant">tailwindlabs/tailwindcss</span>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-gray-500/30 text-gray-400 bg-gray-500/10">enhancement</span>
+</div>
+<a class="text-lg font-headline font-medium text-on-surface group-hover:text-primary transition-colors line-clamp-2 leading-tight mb-2" href="#">
+                            Support custom color spaces in arbitrary values
+                        </a>
+<div class="flex flex-wrap items-center gap-4 text-xs text-on-surface-variant font-body">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">error_circle_rounded</span>
+<span>#12450 opened 1d ago by adamwathan</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span>
+<span>24</span>
+</div>
+<div class="flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined text-[14px]">person</span>
+<span>Assigned</span>
+</div>
+</div>
+</div>
+<div class="action-buttons flex sm:flex-col gap-2 justify-center sm:justify-start flex-shrink-0 sm:w-24 absolute sm:static right-4 top-4 sm:right-auto sm:top-auto bg-surface-container-high sm:bg-transparent p-2 sm:p-0 rounded-lg shadow-lg sm:shadow-none border border-outline-variant sm:border-none">
+<button class="w-full px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors text-center">
+                            Inspect
+                        </button>
+<button class="w-full px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors text-center flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">bookmark</span>
+                            Save
+                        </button>
+</div>
+</div>
+</div>
+<!-- Pagination / Load More -->
+<div class="flex justify-center mt-4 pb-8">
+<button class="px-6 py-2 bg-transparent text-on-surface hover:bg-surface-container border border-outline-variant rounded-full text-sm font-medium transition-colors">
+                    Load More Issues
+                </button>
+</div>
+</div>
+</main>
+</body></html>

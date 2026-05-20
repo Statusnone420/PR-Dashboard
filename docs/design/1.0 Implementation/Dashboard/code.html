@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Obsidian Workbench - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#34d399",
+                        "surface-dim": "#0c0c0f",
+                        "on-secondary-container": "#a1a1aa",
+                        "surface-variant": "#18181b",
+                        "on-background": "#fafafa",
+                        "primary": "#a78bfa",
+                        "on-secondary-fixed-variant": "#3f3f46",
+                        "on-primary-container": "#ede9fe",
+                        "tertiary-container": "#065f46",
+                        "surface-tint": "#a78bfa",
+                        "surface-container-high": "#18181b",
+                        "primary-fixed": "#ede9fe",
+                        "on-tertiary-fixed-variant": "#047857",
+                        "secondary-fixed-dim": "#71717a",
+                        "on-primary": "#0a0012",
+                        "outline-variant": "#27272a",
+                        "secondary-fixed": "#a1a1aa",
+                        "on-surface": "#fafafa",
+                        "tertiary-fixed-dim": "#6ee7b7",
+                        "inverse-on-surface": "#09090b",
+                        "on-surface-variant": "#a1a1aa",
+                        "surface-container": "#121215",
+                        "background": "#09090b",
+                        "surface": "#0c0c0f",
+                        "on-secondary-fixed": "#18181b",
+                        "error": "#ef4444",
+                        "error-container": "#3b1111",
+                        "surface-container-highest": "#1e1e22",
+                        "surface-bright": "#18181b",
+                        "on-error-container": "#fca5a5",
+                        "primary-fixed-dim": "#c4b5fd",
+                        "inverse-surface": "#fafafa",
+                        "tertiary-fixed": "#bbf7d0",
+                        "surface-container-low": "#0f0f12",
+                        "on-primary-fixed": "#2e1065",
+                        "on-secondary": "#09090b",
+                        "on-error": "#1a0000",
+                        "inverse-primary": "#5b21b6",
+                        "on-tertiary-container": "#bbf7d0",
+                        "on-tertiary-fixed": "#003318",
+                        "surface-container-lowest": "#09090b",
+                        "primary-container": "#7c3aed",
+                        "secondary-container": "#27272a",
+                        "on-primary-fixed-variant": "#5b21b6",
+                        "on-tertiary": "#001a12",
+                        "secondary": "#71717a",
+                        "outline": "#52525b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Geist", "sans-serif"],
+                        "display": ["Geist", "sans-serif"],
+                        "body": ["Geist", "sans-serif"],
+                        "label": ["Geist", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Geist', sans-serif; background-color: #09090b; color: #fafafa; }
+        .glass-card { background: rgba(18, 18, 21, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid #27272a; }
+        .bento-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .bento-item { border-radius: 0.5rem; }
+        .bento-large { grid-column: span 2; }
+        @media (max-width: 1024px) { .bento-large { grid-column: span 1; } }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #09090b; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body overflow-x-hidden flex h-screen w-screen">
+<!-- SideNavBar (from JSON) -->
+<nav class="hidden md:flex flex-col h-screen fixed left-0 top-0 pt-14 pb-4 z-40 bg-surface border-r border-outline-variant docked h-full w-64">
+<!-- Logo / Brand Area inside SideNav usually? The JSON says header_title is Obsidian, header_subtext is Workbench -->
+<div class="px-6 py-8 flex items-center gap-4 border-b border-outline-variant">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center overflow-hidden border border-outline-variant shrink-0">
+<img alt="Project logo" class="w-full h-full object-cover" data-alt="A macro photograph of polished black obsidian stone, catching sharp white light highlights against a pitch black background. The texture is smooth and glassy, embodying a sleek, modern, developer-grade aesthetic. High contrast, precise lighting, dark violet ambient reflections." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCX1yMefhBNlhjnXW9_comYDHSSE1ZhSnlzpxbYJAp06-RG_qWpB4RytvOBU3tUVyvJ3Ayn_yH3ESeS61r0eRhsGJwbWybpLqagBq17_z4hOzKOhuZrqwUEvEi_FJr63C3x3a8y-jt7dP2f34OKuebgY4y3IcMMUlx8K3vpft7tjtTTNoEeJrFQ8MoXWjglhp6t1sl4Q35XOAr0kvoYxuJNiZphEprdYCdRdJ0PCLIzhL-d_YlRURmV-OENiebdO4o7L8zmAexkuNJO"/>
+</div>
+<div>
+<h1 class="font-headline font-bold text-on-surface text-lg tracking-tight">Obsidian</h1>
+<p class="text-on-surface-variant text-xs">Workbench</p>
+</div>
+</div>
+<!-- Main Navigation Tabs -->
+<div class="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1">
+<!-- Active Tab: Dashboard -->
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg bg-surface-container-high text-primary border-l-2 border-primary cursor-pointer active:scale-95 transition-all font-body text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+                Dashboard
+            </a>
+<!-- Inactive Tab: Find Issues -->
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface cursor-pointer active:scale-95 transition-all font-body text-sm font-medium border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[20px]">search</span>
+                Find Issues
+            </a>
+<!-- Inactive Tab: Board -->
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface cursor-pointer active:scale-95 transition-all font-body text-sm font-medium border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[20px]">view_kanban</span>
+                Board
+            </a>
+</div>
+<!-- Footer Navigation Tabs -->
+<div class="mt-auto px-3 flex flex-col gap-1 pt-4 border-t border-outline-variant">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface cursor-pointer active:scale-95 transition-all font-body text-sm font-medium border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[20px]">help_outline</span>
+                Help
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface cursor-pointer active:scale-95 transition-all font-body text-sm font-medium border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[20px]">chat_bubble_outline</span>
+                Feedback
+            </a>
+</div>
+</nav>
+<!-- Main Content Wrapper -->
+<div class="flex-1 flex flex-col md:ml-64 w-full min-h-screen relative">
+<!-- TopNavBar (from JSON) -->
+<header class="flex justify-between items-center w-full px-6 h-14 z-50 bg-surface-dim border-b border-outline-variant docked full-width top-0 sticky">
+<!-- Left side (Brand / Mobile Menu / Search) -->
+<div class="flex items-center gap-4 w-full max-w-md">
+<!-- Mobile Menu Button -->
+<button class="md:hidden text-on-surface-variant hover:text-primary transition-colors duration-200 ease-in-out">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<!-- Brand Mobile Only (since desktop has sidebar brand) -->
+<span class="md:hidden text-xl font-headline font-bold text-on-background tracking-tighter">pr-dashboard</span>
+<!-- Search Bar (on_left as per JSON) -->
+<div class="hidden md:flex relative w-full group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px] group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-surface-container border border-outline-variant rounded-full py-1.5 pl-10 pr-4 text-sm font-body text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="Search repositories, issues, PRs..." type="text"/>
+</div>
+</div>
+<!-- Right side (Actions) -->
+<div class="flex items-center gap-3">
+<button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors duration-200 ease-in-out">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors duration-200 ease-in-out">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full border border-outline-variant overflow-hidden cursor-pointer hover:border-primary transition-colors duration-200 ease-in-out ml-2">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="A stark, high-contrast portrait of a developer in a dimly lit environment, illuminated by the cool glow of a monitor. The lighting is cinematic, casting deep shadows against a near-black background. Minimalist styling, wearing a dark gray shirt." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfr8fgmkqS2b3QibmEVBOiP2cHhmd_lvJ6F3SV1JMNX5VuOdp4w0-O5FYCqBhhLVSmioWMOBLy2IVPncCPowHFq4gexyIOXLjC9C6vnOmIlBH73FhTgaNiE4YwwtUVo7Otl3V65zWpdBWK8w-_Hmz02lbidGyGCeB3m9szlyDOR3qSLJba9rUdbS99LfNJh13OiGfmh7dxlN1QZOB4X1b_S8NEibVHG0ZuqwdxO3zqlc8MiaxbTLqugkb1MIog3rpraJFpgOWK-Isl"/>
+</div>
+</div>
+</header>
+<!-- Dashboard Canvas -->
+<main class="flex-1 p-6 md:p-8 overflow-y-auto">
+<div class="max-w-7xl mx-auto space-y-8">
+<!-- Hero Action Card -->
+<div class="glass-card rounded-xl p-8 relative overflow-hidden group">
+<!-- Decorative background glow -->
+<div class="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-3xl group-hover:bg-primary/20 transition-all duration-700"></div>
+<div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-[20px]" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
+</div>
+<h2 class="text-3xl font-headline font-bold text-on-surface tracking-tight mb-2">Finish reading docs for React #28121</h2>
+<p class="text-on-surface-variant max-w-xl">You started reviewing the architectural changes for the concurrent rendering updates. Complete this to unblock PR #28125.</p>
+</div>
+<button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-fixed transition-colors active:scale-95 flex items-center gap-2 shadow-[0_0_15px_rgba(167,139,250,0.3)]">
+                            Resume Review
+                            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Stats Row -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Stat 1 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant text-sm font-medium">PRs Merged (30d)</span>
+<span class="material-symbols-outlined text-tertiary">merge</span>
+</div>
+<div class="flex items-end gap-3 mt-2">
+<span class="text-4xl font-headline font-bold text-on-surface">24</span>
+<span class="text-tertiary text-sm font-medium mb-1 flex items-center"><span class="material-symbols-outlined text-[16px]">arrow_upward</span> 12%</span>
+</div>
+</div>
+<!-- Stat 2 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant text-sm font-medium">Issues Solved</span>
+<span class="material-symbols-outlined text-primary">bug_report</span>
+</div>
+<div class="flex items-end gap-3 mt-2">
+<span class="text-4xl font-headline font-bold text-on-surface">18</span>
+<span class="text-on-surface-variant text-sm mb-1">Total this month</span>
+</div>
+</div>
+<!-- Stat 3 -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant text-sm font-medium">Current Streak</span>
+<span class="material-symbols-outlined text-orange-400" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+</div>
+<div class="flex items-end gap-3 mt-2">
+<span class="text-4xl font-headline font-bold text-on-surface">14</span>
+<span class="text-on-surface-variant text-sm mb-1">Days active</span>
+</div>
+</div>
+</div>
+<!-- Bento Grid Content -->
+<div class="bento-grid">
+<!-- Saved Issues (Bento Large) -->
+<div class="bento-item bento-large bg-surface-container border border-outline-variant p-6 flex flex-col gap-6">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant">bookmarks</span>
+                                Saved Issues
+                            </h3>
+<button class="text-primary text-sm font-medium hover:underline">View All</button>
+</div>
+<div class="flex flex-col gap-3">
+<!-- Issue 1 -->
+<div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-mono text-on-surface-variant">facebook/react</span>
+<div class="flex items-center gap-1 bg-tertiary/10 text-tertiary px-2 py-0.5 rounded text-xs font-mono border border-tertiary/20">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>
+                                        95% Match
+                                    </div>
+</div>
+<h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">Fix Hydration mismatch error on generic components</h4>
+<div class="mt-3 flex items-center gap-3">
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">sell</span> bug, high-priority</span>
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span> 2h ago</span>
+</div>
+</div>
+<!-- Issue 2 -->
+<div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-mono text-on-surface-variant">vercel/next.js</span>
+<div class="flex items-center gap-1 bg-tertiary/10 text-tertiary px-2 py-0.5 rounded text-xs font-mono border border-tertiary/20">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                                        88% Match
+                                    </div>
+</div>
+<h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">App Router: Memory leak when prefetching dynamic routes</h4>
+<div class="mt-3 flex items-center gap-3">
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">sell</span> performance, app-router</span>
+</div>
+</div>
+<!-- Issue 3 -->
+<div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-mono text-on-surface-variant">tailwindlabs/tailwindcss</span>
+<div class="flex items-center gap-1 bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded text-xs font-mono border border-outline-variant">
+                                        72% Match
+                                    </div>
+</div>
+<h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">Arbitrary values failing with certain calc() functions</h4>
+<div class="mt-3 flex items-center gap-3">
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">sell</span> bug, compiler</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Active PRs -->
+<div class="bento-item bg-surface-container border border-outline-variant p-6 flex flex-col gap-6">
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant">commit</span>
+                                Active PRs
+                            </h3>
+</div>
+<div class="flex flex-col gap-4">
+<!-- PR 1 -->
+<div class="flex items-start gap-4">
+<div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0 mt-1">
+<span class="material-symbols-outlined text-tertiary text-[18px]">adjust</span>
+</div>
+<div>
+<h4 class="text-sm font-medium text-on-surface hover:text-primary cursor-pointer mb-1">feat: Add support for nested container queries</h4>
+<div class="flex items-center gap-2 text-xs">
+<span class="text-on-surface-variant font-mono">#1425</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-tertiary font-medium">Open</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-on-surface-variant">2 reviews pending</span>
+</div>
+</div>
+</div>
+<!-- PR 2 -->
+<div class="flex items-start gap-4">
+<div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0 mt-1">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">edit_note</span>
+</div>
+<div>
+<h4 class="text-sm font-medium text-on-surface hover:text-primary cursor-pointer mb-1">refactor: migrate data store layer to rust core</h4>
+<div class="flex items-center gap-2 text-xs">
+<span class="text-on-surface-variant font-mono">#992</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-on-surface-variant font-medium">Draft</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-on-surface-variant">WIP</span>
+</div>
+</div>
+</div>
+<!-- PR 3 -->
+<div class="flex items-start gap-4">
+<div class="w-8 h-8 rounded bg-error/10 border border-error/20 flex items-center justify-center shrink-0 mt-1">
+<span class="material-symbols-outlined text-error text-[18px]">unpublished</span>
+</div>
+<div>
+<h4 class="text-sm font-medium text-on-surface hover:text-primary cursor-pointer mb-1">fix: memory leak in websocket reconnection logic</h4>
+<div class="flex items-center gap-2 text-xs">
+<span class="text-on-surface-variant font-mono">#104</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-error font-medium">Changes Requested</span>
+</div>
+</div>
+</div>
+</div>
+<button class="mt-auto w-full py-2 border border-outline-variant rounded bg-surface-container-lowest text-on-surface-variant text-sm hover:bg-surface-container-high hover:text-on-surface transition-colors font-medium">
+                            View All Pull Requests
+                        </button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

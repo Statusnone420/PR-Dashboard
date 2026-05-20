@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Issue Inspector - Obsidian</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary": "#34d399",
+                        "surface-dim": "#0c0c0f",
+                        "on-secondary-container": "#a1a1aa",
+                        "surface-variant": "#18181b",
+                        "on-background": "#fafafa",
+                        "primary": "#a78bfa",
+                        "on-secondary-fixed-variant": "#3f3f46",
+                        "on-primary-container": "#ede9fe",
+                        "tertiary-container": "#065f46",
+                        "surface-tint": "#a78bfa",
+                        "surface-container-high": "#18181b",
+                        "primary-fixed": "#ede9fe",
+                        "on-tertiary-fixed-variant": "#047857",
+                        "secondary-fixed-dim": "#71717a",
+                        "on-primary": "#0a0012",
+                        "outline-variant": "#27272a",
+                        "secondary-fixed": "#a1a1aa",
+                        "on-surface": "#fafafa",
+                        "tertiary-fixed-dim": "#6ee7b7",
+                        "inverse-on-surface": "#09090b",
+                        "on-surface-variant": "#a1a1aa",
+                        "surface-container": "#121215",
+                        "background": "#09090b",
+                        "surface": "#0c0c0f",
+                        "on-secondary-fixed": "#18181b",
+                        "error": "#ef4444",
+                        "error-container": "#3b1111",
+                        "surface-container-highest": "#1e1e22",
+                        "surface-bright": "#18181b",
+                        "on-error-container": "#fca5a5",
+                        "primary-fixed-dim": "#c4b5fd",
+                        "inverse-surface": "#fafafa",
+                        "tertiary-fixed": "#bbf7d0",
+                        "surface-container-low": "#0f0f12",
+                        "on-primary-fixed": "#2e1065",
+                        "on-secondary": "#09090b",
+                        "on-error": "#1a0000",
+                        "inverse-primary": "#5b21b6",
+                        "on-tertiary-container": "#bbf7d0",
+                        "on-tertiary-fixed": "#003318",
+                        "surface-container-lowest": "#09090b",
+                        "primary-container": "#7c3aed",
+                        "secondary-container": "#27272a",
+                        "on-primary-fixed-variant": "#5b21b6",
+                        "on-tertiary": "#001a12",
+                        "secondary": "#71717a",
+                        "outline": "#52525b"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    fontFamily: {
+                        "headline": ["Geist", "sans-serif"],
+                        "display": ["Geist", "sans-serif"],
+                        "body": ["Geist", "sans-serif"],
+                        "label": ["Geist", "sans-serif"]
+                    },
+                    letterSpacing: {
+                        tighter: '-0.02em',
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Geist', sans-serif; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen overflow-hidden flex flex-col font-body selection:bg-primary selection:text-on-primary">
+<!-- TopNavBar -->
+<nav class="flex justify-between items-center w-full px-6 h-14 z-50 bg-surface-dim border-b border-outline-variant full-width top-0">
+<div class="flex items-center gap-4">
+<span class="text-xl font-headline font-bold text-on-background tracking-tighter">pr-dashboard</span>
+</div>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<button class="hover:text-primary transition-colors duration-200 ease-in-out p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="hover:text-primary transition-colors duration-200 ease-in-out p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant overflow-hidden ml-2 cursor-pointer focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background" tabindex="0">
+<img alt="User profile avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLKzLl8RJbQPgqP7fXw9a2f6Kjwam6FHcGNx9nTZgAC6EuetzGhJuQlWyxy6omrOkjQJVLe31AVj6jn5R6dp37MFBdFD7ZkjqwOu6SZppqbZs1WjxZTobDw7-_XLs8eq11C-3BO3h3Si290QaIB5NIj1zx_TMxx_84_hC0HiObyiotODqrPaoMG8Nr3D9rsk7rexA9IBzd0UEXtABJQjmyv0oQhUbxU-rL3vIuZHgEJpisKg7XOCwonftFvaWeO59eljx1h7v9oNra"/>
+</div>
+</div>
+</nav>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="flex flex-col h-full w-64 bg-surface border-r border-outline-variant z-40 hidden md:flex shrink-0 pb-4">
+<div class="p-6 mb-2 border-b border-outline-variant">
+<h2 class="font-headline font-bold text-on-surface text-lg tracking-tighter">Obsidian</h2>
+<p class="text-on-surface-variant text-sm font-body">Workbench</p>
+</div>
+<nav class="flex-1 flex flex-col gap-1 px-3 mt-4 overflow-y-auto scrollbar-hide">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-all cursor-pointer active:scale-95 rounded-md font-body text-label-sm group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 bg-surface-container-high text-primary border-l-2 border-primary hover:bg-surface-container transition-all cursor-pointer active:scale-95 rounded-r-md font-body text-label-sm font-bold" href="#">
+<span class="material-symbols-outlined" data-icon="search" data-weight="fill" style="font-variation-settings: 'FILL' 1;">search</span>
+<span>Find Issues</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-all cursor-pointer active:scale-95 rounded-md font-body text-label-sm group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="view_kanban">view_kanban</span>
+<span>Board</span>
+</a>
+</nav>
+<div class="mt-auto px-3 border-t border-outline-variant pt-4 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-all cursor-pointer active:scale-95 rounded-md font-body text-label-sm group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="help_outline">help_outline</span>
+<span>Help</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-all cursor-pointer active:scale-95 rounded-md font-body text-label-sm group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="chat_bubble_outline">chat_bubble_outline</span>
+<span>Feedback</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas (Split View) -->
+<main class="flex-1 flex overflow-hidden relative">
+<!-- Left Side: Results List (Dimmed/Background) -->
+<div class="w-full lg:w-[40%] border-r border-outline-variant bg-surface-lowest overflow-y-auto p-6 hidden lg:block opacity-50 transition-opacity hover:opacity-100 cursor-pointer">
+<div class="flex items-center justify-between mb-6">
+<h1 class="text-2xl font-headline font-bold tracking-tighter text-on-background">Search Results</h1>
+<span class="text-sm text-on-surface-variant font-mono bg-surface-container px-2 py-1 rounded border border-outline-variant">42 matches</span>
+</div>
+<div class="space-y-4">
+<!-- Dummy List Items -->
+<div class="p-4 bg-surface-container border border-outline-variant rounded-lg">
+<div class="flex justify-between items-start mb-2">
+<span class="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">typescript</span>
+<span class="text-xs text-on-surface-variant">#4123</span>
+</div>
+<h3 class="font-medium text-on-background mb-1">Fix memory leak in websocket reconnection logic</h3>
+<p class="text-sm text-on-surface-variant line-clamp-2">The current implementation of the websocket client creates a new event listener every time it attempts to reconnect...</p>
+</div>
+<div class="p-4 bg-surface-container-high border-l-2 border-primary rounded-r-lg border-t border-r border-b border-outline-variant ring-1 ring-primary/20">
+<div class="flex justify-between items-start mb-2">
+<span class="text-xs font-mono text-tertiary bg-tertiary/10 px-2 py-0.5 rounded">rust</span>
+<span class="text-xs text-on-surface-variant">#8902</span>
+</div>
+<h3 class="font-medium text-on-background mb-1">Implement fast-path for small payload serialization</h3>
+<p class="text-sm text-on-surface-variant line-clamp-2">We can avoid heap allocation for payloads under 64 bytes by utilizing a smallvec approach in the core serialization loop.</p>
+</div>
+<div class="p-4 bg-surface-container border border-outline-variant rounded-lg">
+<div class="flex justify-between items-start mb-2">
+<span class="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">react</span>
+<span class="text-xs text-on-surface-variant">#1024</span>
+</div>
+<h3 class="font-medium text-on-background mb-1">Update dependencies to mitigate CVE-2024-XXXX</h3>
+<p class="text-sm text-on-surface-variant line-clamp-2">Bump lodash to latest version to resolve security vulnerability reported by Dependabot.</p>
+</div>
+</div>
+</div>
+<!-- Right Side: Issue Inspector Drawer/Panel -->
+<div class="flex-1 bg-surface-dim overflow-y-auto shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.8)] z-10 relative flex flex-col">
+<!-- Header Sticky -->
+<div class="sticky top-0 bg-surface-dim/90 backdrop-blur-md border-b border-outline-variant p-6 z-20 flex justify-between items-start">
+<div class="max-w-2xl">
+<div class="flex items-center gap-3 mb-3">
+<span class="px-2.5 py-1 text-xs font-mono font-medium rounded-sm bg-tertiary/10 text-tertiary border border-tertiary/20">rust</span>
+<span class="px-2.5 py-1 text-xs font-mono font-medium rounded-sm bg-surface-container text-on-surface-variant border border-outline-variant">good-first-issue</span>
+<span class="text-sm text-on-surface-variant font-mono">obsidian-core/issues/8902</span>
+</div>
+<h2 class="text-3xl font-headline font-bold text-on-background tracking-tighter leading-tight">Implement fast-path for small payload serialization</h2>
+<div class="flex items-center gap-4 mt-4 text-sm text-on-surface-variant">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[18px]" data-icon="account_circle">account_circle</span>
+<span>Opened by <strong class="text-on-background">core-dev-sarah</strong></span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[18px]" data-icon="schedule">schedule</span>
+<span>2 days ago</span>
+</div>
+<div class="flex items-center gap-1.5 text-tertiary">
+<span class="material-symbols-outlined text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Open</span>
+</div>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="px-4 py-2 bg-surface-container border border-outline-variant rounded text-sm font-medium hover:bg-surface-container-high transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background flex items-center gap-2 text-on-background">
+<span class="material-symbols-outlined text-[18px]" data-icon="bookmark_border">bookmark_border</span>
+                            Save
+                        </button>
+<button class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:bg-primary-container transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background flex items-center gap-2 shadow-lg shadow-primary/20">
+                            Open on GitHub
+                            <span class="material-symbols-outlined text-[18px]" data-icon="open_in_new">open_in_new</span>
+</button>
+</div>
+</div>
+<!-- Scrollable Content -->
+<div class="p-6 grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
+<!-- Main Body Column -->
+<div class="xl:col-span-2 space-y-6">
+<!-- Description Section -->
+<section class="bg-surface-container rounded-lg border border-outline-variant p-6">
+<h3 class="text-lg font-headline font-semibold text-on-background mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="description">description</span>
+                                Issue Summary
+                            </h3>
+<div class="prose prose-invert prose-sm max-w-none text-on-surface-variant font-body">
+<p class="mb-4">Currently, all payload serializations allocate memory on the heap regardless of size. This creates unnecessary overhead for frequent, small messages (under 64 bytes) such as heartbeat acks and minor state updates.</p>
+<p class="mb-4">We can avoid heap allocation for these payloads by utilizing a <code>smallvec</code> approach in the core serialization loop located in <code>src/net/serialize.rs</code>.</p>
+<div class="bg-surface-container-lowest p-4 rounded-md border border-outline-variant font-mono text-sm overflow-x-auto my-4">
+<span class="text-tertiary">// Current</span><br/>
+<span class="text-primary">pub</span> <span class="text-primary">fn</span> <span class="text-on-background">serialize</span>(payload: <span class="text-primary">&amp;</span>Payload) -&gt; <span class="text-primary">Vec</span>&lt;<span class="text-tertiary">u8</span>&gt; { ... }<br/><br/>
+<span class="text-tertiary">// Proposed</span><br/>
+<span class="text-primary">pub</span> <span class="text-primary">fn</span> <span class="text-on-background">serialize</span>(payload: <span class="text-primary">&amp;</span>Payload) -&gt; SmallVec&lt;[<span class="text-tertiary">u8</span>; 64]&gt; { ... }
+                                </div>
+<p>Expected impact is a ~15% reduction in allocation overhead under load.</p>
+</div>
+</section>
+<!-- Bento Grid: Analytics & Fit -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Why this fits -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-5 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
+<h4 class="text-sm font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="radar">radar</span>
+                                    Why this fits you
+                                </h4>
+<ul class="space-y-3">
+<li class="flex items-start gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-tertiary text-[16px] mt-0.5" data-icon="check">check</span>
+<span>Matches your expertise in <strong>Rust</strong> and systems programming.</span>
+</li>
+<li class="flex items-start gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-tertiary text-[16px] mt-0.5" data-icon="check">check</span>
+<span>Aligned with your desired difficulty: <strong>Intermediate</strong>.</span>
+</li>
+</ul>
+</div>
+<!-- Potential Risks -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-5 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-error/5 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-110"></div>
+<h4 class="text-sm font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-error text-[18px]" data-icon="warning">warning</span>
+                                    Potential Risks
+                                </h4>
+<ul class="space-y-3">
+<li class="flex items-start gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-outline text-[16px] mt-0.5" data-icon="build">build</span>
+<span><strong>Complex Build:</strong> Requires specific nighty Rust toolchain.</span>
+</li>
+<li class="flex items-start gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-outline text-[16px] mt-0.5" data-icon="speed">speed</span>
+<span><strong>Performance Critical:</strong> Benchmarks must pass CI without regressions.</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- Sidebar Column -->
+<div class="space-y-6">
+<!-- Repo Health Metrics -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-5">
+<h4 class="text-sm font-headline font-semibold text-on-background mb-4 uppercase tracking-wider text-xs">Repo Health</h4>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]" data-icon="integration_instructions">integration_instructions</span>
+                                        CI Status
+                                    </div>
+<span class="text-xs font-mono text-tertiary bg-tertiary/10 px-2 py-1 rounded">Passing</span>
+</div>
+<div class="w-full bg-surface-dim h-1 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full w-[95%]"></div>
+</div>
+<div class="flex items-center justify-between mt-4">
+<div class="flex items-center gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]" data-icon="forum">forum</span>
+                                        Avg. Response
+                                    </div>
+<span class="text-sm font-medium text-on-background">~4 hours</span>
+</div>
+<div class="flex items-center justify-between mt-2">
+<div class="flex items-center gap-2 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]" data-icon="merge">merge</span>
+                                        Merge Rate
+                                    </div>
+<span class="text-sm font-medium text-on-background">82%</span>
+</div>
+</div>
+</div>
+<!-- Contribution Checklist -->
+<div class="bg-surface-container rounded-lg border border-outline-variant p-5">
+<h4 class="text-sm font-headline font-semibold text-on-background mb-4 uppercase tracking-wider text-xs">Action Plan</h4>
+<div class="space-y-3">
+<label class="flex items-start gap-3 cursor-pointer group">
+<input class="mt-0.5 rounded border-outline-variant bg-surface-dim text-primary focus:ring-primary focus:ring-offset-surface-container" type="checkbox"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors">Read CONTRIBUTING.md</span>
+</label>
+<label class="flex items-start gap-3 cursor-pointer group">
+<input class="mt-0.5 rounded border-outline-variant bg-surface-dim text-primary focus:ring-primary focus:ring-offset-surface-container" type="checkbox"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors">Fork repository</span>
+</label>
+<label class="flex items-start gap-3 cursor-pointer group">
+<input class="mt-0.5 rounded border-outline-variant bg-surface-dim text-primary focus:ring-primary focus:ring-offset-surface-container" type="checkbox"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors">Setup local environment</span>
+</label>
+<label class="flex items-start gap-3 cursor-pointer group">
+<input class="mt-0.5 rounded border-outline-variant bg-surface-dim text-primary focus:ring-primary focus:ring-offset-surface-container" type="checkbox"/>
+<span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors">Draft PR for feedback</span>
+</label>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

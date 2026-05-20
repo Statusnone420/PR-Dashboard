@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Contribution Board - Obsidian Workbench</title>
+<!-- Google Fonts: Geist -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config (Obsidian Theme) -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#34d399",
+                        "surface-dim": "#0c0c0f",
+                        "on-secondary-container": "#a1a1aa",
+                        "surface-variant": "#18181b",
+                        "on-background": "#fafafa",
+                        "primary": "#a78bfa",
+                        "on-secondary-fixed-variant": "#3f3f46",
+                        "on-primary-container": "#ede9fe",
+                        "tertiary-container": "#065f46",
+                        "surface-tint": "#a78bfa",
+                        "surface-container-high": "#18181b",
+                        "primary-fixed": "#ede9fe",
+                        "on-tertiary-fixed-variant": "#047857",
+                        "secondary-fixed-dim": "#71717a",
+                        "on-primary": "#0a0012",
+                        "outline-variant": "#27272a",
+                        "secondary-fixed": "#a1a1aa",
+                        "on-surface": "#fafafa",
+                        "tertiary-fixed-dim": "#6ee7b7",
+                        "inverse-on-surface": "#09090b",
+                        "on-surface-variant": "#a1a1aa",
+                        "surface-container": "#121215",
+                        "background": "#09090b",
+                        "surface": "#0c0c0f",
+                        "on-secondary-fixed": "#18181b",
+                        "error": "#ef4444",
+                        "error-container": "#3b1111",
+                        "surface-container-highest": "#1e1e22",
+                        "surface-bright": "#18181b",
+                        "on-error-container": "#fca5a5",
+                        "primary-fixed-dim": "#c4b5fd",
+                        "inverse-surface": "#fafafa",
+                        "tertiary-fixed": "#bbf7d0",
+                        "surface-container-low": "#0f0f12",
+                        "on-primary-fixed": "#2e1065",
+                        "on-secondary": "#09090b",
+                        "on-error": "#1a0000",
+                        "inverse-primary": "#5b21b6",
+                        "on-tertiary-container": "#bbf7d0",
+                        "on-tertiary-fixed": "#003318",
+                        "surface-container-lowest": "#09090b",
+                        "primary-container": "#7c3aed",
+                        "secondary-container": "#27272a",
+                        "on-primary-fixed-variant": "#5b21b6",
+                        "on-tertiary": "#001a12",
+                        "secondary": "#71717a",
+                        "outline": "#52525b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Geist", "sans-serif"],
+                        "display": ["Geist", "sans-serif"],
+                        "body": ["Geist", "sans-serif"],
+                        "label": ["Geist", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom Scrollbar for Obsidian High-Contrast Dark */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #09090b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #27272a; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46; 
+        }
+        
+        /* Typography specifics */
+        h1, h2, h3, h4, h5, h6 {
+            letter-spacing: -0.02em;
+        }
+        
+        /* Smooth Kanban interactions */
+        .kanban-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .kanban-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            border-color: #52525b;
+        }
+        .kanban-card:focus-visible {
+            outline: 2px solid #a78bfa;
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body overflow-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<header class="fixed flex justify-between items-center w-full px-6 h-14 z-50 bg-surface-dim border-b border-outline-variant dark:border-outline-variant docked full-width top-0 font-body text-on-surface dark:text-on-surface">
+<!-- Left: Brand & Search -->
+<div class="flex items-center gap-8">
+<div class="text-xl font-headline font-bold text-on-background dark:text-on-background tracking-tighter">
+                pr-dashboard
+            </div>
+<!-- Search Bar (on_left) -->
+<div class="relative hidden md:block w-64 group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm pointer-events-none group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-surface-container text-sm text-on-surface placeholder:text-on-surface-variant border border-outline-variant rounded-md py-1.5 pl-9 pr-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 ease-in-out hover:border-outline" placeholder="Search repositories or issues..." type="text"/>
+</div>
+</div>
+<!-- Right: Actions & Profile -->
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary transition-colors duration-200 ease-in-out p-1.5 rounded-md hover:bg-surface-container flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary transition-colors duration-200 ease-in-out p-1.5 rounded-md hover:bg-surface-container flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-primary">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<div class="h-6 w-[1px] bg-outline-variant mx-1"></div>
+<button class="w-7 h-7 rounded-full bg-surface-container-high border border-outline-variant overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background">
+<div class="w-full h-full bg-gradient-to-tr from-primary-container to-surface-variant flex items-center justify-center text-xs font-bold text-on-primary-container" title="User profile avatar">
+                    JD
+                </div>
+</button>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen fixed left-0 top-0 pt-14 pb-4 z-40 bg-surface dark:bg-surface border-r border-outline-variant dark:border-outline-variant docked left-0 w-64 font-body text-label-sm">
+<!-- Header Info -->
+<div class="px-6 py-6 mb-2">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center" title="Project logo">
+<span class="material-symbols-outlined text-primary text-sm" style="font-variation-settings: 'FILL' 1;">hexagon</span>
+</div>
+<div>
+<h2 class="font-headline font-bold text-on-surface leading-tight">Obsidian</h2>
+<p class="text-xs text-on-surface-variant">Workbench</p>
+</div>
+</div>
+</div>
+<!-- Main Navigation Tabs -->
+<div class="flex-1 px-3 space-y-1">
+<!-- Dashboard (Inactive) -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-on-surface transition-colors">dashboard</span>
+<span class="font-medium group-hover:text-on-surface transition-colors">Dashboard</span>
+</a>
+<!-- Find Issues (Inactive) -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-on-surface transition-colors">search</span>
+<span class="font-medium group-hover:text-on-surface transition-colors">Find Issues</span>
+</a>
+<!-- Board (Active Semantic Match for "Contribution Board") -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-md bg-surface-container-high dark:bg-surface-container-high text-primary dark:text-primary border-l-2 border-primary cursor-pointer active:scale-95 transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">view_kanban</span>
+<span class="font-medium">Board</span>
+</a>
+</div>
+<!-- Footer Navigation Tabs -->
+<div class="px-3 space-y-1 mt-auto">
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-on-surface transition-colors">help_outline</span>
+<span class="font-medium group-hover:text-on-surface transition-colors">Help</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-md text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container transition-all cursor-pointer active:scale-95 group" href="#">
+<span class="material-symbols-outlined text-[18px] group-hover:text-on-surface transition-colors">chat_bubble_outline</span>
+<span class="font-medium group-hover:text-on-surface transition-colors">Feedback</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area (Kanban Canvas) -->
+<main class="md:ml-64 pt-14 h-screen flex flex-col bg-background">
+<!-- Board Header Context -->
+<div class="px-8 py-5 border-b border-outline-variant flex-shrink-0 flex justify-between items-center bg-surface-lowest">
+<div>
+<h1 class="text-2xl font-headline font-bold text-on-surface mb-1">Contribution Board</h1>
+<p class="text-sm text-on-surface-variant">Tracking open-source PRs and active issues across repositories.</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex -space-x-2 mr-2">
+<div class="w-7 h-7 rounded-full bg-surface-container border-2 border-background flex items-center justify-center text-[10px] font-bold text-on-surface z-20">JD</div>
+<div class="w-7 h-7 rounded-full bg-tertiary-container border-2 border-background flex items-center justify-center text-[10px] font-bold text-on-tertiary-container z-10">AL</div>
+</div>
+<button class="flex items-center gap-2 bg-surface-container border border-outline-variant hover:border-outline text-on-surface text-sm font-medium py-1.5 px-3 rounded transition-all focus:outline-none focus:ring-2 focus:ring-primary">
+<span class="material-symbols-outlined text-[16px]">filter_list</span>
+                    Filter
+                </button>
+<button class="flex items-center gap-2 bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container text-sm font-medium py-1.5 px-3 rounded transition-all shadow-[0_0_0_1px_rgba(167,139,250,0.1)] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background">
+<span class="material-symbols-outlined text-[16px]">add</span>
+                    New Card
+                </button>
+</div>
+</div>
+<!-- Scrollable Kanban Area -->
+<div class="flex-1 overflow-x-auto overflow-y-hidden p-8">
+<div class="flex h-full gap-6 items-start pb-4 min-w-max">
+<!-- Column: Considering -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-secondary-fixed-dim"></div>
+<h3 class="text-sm font-semibold text-on-surface uppercase tracking-wider">Considering</h3>
+<span class="text-xs font-medium text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full border border-outline-variant">2</span>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">bookmark</span>
+                                    tailwindlabs/tailwindcss
+                                </span>
+<span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#4812</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface leading-snug mb-3">Add support for container query units in arbitrary values</h4>
+<div class="flex justify-between items-center mt-auto">
+<div class="flex gap-2">
+<span class="text-[10px] font-medium px-1.5 py-0.5 rounded border border-outline-variant bg-surface-lowest text-on-surface-variant">enhancement</span>
+</div>
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">schedule</span> 2d ago</span>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">bookmark</span>
+                                    facebook/react
+                                </span>
+<span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#24901</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface leading-snug mb-3">Investigate hydration mismatch on server-rendered SVGs</h4>
+<div class="flex justify-between items-center mt-auto">
+<div class="flex gap-2">
+<span class="text-[10px] font-medium px-1.5 py-0.5 rounded border border-error-container bg-error-container/20 text-on-error-container">bug</span>
+</div>
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">schedule</span> 5d ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column: Read Docs -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary-fixed-dim/50"></div>
+<h3 class="text-sm font-semibold text-on-surface uppercase tracking-wider">Read Docs</h3>
+<span class="text-xs font-medium text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full border border-outline-variant">1</span>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">bookmark</span>
+                                    vercel/next.js
+                                </span>
+<span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#51022</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface leading-snug mb-3">App Router dynamic segment caching behavior documentation is unclear</h4>
+<div class="flex justify-between items-center mt-auto">
+<div class="flex gap-2">
+<span class="text-[10px] font-medium px-1.5 py-0.5 rounded border border-outline-variant bg-surface-lowest text-on-surface-variant">docs</span>
+</div>
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">schedule</span> 12h ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column: Asked Maintainer -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-[#fcd34d]"></div> <!-- Custom warning color for waiting state -->
+<h3 class="text-sm font-semibold text-on-surface uppercase tracking-wider">Asked Maintainer</h3>
+<span class="text-xs font-medium text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full border border-outline-variant">1</span>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">bookmark</span>
+                                    vuejs/core
+                                </span>
+<span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#8291</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface leading-snug mb-3">Proposal: New macro for reactivity destructuring</h4>
+<div class="w-full bg-surface-lowest rounded-full h-1 mb-3 overflow-hidden">
+<div class="bg-outline-variant h-1 rounded-full w-1/3"></div>
+</div>
+<div class="flex justify-between items-center mt-auto">
+<div class="flex gap-2">
+<span class="text-[10px] font-medium px-1.5 py-0.5 rounded border border-outline-variant bg-surface-lowest text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[10px]">chat</span> Awaiting Reply</span>
+</div>
+<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">schedule</span> 1d ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column: Working -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<h3 class="text-sm font-semibold text-primary uppercase tracking-wider">Working</h3>
+<span class="text-xs font-medium text-primary bg-primary-container/20 px-2 py-0.5 rounded-full border border-primary/30">1</span>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-container border border-primary/50 shadow-[0_0_15px_rgba(167,139,250,0.05)] rounded-lg p-4 cursor-pointer group relative overflow-hidden" tabindex="0">
+<!-- Subtle progress accent -->
+<div class="absolute top-0 left-0 h-1 bg-primary w-[65%]"></div>
+<div class="flex justify-between items-start mb-2 mt-1">
+<span class="text-[11px] font-medium text-primary uppercase tracking-wide flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">terminal</span>
+                                    vitejs/vite
+                                </span>
+<span class="text-xs text-primary font-medium">#12044</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface leading-snug mb-3">Optimize dependency pre-bundling cache invalidation logic</h4>
+<!-- Inline Task List -->
+<div class="flex flex-col gap-1.5 mb-3">
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px] text-tertiary">check_circle</span>
+<span class="line-through opacity-70">Identify stale cache scenarios</span>
+</div>
+<div class="flex items-center gap-2 text-xs text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-primary">radio_button_unchecked</span>
+<span>Implement targeted invalidation</span>
+</div>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[14px]">radio_button_unchecked</span>
+<span>Write integration tests</span>
+</div>
+</div>
+<div class="flex justify-between items-center mt-auto pt-2 border-t border-outline-variant/50">
+<div class="flex -space-x-1.5">
+<div class="w-5 h-5 rounded-full bg-surface border border-outline-variant flex items-center justify-center text-[8px] font-bold text-on-surface">JD</div>
+</div>
+<span class="text-xs text-on-surface flex items-center gap-1"><span class="material-symbols-outlined text-[12px] text-primary">commit</span> 3 commits</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column: PR Open -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-tertiary">alt_route</span>
+<h3 class="text-sm font-semibold text-on-surface uppercase tracking-wider">PR Open</h3>
+<span class="text-xs font-medium text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full border border-outline-variant">1</span>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-container border border-outline-variant hover:border-tertiary/50 rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">bookmark</span>
+                                    remix-run/remix
+                                </span>
+<span class="text-xs text-tertiary font-medium">PR #6102</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface leading-snug mb-3">Fix layout shift during fast client-side navigation</h4>
+<!-- CI Status -->
+<div class="bg-surface-lowest border border-outline-variant rounded p-2 mb-3 flex items-center justify-between">
+<span class="text-[10px] text-on-surface-variant">Checks passing</span>
+<span class="material-symbols-outlined text-tertiary text-[14px]">check_circle</span>
+</div>
+<div class="flex justify-between items-center mt-auto">
+<div class="flex gap-2">
+<span class="text-[10px] font-medium px-1.5 py-0.5 rounded border border-outline-variant bg-surface-lowest text-on-surface-variant">needs-review</span>
+</div>
+<span class="text-xs text-on-surface-variant flex items-center gap-1">Opened 2h ago</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column: Merged -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg opacity-80 hover:opacity-100 transition-opacity">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-primary-container">merge</span>
+<h3 class="text-sm font-semibold text-on-surface uppercase tracking-wider">Merged</h3>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-lowest border border-outline-variant/50 rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1 line-through opacity-70">
+                                    sveltejs/svelte
+                                </span>
+<span class="material-symbols-outlined text-[14px] text-primary-container">merge</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface-variant leading-snug mb-3 opacity-80">Improve compiler error messages for missing exports</h4>
+<div class="flex justify-between items-center mt-auto">
+<span class="text-[10px] text-on-surface-variant">Merged by rich-harris</span>
+<span class="text-xs text-on-surface-variant flex items-center gap-1">Yesterday</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column: Passed -->
+<div class="w-[320px] flex flex-col h-full bg-surface-container-lowest/50 rounded-lg opacity-60 hover:opacity-100 transition-opacity">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">do_not_disturb_on</span>
+<h3 class="text-sm font-semibold text-on-surface uppercase tracking-wider">Passed</h3>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-[18px]">more_horiz</span></button>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-8 h-full custom-scrollbar">
+<!-- Card 1 -->
+<div class="kanban-card bg-surface-lowest border border-outline-variant/30 rounded-lg p-4 cursor-pointer group" tabindex="0">
+<div class="flex justify-between items-start mb-2">
+<span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1 opacity-50">
+                                    denoland/deno
+                                </span>
+</div>
+<h4 class="text-sm font-medium text-on-surface-variant leading-snug mb-3 opacity-60">Implement missing crypto.subtle algorithms</h4>
+<div class="flex justify-between items-center mt-auto">
+<span class="text-[10px] text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[10px]">close</span> Decided not to pursue</span>
+<span class="text-xs text-on-surface-variant flex items-center gap-1">Oct 12</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>
