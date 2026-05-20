@@ -40,6 +40,7 @@ class AppStore {
     this.filters = {
       languages: [], // e.g. ['TypeScript']
       labels: ['help wanted'], // default label selection
+      labelMode: 'OR', // 'OR' | 'AND'
       stars: '1k+', // 'Any' | '1k+' | '5k+' | '10k+'
       comments: 'Any', // 'Any' | 'Low (0-5)' | 'Medium (6-15)' | 'High (15+)'
       updatedDate: 'Any', // 'Any' | 'Last 24h' | 'Last week' | 'Last month'

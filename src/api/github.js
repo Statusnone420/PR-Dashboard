@@ -7,7 +7,7 @@ let recentSearchCache = null;
 /**
  * Build standard GitHub search query q parameter
  */
-function buildQueryString(queryText, filters) {
+export function buildQueryString(queryText, filters) {
   let parts = ['is:issue', 'state:open'];
 
   if (queryText && queryText.trim().length > 0) {
@@ -28,10 +28,12 @@ function buildQueryString(queryText, filters) {
 
   // Labels filter
   if (filters.labels && filters.labels.length > 0) {
-    // Treat labels as exact string queries
-    filters.labels.forEach(label => {
-      parts.push(`label:"${label}"`);
-    });
+    const labelQueries = filters.labels.map(label => `label:"${label}"`);
+    if (labelQueries.length === 1 || filters.labelMode === 'AND') {
+      parts.push(...labelQueries);
+    } else {
+      parts.push(`(${labelQueries.join(' OR ')})`);
+    }
   }
 
   // Stars filter

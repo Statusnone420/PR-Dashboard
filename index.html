@@ -9,12 +9,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-  <link href="src/styles.css" rel="stylesheet"/>
+  <link href="/src/styles.css" rel="stylesheet"/>
 </head>
-<body class="bg-background text-on-background font-body overflow-x-hidden flex h-screen w-screen">
+<body class="min-h-screen bg-background text-on-background font-body overflow-x-hidden">
 
   <!-- SideNavBar (Desktop-friendly docked Navigation panel) -->
-  <nav class="desktop-only flex-col h-screen fixed left-0 top-0 pt-14 pb-4 z-40 bg-surface border-r-outline-variant w-64" id="sidebar-nav">
+  <nav class="desktop-only flex-col fixed left-0 top-0 z-40 h-screen w-64 pt-14 pb-4 bg-surface border-r border-outline-variant" id="sidebar-nav">
     <!-- Brand / Brand Header Area inside SideNav -->
     <div class="px-6 py-6 flex items-center gap-3 border-b border-outline-variant" id="brand-header">
       <div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary" title="Obsidian Hexagon Logo">
@@ -56,10 +56,10 @@
   </nav>
 
   <!-- Main Content Shell Area -->
-  <div class="flex-1 flex flex-col md:ml-64 w-full min-h-screen relative" id="main-content-wrapper">
+  <div class="min-h-screen pt-14 md:pl-64" id="main-content-wrapper">
     
     <!-- TopNavBar (Shared Shell Header) -->
-    <header class="flex justify-between items-center w-full px-6 h-14 z-50 bg-surface-dim border-b border-outline-variant sticky top-0" id="top-navbar">
+    <header class="fixed left-0 right-0 top-0 z-50 flex h-14 items-center justify-between bg-surface-dim border-b border-outline-variant px-4 md:left-64 md:px-6" id="top-navbar">
       <!-- Left actions: search bar & mobile toggles -->
       <div class="flex items-center gap-4 w-full max-w-md">
         <!-- Mobile Menu Toggle Button -->
@@ -91,7 +91,7 @@
         </button>
         <div class="h-6 w-[1px] bg-outline-variant desktop-only"></div>
         <div class="w-8 h-8 rounded-full border border-outline-variant overflow-hidden cursor-pointer hover:border-primary transition-colors ml-1" id="user-profile-avatar" title="User Profile">
-          <div class="w-full h-full bg-gradient-to-tr bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container" id="user-avatar-initials">
+          <div class="w-full h-full bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container" id="user-avatar-initials">
             JD
           </div>
         </div>
@@ -99,7 +99,7 @@
     </header>
 
     <!-- Mobile Navigation Overlay (Drawer style) -->
-    <div id="mobile-nav-drawer" class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex" style="display:none;">
+    <div id="mobile-nav-drawer" class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex md:hidden" style="display:none;">
       <div class="w-64 bg-surface h-full border-r border-outline-variant p-4 flex flex-col gap-4">
         <div class="flex justify-between items-center pb-4 border-b border-outline-variant">
           <span class="font-headline font-bold text-on-surface text-base">Obsidian Workbench</span>
@@ -127,7 +127,7 @@
     </div>
 
     <!-- Active Screen Viewport (Dynamically rendered components) -->
-    <main class="flex-1 overflow-y-auto" id="app-content"></main>
+    <main class="min-h-[calc(100vh-3.5rem)] overflow-x-hidden" id="app-content"></main>
     
   </div>
 
@@ -135,6 +135,6 @@
   <aside id="inspector-overlay-drawer" class="fixed right-0 top-0 h-screen w-full md:w-[60%] lg:w-[48%] bg-surface-dim border-l border-outline-variant z-50 inspector-panel flex flex-col transform translate-x-full transition-transform duration-300 ease-in-out" style="display:none;"></aside>
 
   <!-- ES6 SPA Script Controller Module -->
-  <script type="module" src="src/main.js"></script>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>

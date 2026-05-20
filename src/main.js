@@ -1,14 +1,17 @@
 import { store } from './state/store.js';
 import { searchGitHubIssues } from './api/github.js';
-import { mockActivePRs } from './data/mockData.js';
+import { mockActivePRs, mockSearchIssues } from './data/mockData.js';
+import { screenFromHash } from './routing.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupGlobalSearch();
+  store.currentScreen = screenFromHash(window.location.hash);
   
   // Initial render
   renderActiveScreen();
+  updateSidebarActiveState(store.currentScreen);
 
   // Subscribe UI to store changes
   store.subscribe((state) => {
@@ -97,7 +100,7 @@ function calculateFitScore(issue) {
 function getFitScoreRating(score) {
   if (score >= 90) return { rating: 'Strong match', colorClass: 'glow-emerald', bgClass: 'bg-tertiary/10 border-tertiary/20 text-tertiary' };
   if (score >= 75) return { rating: 'Good match', colorClass: 'glow-violet', bgClass: 'bg-primary/10 border-primary/20 text-primary' };
-  if (score >= 55) return { rating: 'Maybe', colorClass: 'text-yellow-500', bgClass: 'bg-surface-variant text-on-surface-variant border-outline-variant' };
+  if (score >= 55) return { rating: 'Maybe', colorClass: 'text-on-surface-variant', bgClass: 'bg-surface-container-high text-on-surface-variant border-outline-variant' };
   return { rating: 'Risky', colorClass: 'text-error', bgClass: 'bg-error-container/20 border-error/20 text-error' };
 }
 
@@ -118,7 +121,11 @@ function setupNavigation() {
     if (el) {
       el.addEventListener('click', (e) => {
         e.preventDefault();
-        store.setScreen(tab.id);
+        if (window.location.hash !== `#${tab.id}`) {
+          window.location.hash = tab.id;
+        } else {
+          store.setScreen(tab.id);
+        }
       });
     }
 
@@ -127,7 +134,11 @@ function setupNavigation() {
     if (mobileEl) {
       mobileEl.addEventListener('click', (e) => {
         e.preventDefault();
-        store.setScreen(tab.id);
+        if (window.location.hash !== `#${tab.id}`) {
+          window.location.hash = tab.id;
+        } else {
+          store.setScreen(tab.id);
+        }
         closeMobileMenu();
       });
     }
@@ -151,16 +162,17 @@ function setupNavigation() {
   const avatar = document.getElementById('user-profile-avatar');
   if (avatar) {
     avatar.addEventListener('click', () => {
-      store.setScreen('settings');
+      if (window.location.hash !== '#settings') {
+        window.location.hash = 'settings';
+      } else {
+        store.setScreen('settings');
+      }
     });
   }
 
   // Setup click triggers on active window location hashes
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '');
-    if (['dashboard', 'find-issues', 'board', 'settings'].includes(hash)) {
-      store.setScreen(hash);
-    }
+    store.setScreen(screenFromHash(window.location.hash));
   });
 }
 
@@ -298,7 +310,6 @@ function renderDashboard(container) {
 
   let heroHTML = `
     <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
-      <div class="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-3xl group-hover:bg-primary/20 transition-all duration-700"></div>
       <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <div class="flex items-center gap-2 mb-2">
@@ -308,7 +319,7 @@ function renderDashboard(container) {
           <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure Personal Access Token</h2>
           <p class="text-on-surface-variant max-w-xl">Configure a Personal Access Token in the Settings panel to increase your GitHub API rate limits and search private repositories seamlessly.</p>
         </div>
-        <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2 shadow-[0_0_15px_rgba(167,139,250,0.3)]" id="hero-action-btn">
+        <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-action-btn">
           Go to Settings
           <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
         </button>
@@ -320,7 +331,6 @@ function renderDashboard(container) {
     const isWorking = workingCards.includes(resumeReviewCard);
     heroHTML = `
       <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
-        <div class="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-3xl group-hover:bg-primary/20 transition-all duration-700"></div>
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
@@ -330,7 +340,7 @@ function renderDashboard(container) {
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">${isWorking ? 'Resume Working: ' : 'Read Docs: '}${resumeReviewCard.title}</h2>
             <p class="text-on-surface-variant max-w-xl">${resumeReviewCard.repository.full_name} #${resumeReviewCard.number} - You tagged this card in your Contribution Board. Open it to proceed with tasks.</p>
           </div>
-          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2 shadow-[0_0_15px_rgba(167,139,250,0.3)]" id="hero-resume-btn" data-id="${resumeReviewCard.id}">
+          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-resume-btn" data-id="${resumeReviewCard.id}">
             Resume Review
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
@@ -416,7 +426,7 @@ function renderDashboard(container) {
   }).join('');
 
   container.innerHTML = `
-    <main class="p-6 md:p-8 overflow-y-auto">
+    <section class="p-6 md:p-8">
       <div class="max-w-7xl mx-auto">
         
         <!-- Hero Recommended Section -->
@@ -449,7 +459,7 @@ function renderDashboard(container) {
           <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
             <div class="flex justify-between items-start">
               <span class="text-on-surface-variant text-sm font-medium">Current Streak</span>
-              <span class="material-symbols-outlined text-orange-400 filled-icon">local_fire_department</span>
+              <span class="material-symbols-outlined text-tertiary filled-icon">local_fire_department</span>
             </div>
             <div class="flex items-end gap-3 mt-2">
               <span class="text-4xl font-headline font-bold text-on-surface">14</span>
@@ -492,7 +502,7 @@ function renderDashboard(container) {
         </div>
         
       </div>
-    </main>
+    </section>
   `;
 
   // Bind events
@@ -642,8 +652,9 @@ function renderFindIssues(container) {
   } else {
     // Initial screen state - explain Token details
     const token = store.githubToken;
+    countText = 'Suggested starter issues';
     resultsHTML = `
-      <div class="flex flex-col items-center justify-center py-16 text-center gap-6 border border-outline-variant bg-surface-lowest rounded-xl p-8 max-w-2xl mx-auto">
+      <div class="mb-6 flex flex-col items-center justify-center text-center gap-4 border border-outline-variant bg-surface-container-lowest rounded-xl p-6">
         <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
           <span class="material-symbols-outlined text-3xl filled-icon">terminal</span>
         </div>
@@ -662,20 +673,20 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        <button class="px-6 py-2.5 bg-primary text-on-primary rounded-lg font-medium hover:bg-primary-container transition-colors shadow-lg shadow-primary/15" id="start-search-btn">
+        <button class="px-6 py-2.5 bg-primary text-on-primary rounded-lg font-medium hover:bg-primary-container transition-colors" id="start-search-btn">
           Perform Initial Query
         </button>
       </div>
+      ${renderIssueCardsList(mockSearchIssues)}
     `;
   }
 
   container.innerHTML = `
     <!-- Find Issues layout -->
-    <main class="flex-1 overflow-y-auto bg-background flex flex-col relative hide-scrollbar">
+    <div class="bg-background flex min-h-[calc(100vh-3.5rem)] flex-col relative hide-scrollbar">
       
       <!-- Command Palette Search Hero -->
-      <section class="w-full pt-12 pb-8 px-6 md:px-8 border-b border-outline-variant/30 bg-surface-lowest relative">
-        <div class="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+      <section class="w-full pt-12 pb-8 px-6 md:px-8 border-b border-outline-variant/30 bg-surface-container-lowest relative">
         <div class="max-w-3xl mx-auto relative z-10">
           <h1 class="text-3xl font-headline font-bold text-on-surface mb-6 tracking-tight text-center">Find your next contribution</h1>
           
@@ -685,9 +696,9 @@ function renderFindIssues(container) {
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
               </div>
-              <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-md text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-[0_4px_24px_rgba(0,0,0,0.4)] transition-all" id="search-keyword-input" placeholder="Search issues, labels, or repositories..." type="text" value="${store.searchQuery}"/>
+              <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="Search issues, labels, or repositories..." type="text" value="${store.searchQuery}"/>
             </div>
-            <button class="px-6 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary-container transition-colors active:scale-95 shadow-[0_0_15px_rgba(167,139,250,0.15)] shrink-0" id="search-trigger-btn">
+            <button class="px-6 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary-container transition-colors active:scale-95 shrink-0" id="search-trigger-btn">
               Search
             </button>
           </div>
@@ -782,7 +793,7 @@ function renderFindIssues(container) {
         </div>
         
       </div>
-    </main>
+    </div>
   `;
 
   // Bind actions
@@ -845,7 +856,6 @@ function renderFindIssues(container) {
         if (c.checked) selected.push(c.getAttribute('data-lang'));
       });
       store.setFilters({ languages: selected });
-      searchGitHubIssues(store.searchQuery, false);
     });
   });
 
@@ -860,7 +870,6 @@ function renderFindIssues(container) {
         current.push(label);
       }
       store.setFilters({ labels: current });
-      searchGitHubIssues(store.searchQuery, false);
     });
   });
 
@@ -869,7 +878,6 @@ function renderFindIssues(container) {
     radio.addEventListener('change', () => {
       if (radio.checked) {
         store.setFilters({ stars: radio.getAttribute('data-value') });
-        searchGitHubIssues(store.searchQuery, false);
       }
     });
   });
@@ -879,7 +887,6 @@ function renderFindIssues(container) {
   if (commentsSelect) {
     commentsSelect.addEventListener('change', () => {
       store.setFilters({ comments: commentsSelect.value });
-      searchGitHubIssues(store.searchQuery, false);
     });
   }
 
@@ -887,7 +894,6 @@ function renderFindIssues(container) {
   if (updatedSelect) {
     updatedSelect.addEventListener('change', () => {
       store.setFilters({ updatedDate: updatedSelect.value });
-      searchGitHubIssues(store.searchQuery, false);
     });
   }
 
@@ -895,8 +901,6 @@ function renderFindIssues(container) {
   if (sortSelect) {
     sortSelect.addEventListener('change', () => {
       store.setFilters({ sortMode: sortSelect.value });
-      // Sorting can be done locally or by API. Let's force api request if not sorted locally
-      searchGitHubIssues(store.searchQuery, false);
     });
   }
 
@@ -920,83 +924,84 @@ function renderIssueCardsList(issuesList) {
   // Local sorting for Fit Score (others sorted by API request parameters, but fit is local)
   if (store.filters.sortMode === 'Fit Score') {
     sorted.sort((a, b) => b.fitScore - a.fitScore);
+  } else if (store.filters.sortMode === 'Updated Date') {
+    sorted.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  } else if (store.filters.sortMode === 'Most Commented') {
+    sorted.sort((a, b) => (b.comments || 0) - (a.comments || 0));
+  } else if (store.filters.sortMode === 'Recently Created') {
+    sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
 
-  const cardsHTML = sorted.map(issue => {
+  const cardsHTML = sorted.map((issue, index) => {
     const fitObj = issue.fitRating;
     const rating = getFitScoreRating(fitObj.score);
     const repoName = issue.repository.full_name || issue.repository.name || 'github';
+    const isFeatured = index === 0 && sorted.length > 1;
+    const updatedText = new Date(issue.updated_at).toLocaleDateString();
+    const stars = issue.repository && issue.repository.stargazers_count ? issue.repository.stargazers_count : 0;
+    const starsText = stars >= 1000 ? `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k` : `${stars}`;
 
-    const labelsHTML = (issue.labels || []).map(l => {
+    const labelsHTML = (issue.labels || []).slice(0, 3).map(l => {
       const name = typeof l === 'object' ? l.name : l;
-      return `<span class="px-2 py-0.5 rounded-full text-[10px] font-medium border border-outline-variant bg-surface-dim text-on-surface-variant">${name}</span>`;
+      const tone = name.includes('help wanted') || name.includes('good first') 
+        ? 'border-primary/30 bg-primary/10 text-primary' 
+        : name.includes('enhancement') || name.includes('feature') 
+          ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
+          : 'border-outline-variant bg-surface-dim text-on-surface-variant';
+      return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${name}</span>`;
     }).join(' ');
 
     const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
 
     return `
-      <!-- Single Card -->
-      <div class="issue-card group bg-surface-container border border-outline-variant rounded-lg p-4 flex flex-col sm:flex-row gap-4 hover:bg-surface-container-high hover:border-primary/50 transition-all duration-200 relative mb-3 cursor-pointer" data-id="${issue.id}">
-        
-        <!-- Left: Fit Score -->
-        <div class="flex-shrink-0 flex items-center sm:items-start justify-center sm:w-16">
-          <div class="flex flex-col items-center">
-            <span class="${rating.colorClass} font-headline font-bold text-xl">${fitObj.score}%</span>
-            <span class="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold mt-1">Match</span>
+      <article class="issue-card group rounded-xl border border-outline-variant bg-surface-container p-5 cursor-pointer flex flex-col gap-3 transition-colors ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issue.id}">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+            <span class="truncate text-xs font-mono text-on-surface-variant">${repoName} #${issue.number}</span>
           </div>
+          <span class="shrink-0 text-xs text-on-surface-variant">Updated ${updatedText}</span>
         </div>
         
-        <!-- Center: Primary Issue content -->
-        <div class="flex-1 min-w-0">
-          <div class="flex flex-wrap items-center gap-2 mb-1.5">
-            <span class="text-xs font-mono text-on-surface-variant">${repoName}</span>
-            ${labelsHTML}
-          </div>
-          
-          <h3 class="text-lg font-headline font-medium text-on-surface group-hover:text-primary transition-colors leading-tight mb-2 pr-title-click" data-id="${issue.id}">
-            ${issue.title}
-          </h3>
-          
-          <p class="text-xs text-on-surface-variant line-clamp-2 leading-relaxed mb-3">${issue.body || 'No summary description provided.'}</p>
-          
-          <div class="flex flex-wrap items-center gap-4 text-xs text-on-surface-variant font-body">
-            <div class="flex items-center gap-1">
-              <span class="material-symbols-outlined text-[14px]">error_circle_rounded</span>
-              <span>#${issue.number} opened ${new Date(issue.created_at).toLocaleDateString()} by ${issue.user ? issue.user.login : 'anonymous'}</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="material-symbols-outlined text-[14px]">chat_bubble</span>
-              <span>${issue.comments} comments</span>
-            </div>
-            <div class="flex items-center gap-1 text-on-surface">
-              <span class="material-symbols-outlined text-[14px] ${fitObj.isAssigned ? 'text-primary' : 'text-yellow-500'}">${fitObj.isAssigned ? 'person' : 'person_off'}</span>
-              <span>${fitObj.isAssigned ? ('Assigned to ' + (issue.assignee ? issue.assignee.login : 'maintainer')) : 'Unassigned'}</span>
-            </div>
-          </div>
+        <h3 class="${isFeatured ? 'text-lg' : 'text-base'} font-semibold text-on-surface group-hover:text-primary transition-colors leading-tight pr-title-click" data-id="${issue.id}">
+          ${issue.title}
+        </h3>
+        
+        <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issue.body || 'No summary description provided.'}</p>
+        
+        <div class="mt-auto flex flex-wrap items-center gap-2">
+          ${labelsHTML}
+          <span class="rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
         </div>
         
-        <!-- Right: Action Toggles (Hover reveal, visible static on mobile) -->
-        <div class="action-buttons flex sm:flex-col gap-2 justify-center sm:justify-start flex-shrink-0 sm:w-24 absolute sm:static right-4 top-4 sm:right-auto sm:top-auto bg-surface-container-high sm:bg-transparent p-2 sm:p-0 rounded-lg shadow-lg sm:shadow-none border border-outline-variant sm:border-none">
-          <button class="w-full px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors text-center inspect-issue-btn" data-id="${issue.id}">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/40 pt-4">
+          <div class="flex items-center gap-4 text-xs text-on-surface-variant">
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">star</span>${starsText}</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">chat_bubble</span>${issue.comments || 0}</span>
+            <span class="flex items-center gap-1 ${fitObj.isAssigned ? 'text-primary' : 'text-tertiary'}">
+              <span class="material-symbols-outlined text-[15px]">${fitObj.isAssigned ? 'person' : 'person_off'}</span>
+              ${fitObj.isAssigned ? 'Assigned' : 'Unassigned'}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors inspect-issue-btn" data-id="${issue.id}">
             Inspect
-          </button>
-          
-          <button class="w-full px-3 py-1.5 rounded text-xs font-medium transition-colors text-center flex items-center justify-center gap-1 save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/20' : 'bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant'}" data-id="${issue.id}">
-            <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
-            ${saved ? 'Saved' : 'Save'}
-          </button>
-          
-          <a class="w-full px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors text-center flex items-center justify-center gap-1" href="${issue.html_url}" target="_blank" rel="noopener">
-            GitHub
-            <span class="material-symbols-outlined text-[12px]">open_in_new</span>
-          </a>
+            </button>
+            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/20' : 'bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant'}" data-id="${issue.id}">
+              <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
+              ${saved ? 'Saved' : 'Save'}
+            </button>
+            <a class="px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors flex items-center justify-center gap-1" href="${issue.html_url}" target="_blank" rel="noopener">
+              GitHub
+              <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+            </a>
+          </div>
         </div>
-        
-      </div>
+      </article>
     `;
   }).join('');
 
-  return `<div class="grid grid-cols-1 gap-2">${cardsHTML}</div>`;
+  return `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${cardsHTML}</div>`;
 }
 
 function bindIssueCardListEvents() {
@@ -1005,7 +1010,7 @@ function bindIssueCardListEvents() {
     title.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(title.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = store.searchResults || mockSearchIssues;
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1020,7 +1025,7 @@ function bindIssueCardListEvents() {
       // Avoid firing if they click an active button inside the card
       if (e.target.closest('button') || e.target.closest('a')) return;
       const issueId = parseInt(card.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = store.searchResults || mockSearchIssues;
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1034,7 +1039,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = store.searchResults || mockSearchIssues;
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1048,7 +1053,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = store.searchResults || mockSearchIssues;
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.saveIssueToBoard(issue);
@@ -1072,11 +1077,11 @@ function renderBoard(container) {
     const cards = store.boardCards[col] || [];
     
     // Column header indicators color dot
-    let dotColor = 'bg-secondary-fixed-dim';
+    let dotColor = 'bg-outline';
     if (col === 'Working') dotColor = 'bg-primary animate-pulse';
-    else if (col === 'Asked Maintainer') dotColor = 'bg-yellow-500';
+    else if (col === 'Asked Maintainer') dotColor = 'bg-primary';
     else if (col === 'PR Open') dotColor = 'bg-tertiary';
-    else if (col === 'Merged') dotColor = 'bg-purple-500';
+    else if (col === 'Merged') dotColor = 'bg-tertiary';
 
     const cardsHTML = cards.map(card => {
       const repoName = card.repository.full_name || card.repository.name || 'github';
@@ -1095,7 +1100,7 @@ function renderBoard(container) {
         
         workingChecklistHTML = `
           <!-- Inline checklist progress bar -->
-          <div class="w-full bg-surface-lowest rounded-full h-1 mb-2.5 overflow-hidden">
+          <div class="w-full bg-surface-container-lowest rounded-full h-1 mb-2.5 overflow-hidden">
             <div class="bg-primary h-1 rounded-full" style="width: ${card.progress || 0}%"></div>
           </div>
           <div class="flex flex-col gap-1 mb-3">
@@ -1108,7 +1113,7 @@ function renderBoard(container) {
       let prOpenHTML = '';
       if (col === 'PR Open') {
         prOpenHTML = `
-          <div class="bg-surface-lowest border border-outline-variant rounded p-2 mb-3 flex items-center justify-between">
+          <div class="bg-surface-container-lowest border border-outline-variant rounded p-2 mb-3 flex items-center justify-between">
             <span class="text-[10px] text-on-surface-variant">Checks passing</span>
             <span class="material-symbols-outlined text-tertiary text-[14px] filled-icon">check_circle</span>
           </div>
@@ -1121,7 +1126,7 @@ function renderBoard(container) {
         mergedTextHTML = `
           <div class="flex justify-between items-center text-[10px] text-on-surface-variant mt-2">
             <span>Merged by core-team</span>
-            <span class="material-symbols-outlined text-purple-400 text-[14px]">merge</span>
+            <span class="material-symbols-outlined text-tertiary text-[14px]">merge</span>
           </div>
         `;
       }
@@ -1165,10 +1170,10 @@ function renderBoard(container) {
             <span class="text-[10px] text-on-surface-variant">${new Date(card.updated_at).toLocaleDateString()}</span>
             
             <div class="flex items-center gap-1">
-              <button class="w-6 h-6 rounded bg-surface-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-left-btn" data-id="${card.id}" ${leftArrowDisabled}>
+              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-left-btn" data-id="${card.id}" ${leftArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_left</span>
               </button>
-              <button class="w-6 h-6 rounded bg-surface-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-right-btn" data-id="${card.id}" ${rightArrowDisabled}>
+              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-right-btn" data-id="${card.id}" ${rightArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_right</span>
               </button>
             </div>
@@ -1198,10 +1203,10 @@ function renderBoard(container) {
 
   container.innerHTML = `
     <!-- Kanban Board layout -->
-    <main class="h-screen flex flex-col bg-background">
+    <section class="flex min-h-[calc(100vh-3.5rem)] flex-col bg-background">
       
       <!-- Board Header Context -->
-      <div class="px-8 py-5 border-b border-outline-variant flex-shrink-0 flex justify-between items-center bg-surface-lowest">
+      <div class="px-6 md:px-8 py-5 border-b border-outline-variant flex-shrink-0 flex justify-between items-center bg-surface-container-lowest">
         <div>
           <h1 class="text-2xl font-headline font-bold text-on-surface mb-1">Contribution Board</h1>
           <p class="text-sm text-on-surface-variant">Tracking open-source PRs and active issues across repositories.</p>
@@ -1221,7 +1226,7 @@ function renderBoard(container) {
           ${columnsHTML}
         </div>
       </div>
-    </main>
+    </section>
   `;
 
   // Bind Lane Card Clicks
@@ -1293,7 +1298,7 @@ function renderSettings(container) {
 
   container.innerHTML = `
     <!-- Settings Page layout -->
-    <main class="flex-grow overflow-y-auto p-6 md:p-12">
+    <section class="p-6 md:p-12">
       <div class="max-w-4xl mx-auto space-y-8">
         
         <header class="space-y-2">
@@ -1337,7 +1342,7 @@ function renderSettings(container) {
             <div class="space-y-3">
               <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">Token Value</label>
               <div class="relative group">
-                <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-md focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" type="password" value="${token}"/>
+                <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" type="password" value="${token}"/>
                 <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" style="background:none; border:none;">
                   <span class="material-symbols-outlined" id="visibility-icon">visibility</span>
                 </button>
@@ -1375,7 +1380,7 @@ function renderSettings(container) {
             </div>
             
             <!-- Remember token option -->
-            <label class="flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-lowest cursor-pointer hover:border-primary/30 transition-colors">
+            <label class="flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest cursor-pointer hover:border-primary/30 transition-colors">
               <input class="mt-0.5" id="settings-remember-checkbox" type="checkbox" ${remember ? 'checked' : ''} />
               <div>
                 <span class="text-sm font-semibold text-on-surface block">Remember token locally</span>
@@ -1391,7 +1396,7 @@ function renderSettings(container) {
               <button class="px-6 py-2.5 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container transition-colors font-medium text-sm" id="test-connection-btn">
                 Test Connection
               </button>
-              <button class="px-6 py-2.5 rounded-lg bg-primary text-on-primary hover:bg-primary-container transition-colors font-medium text-sm shadow-[0_0_15px_rgba(167,139,250,0.15)]" id="save-settings-btn">
+              <button class="px-6 py-2.5 rounded-lg bg-primary text-on-primary hover:bg-primary-container transition-colors font-medium text-sm" id="save-settings-btn">
                 Save Configuration
               </button>
             </div>
@@ -1414,7 +1419,7 @@ function renderSettings(container) {
         </div>
         
       </div>
-    </main>
+    </section>
   `;
 
   // Bind actions
@@ -1616,7 +1621,7 @@ function openInspector() {
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
           
-          <a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5 shadow-lg shadow-primary/10" href="${issue.html_url}" target="_blank" rel="noopener">
+          <a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5" href="${issue.html_url}" target="_blank" rel="noopener">
             Open on GitHub
             <span class="material-symbols-outlined text-[16px]">open_in_new</span>
           </a>
@@ -1637,7 +1642,6 @@ function openInspector() {
         
         <!-- Score Fit Analysis -->
         <div class="bg-surface-container rounded-lg border border-outline-variant p-4 relative overflow-hidden group">
-          <div class="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl -mr-6 -mt-6"></div>
           <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
             <span class="material-symbols-outlined text-primary text-[18px]">radar</span>
             Why this fits
@@ -1664,7 +1668,7 @@ function openInspector() {
                 <span>Interactive Progress</span>
                 <span>${issue.progress || 0}%</span>
               </div>
-              <div class="w-full bg-surface-lowest rounded-full h-1 overflow-hidden">
+              <div class="w-full bg-surface-container-lowest rounded-full h-1 overflow-hidden">
                 <div class="bg-primary h-1 rounded-full" style="width: ${issue.progress || 0}%"></div>
               </div>
             </div>
