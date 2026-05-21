@@ -57,3 +57,11 @@
 - Renamed the visible desktop and mobile navigation item from `Find Issues` to `Find Contributions` so the left rail matches the Finder v2 product promise.
 - Updated the dashboard empty-state helper copy to point at Find Contributions results.
 - Verification: added `test/ui-copy.test.js`; watched it fail before the copy change, then pass after the copy change. `npm test`, `npm run build`, and `git diff --check` passed.
+
+## 2026-05-21 Dashboard Hero Recommendation Fix
+
+- Added a tested dashboard hero decision helper so `Configure Personal Access Token` only appears when there is no active saved issue and no configured PAT.
+- Dashboard hero now prioritizes active saved issues anywhere in non-final board columns, with `Working` first, then normal board order. Closed issues and cards in `Merged` or `Passed` are ignored for resume recommendations.
+- When a PAT exists and there is no active saved issue, the hero recommends `Find Contributions` instead of token setup.
+- Adjusted PAT setup copy to mention increased GitHub API rate limits for searches/lookups, without implying private repository search.
+- Verification: `test/dashboard-hero.test.js` failed before `src/dashboardHero.js` existed, then passed after implementation. `npm test` passed 48/48 and `npm run build` passed.

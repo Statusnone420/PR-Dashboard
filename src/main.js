@@ -6,6 +6,7 @@ import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent }
 import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
+import { getDashboardHeroRecommendation } from './dashboardHero.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -250,55 +251,75 @@ function renderActiveScreen() {
  */
 function renderDashboard(container) {
   // Grab dynamic data
-  const boardConsidering = store.boardCards["Considering"] || [];
   const boardCards = Object.values(store.boardCards).flat();
   const closedCards = boardCards.filter(isClosedIssue);
   const activeCards = boardCards.filter(card => !isClosedIssue(card));
   const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
   const mergedOrPassedCount = (store.boardCards["Merged"] || []).length + (store.boardCards["Passed"] || []).length + closedCards.length;
-  
-  // Find current working card on board to resume review
-  const workingCards = store.boardCards["Working"] || [];
-  const resumeReviewCard = workingCards[0] || (boardConsidering[0] || null);
+  const heroRecommendation = getDashboardHeroRecommendation({
+    boardCards: store.boardCards,
+    githubToken: store.githubToken
+  });
 
-  let heroHTML = `
-    <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
-      <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <div class="flex items-center gap-2 mb-2">
-            <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
-            <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
-          </div>
-          <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure Personal Access Token</h2>
-          <p class="text-on-surface-variant max-w-xl">Configure a Personal Access Token in the Settings panel to increase your GitHub API rate limits and search private repositories seamlessly.</p>
-        </div>
-        <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-action-btn">
-          Go to Settings
-          <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
-        </button>
-      </div>
-    </div>
-  `;
-
-  if (resumeReviewCard) {
-    const isWorking = workingCards.includes(resumeReviewCard);
+  let heroHTML = '';
+  if (heroRecommendation.kind === 'resume') {
+    const resumeReviewCard = heroRecommendation.card;
     const resumeTitle = escapeHTML(resumeReviewCard.title);
     const resumeRepo = escapeHTML(resumeReviewCard.repository?.full_name || resumeReviewCard.repository?.name || 'github');
     const resumeNumber = safeInteger(resumeReviewCard.number);
     const resumeId = safeInteger(resumeReviewCard.id);
+    const resumeColumn = escapeHTML(heroRecommendation.column);
     heroHTML = `
       <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
               <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
-              <span class="text-primary font-semibold text-sm tracking-wide uppercase">${isWorking ? 'Active Assignment' : 'Next Recommended Action'}</span>
+              <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
             </div>
-            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">${isWorking ? 'Resume Working: ' : 'Read Docs: '}${resumeTitle}</h2>
-            <p class="text-on-surface-variant max-w-xl">${resumeRepo} #${resumeNumber} - You tagged this card in your Contribution Board. Open it to proceed with tasks.</p>
+            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Continue Review: ${resumeTitle}</h2>
+            <p class="text-on-surface-variant max-w-xl">${resumeRepo} #${resumeNumber} - Saved in ${resumeColumn}. Open it to continue your local review.</p>
           </div>
           <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-resume-btn" data-id="${resumeId}">
             Resume Review
+            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+          </button>
+        </div>
+      </div>
+    `;
+  } else if (heroRecommendation.kind === 'configure-token') {
+    heroHTML = `
+      <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
+              <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
+            </div>
+            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure Personal Access Token</h2>
+            <p class="text-on-surface-variant max-w-xl">Configure a Personal Access Token in Settings to increase GitHub API rate limits for searches and lookups.</p>
+          </div>
+          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-action-btn">
+            Go to Settings
+            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    heroHTML = `
+      <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
+              <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
+            </div>
+            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Find Contributions</h2>
+            <p class="text-on-surface-variant max-w-xl">Your token is configured. Search for contribution-worthy GitHub issues and save the best candidates to your board.</p>
+          </div>
+          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-find-btn">
+            Find Contributions
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
         </div>
@@ -443,6 +464,13 @@ function renderDashboard(container) {
   if (heroAction) {
     heroAction.addEventListener('click', () => {
       store.setScreen('settings');
+    });
+  }
+
+  const heroFind = document.getElementById('hero-find-btn');
+  if (heroFind) {
+    heroFind.addEventListener('click', () => {
+      store.setScreen('find-issues');
     });
   }
 
