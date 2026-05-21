@@ -1,4 +1,29 @@
-import { BOARD_MIGRATION_KEY, BOARD_STORAGE_KEY, createEmptyBoard, loadBoardFromStorage } from '../boardModel.js';
+import {
+  BOARD_MIGRATION_KEY,
+  BOARD_STORAGE_KEY,
+  createDefaultActionPlan,
+  createEmptyBoard,
+  loadBoardFromStorage
+} from '../boardModel.js';
+
+export function createDefaultFilters() {
+  return {
+    languages: [],
+    labels: ['good first issue', 'help wanted'],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false,
+    unassigned: false,
+    useFiltersInLookup: false
+  };
+}
+
+function cloneFilters(filters) {
+  return JSON.parse(JSON.stringify(filters));
+}
 
 export class AppStore {
   constructor() {
@@ -15,6 +40,7 @@ export class AppStore {
 
     // 3. Contribution Board State
     this.boardCards = loadBoardFromStorage(localStorage);
+    this.boardRefreshStatus = '';
 
     // 4. Find Issues Search Cache & Parameters
     this.searchQuery = '';
@@ -27,17 +53,13 @@ export class AppStore {
       reset: null
     };
 
-    // Filter selections
-    this.filters = {
-      languages: [], // e.g. ['TypeScript']
-      labels: ['good first issue', 'help wanted'], // default label selection
-      labelMode: 'OR', // 'OR' | 'AND'
-      stars: '1k+', // 'Any' | '1k+' | '5k+' | '10k+'
-      comments: 'Any', // 'Any' | 'Low (0-5)' | 'Medium (6-15)' | 'High (15+)'
-      updatedDate: 'Any', // 'Any' | 'Last 24h' | 'Last week' | 'Last month'
-      sortMode: 'Fit Score', // 'Fit Score' | 'Updated Date' | 'Most Commented' | 'Recently Created'
-      includeClosed: false
-    };
+    // Filter selections: filters are last applied; draftFilters drive controls and query preview.
+    this.filters = createDefaultFilters();
+    this.draftFilters = cloneFilters(this.filters);
+    this.finderMode = 'find';
+    this.lastSearchMode = 'find';
+    this.lastAppliedQueryPreview = '';
+    this.lookupRepoContext = '';
 
     // 5. Details Inspector Panel
     this.inspectedIssue = null; // currently opened issue detail
@@ -160,12 +182,7 @@ export class AppStore {
       freshIssue.source = 'github';
       freshIssue.saved_at = new Date().toISOString();
       freshIssue.state = freshIssue.state || 'open';
-      freshIssue.checklist = [
-        { text: "Read CONTRIBUTING.md", completed: false },
-        { text: "Fork repository", completed: false },
-        { text: "Setup local environment", completed: false },
-        { text: "Draft PR for feedback", completed: false }
-      ];
+      freshIssue.checklist = createDefaultActionPlan();
       freshIssue.progress = 0;
       freshIssue.commits = 0;
       
@@ -239,6 +256,11 @@ export class AppStore {
     this.notify();
   }
 
+  setBoardRefreshStatus(status) {
+    this.boardRefreshStatus = status;
+    this.notify();
+  }
+
   moveCardToColumn(cardId, targetCol) {
     if (!this.boardCards[targetCol]) return;
 
@@ -265,7 +287,34 @@ export class AppStore {
 
   setFilters(newFilters) {
     this.filters = { ...this.filters, ...newFilters };
+    this.draftFilters = cloneFilters(this.filters);
     this.notify();
+  }
+
+  setDraftFilters(newFilters) {
+    this.draftFilters = { ...this.draftFilters, ...newFilters };
+    this.notify();
+  }
+
+  applyDraftFilters() {
+    this.filters = cloneFilters(this.draftFilters);
+    this.notify();
+    return this.filters;
+  }
+
+  hasDraftFilterChanges() {
+    return JSON.stringify(this.filters) !== JSON.stringify(this.draftFilters);
+  }
+
+  setFinderMode(mode) {
+    this.finderMode = mode === 'lookup' ? 'lookup' : 'find';
+    this.notify();
+  }
+
+  setLastSearchMetadata({ mode, queryPreview, lookupRepoContext } = {}) {
+    if (mode) this.lastSearchMode = mode;
+    if (queryPreview !== undefined) this.lastAppliedQueryPreview = queryPreview;
+    if (lookupRepoContext !== undefined) this.lookupRepoContext = lookupRepoContext || '';
   }
 
   setSearchState(loading, error, results = null) {
@@ -301,12 +350,7 @@ export class AppStore {
         issue.commits = foundBoardCard.commits;
       } else {
         // Default checklist for inspection
-        issue.checklist = [
-          { text: "Read CONTRIBUTING.md", completed: false },
-          { text: "Fork repository", completed: false },
-          { text: "Setup local environment", completed: false },
-          { text: "Draft PR for feedback", completed: false }
-        ];
+        issue.checklist = createDefaultActionPlan();
         issue.progress = 0;
         issue.commits = 0;
       }

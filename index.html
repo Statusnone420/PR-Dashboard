@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>Obsidian Workbench</title>
+  <title>PR Dashboard</title>
   <!-- Google Fonts: Geist for standard UI and Material Symbols for system-wide icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
@@ -17,12 +17,11 @@
   <nav class="desktop-only flex-col fixed left-0 top-0 z-40 h-screen w-64 pt-14 pb-4 bg-surface border-r border-outline-variant" id="sidebar-nav">
     <!-- Brand / Brand Header Area inside SideNav -->
     <div class="px-6 py-6 flex items-center gap-3 border-b border-outline-variant" id="brand-header">
-      <div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary" title="Obsidian Hexagon Logo">
+      <div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary" title="PR Dashboard logo">
         <span class="material-symbols-outlined text-sm filled-icon" style="font-size: 16px;">hexagon</span>
       </div>
       <div>
-        <h1 class="font-headline font-bold text-on-surface text-base tracking-tight leading-tight">Obsidian</h1>
-        <p class="text-on-surface-variant text-xs mt-0.5">Workbench</p>
+        <h1 class="font-headline font-bold text-on-surface text-base tracking-tight leading-tight">PR Dashboard</h1>
       </div>
     </div>
     
@@ -67,7 +66,7 @@
           <span class="material-symbols-outlined">menu</span>
         </button>
         <!-- Brand logo visible on mobile only -->
-        <span class="md:hidden text-lg font-headline font-bold text-on-background tracking-tighter" id="brand-mobile">pr-dashboard</span>
+        <span class="md:hidden text-lg font-headline font-bold text-on-background tracking-tighter" id="brand-mobile">PR Dashboard</span>
         
         <!-- Global Search Bar in Header -->
         <div class="flex-1 relative group desktop-only" id="global-search-container">
@@ -83,7 +82,7 @@
           API: <span id="rate-limit-remaining">--</span>/<span id="rate-limit-limit">--</span>
         </div>
         
-        <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-notifications" title="Notifications" style="background:none; border:none;">
+        <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant opacity-50 cursor-not-allowed" id="btn-notifications" title="Notifications are not available yet" aria-disabled="true" disabled style="background:none; border:none;">
           <span class="material-symbols-outlined text-[20px]">notifications</span>
         </button>
         <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-settings" title="Token Settings" style="background:none; border:none;">
@@ -102,7 +101,7 @@
     <div id="mobile-nav-drawer" class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex md:hidden" style="display:none;">
       <div class="w-64 bg-surface h-full border-r border-outline-variant p-4 flex flex-col gap-4">
         <div class="flex justify-between items-center pb-4 border-b border-outline-variant">
-          <span class="font-headline font-bold text-on-surface text-base">Obsidian Workbench</span>
+          <span class="font-headline font-bold text-on-surface text-base">PR Dashboard</span>
           <button id="mobile-menu-close" class="text-on-surface-variant hover:text-primary" style="background:none; border:none;"><span class="material-symbols-outlined">close</span></button>
         </div>
         <div class="flex flex-col gap-2 mt-4">

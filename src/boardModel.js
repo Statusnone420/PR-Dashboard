@@ -3,6 +3,29 @@ export const BOARD_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'W
 export const BOARD_STORAGE_KEY = 'pr_dashboard_board_cards';
 export const BOARD_MIGRATION_KEY = 'pr_dashboard_board_migration_v1';
 
+export const DEFAULT_ACTION_PLAN = [
+  'Read README.',
+  'Read CONTRIBUTING.md.',
+  'Check install/test command.',
+  'Identify likely files.',
+  'Open issue discussion.',
+  'Decide attempt/pass.'
+];
+
+const LEGACY_DEFAULT_TASKS = new Set([
+  'Read CONTRIBUTING.md',
+  'Fork repository',
+  'Clone repository',
+  'Setup local environment',
+  'Draft PR for feedback'
+]);
+
+const LEGACY_COMPLETION_MAP = new Map([
+  ['Read CONTRIBUTING.md', 'Read CONTRIBUTING.md.'],
+  ['Setup local environment', 'Check install/test command.'],
+  ['Draft PR for feedback', 'Open issue discussion.']
+]);
+
 const SEEDED_MOCK_SIGNATURES = new Set([
   'tailwindlabs/tailwindcss#4812',
   'facebook/react#24901',
@@ -16,6 +39,35 @@ const SEEDED_MOCK_SIGNATURES = new Set([
 
 export function createEmptyBoard() {
   return Object.fromEntries(BOARD_COLUMNS.map(column => [column, []]));
+}
+
+export function createDefaultActionPlan() {
+  return DEFAULT_ACTION_PLAN.map(text => ({ text, completed: false }));
+}
+
+export function migrateActionPlanChecklist(checklist) {
+  if (!Array.isArray(checklist) || checklist.length === 0) {
+    return checklist;
+  }
+
+  const taskTexts = checklist.map(task => String(task?.text || ''));
+  const onlyKnownLegacyDefaults = taskTexts.every(text => LEGACY_DEFAULT_TASKS.has(text));
+  if (!onlyKnownLegacyDefaults) {
+    return checklist;
+  }
+
+  const completedByNewTask = new Map();
+  for (const task of checklist) {
+    const mappedText = LEGACY_COMPLETION_MAP.get(String(task?.text || ''));
+    if (mappedText && task?.completed) {
+      completedByNewTask.set(mappedText, true);
+    }
+  }
+
+  return DEFAULT_ACTION_PLAN.map(text => ({
+    text,
+    completed: Boolean(completedByNewTask.get(text))
+  }));
 }
 
 export function getIssueSignature(issue) {
@@ -43,7 +95,10 @@ export function normalizeBoardCards(boardData) {
         migratedCount += 1;
         continue;
       }
-      board[column].push(card);
+      board[column].push({
+        ...card,
+        checklist: migrateActionPlanChecklist(card.checklist)
+      });
     }
   }
 

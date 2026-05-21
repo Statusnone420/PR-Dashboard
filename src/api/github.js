@@ -1,5 +1,7 @@
 import { store } from '../state/store.js';
 import { isGitHubApiUrl } from '../security.js';
+import { buildExactIssueApiUrl } from '../lookup.js';
+import { extractRepoFullName, filterIssuesByStars, hydrateIssueRepositories } from './repoMetadata.js';
 
 // Simple in-memory cache
 let recentSearchCache = null;
@@ -7,15 +9,26 @@ let recentSearchCache = null;
 /**
  * Build standard GitHub search query q parameter
  */
-export function buildQueryString(queryText, filters) {
+export function buildQueryString(queryText, filters, options = {}) {
+  const mode = options.mode || filters?.mode || 'find';
+  const useLookupFilters = mode !== 'lookup' || Boolean(filters?.useFiltersInLookup);
   let parts = ['is:issue'];
 
-  if (!filters.includeClosed) {
+  if (mode === 'find') {
+    if (!filters.includeClosed) {
+      parts.push('state:open');
+    }
+    parts.push('archived:false');
+  } else if (useLookupFilters && !filters.includeClosed) {
     parts.push('state:open');
   }
 
   if (queryText && queryText.trim().length > 0) {
     parts.push(queryText.trim());
+  }
+
+  if (mode === 'lookup' && !useLookupFilters) {
+    return parts.join(' ');
   }
 
   // Languages filter
@@ -40,13 +53,6 @@ export function buildQueryString(queryText, filters) {
     }
   }
 
-  // Stars filter
-  if (filters.stars && filters.stars !== 'Any') {
-    if (filters.stars === '1k+') parts.push('stars:>=1000');
-    else if (filters.stars === '5k+') parts.push('stars:>=5000');
-    else if (filters.stars === '10k+') parts.push('stars:>=10000');
-  }
-
   // Comments filter
   if (filters.comments && filters.comments !== 'Any') {
     if (filters.comments === 'Low (0-5)') parts.push('comments:0..5');
@@ -69,23 +75,29 @@ export function buildQueryString(queryText, filters) {
     }
   }
 
+  if (filters.unassigned) {
+    parts.push('no:assignee');
+  }
+
   return parts.join(' ');
 }
 
-export function buildQueryPreview(queryText, filters) {
-  return buildQueryString(queryText, filters);
+export function buildQueryPreview(queryText, filters, options = {}) {
+  return buildQueryString(queryText, filters, options);
 }
 
-export function buildSearchIssuesUrl(queryText, filters) {
-  const q = buildQueryString(queryText, filters);
+export function buildSearchIssuesUrl(queryText, filters, options = {}) {
+  const q = buildQueryString(queryText, filters, options);
   let sortParam = '';
   const orderParam = 'desc';
+  const mode = options.mode || filters?.mode || 'find';
+  const canApplySort = mode !== 'lookup' || Boolean(filters?.useFiltersInLookup);
 
-  if (filters.sortMode === 'Updated Date') {
+  if (canApplySort && filters.sortMode === 'Updated Date') {
     sortParam = 'updated';
-  } else if (filters.sortMode === 'Most Commented') {
+  } else if (canApplySort && filters.sortMode === 'Most Commented') {
     sortParam = 'comments';
-  } else if (filters.sortMode === 'Recently Created') {
+  } else if (canApplySort && filters.sortMode === 'Recently Created') {
     sortParam = 'created';
   }
 
@@ -208,52 +220,103 @@ export async function fetchIssueMetadata(issue) {
   return response.json();
 }
 
+function rateLimitFromResponse(response) {
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  const limit = response.headers.get('x-ratelimit-limit');
+  const reset = response.headers.get('x-ratelimit-reset');
+  return {
+    remaining: remaining ? parseInt(remaining, 10) : null,
+    limit: limit ? parseInt(limit, 10) : null,
+    reset: reset ? parseInt(reset, 10) : null
+  };
+}
+
+function getLookupRepoContextFromIssue(issue) {
+  return extractRepoFullName(issue) || issue?.repository?.full_name || '';
+}
+
+export async function fetchExactIssue(reference, options = {}) {
+  const url = buildExactIssueApiUrl(reference);
+  const mode = 'lookup';
+  store.setSearchState(true, null);
+
+  try {
+    const response = await fetch(url, createGitHubRequestOptions(url, options.token ?? store.githubToken));
+    const rateLimitInfo = rateLimitFromResponse(response);
+    store.setRateLimit(rateLimitInfo);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `GitHub exact issue lookup failed with status code ${response.status}`);
+    }
+
+    const issue = normalizeGitHubIssue(await response.json());
+    const hydrated = await hydrateIssueRepositories([issue], {
+      token: options.token ?? store.githubToken,
+      forceRefresh: Boolean(options.forceRepoRefresh)
+    });
+    const queryPreview = `GET ${buildExactIssueApiUrl(reference)}`;
+    store.setLastSearchMetadata({
+      mode,
+      queryPreview,
+      lookupRepoContext: getLookupRepoContextFromIssue(hydrated[0])
+    });
+    store.setSearchState(false, null, hydrated);
+    return hydrated[0];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'GitHub exact issue lookup failed.';
+    store.setSearchState(false, message, null);
+    throw error;
+  }
+}
+
 /**
  * Query GitHub REST API
  */
-export async function searchGitHubIssues(queryText, forceRefresh = false) {
-  const filters = store.filters;
-  const q = buildQueryString(queryText, filters);
+export async function searchGitHubIssues(queryText, forceRefresh = false, options = {}) {
+  const filters = options.filters || store.filters;
+  const mode = options.mode || store.finderMode || 'find';
+  const q = buildQueryString(queryText, filters, { mode });
   
   // Resolve sort fields
   let sortParam = '';
   let orderParam = 'desc';
+  const canApplySort = mode !== 'lookup' || Boolean(filters?.useFiltersInLookup);
 
-  if (filters.sortMode === 'Updated Date') {
+  if (canApplySort && filters.sortMode === 'Updated Date') {
     sortParam = 'updated';
-  } else if (filters.sortMode === 'Most Commented') {
+  } else if (canApplySort && filters.sortMode === 'Most Commented') {
     sortParam = 'comments';
-  } else if (filters.sortMode === 'Recently Created') {
+  } else if (canApplySort && filters.sortMode === 'Recently Created') {
     sortParam = 'created';
   }
 
   // Check in-memory cache
-  const cacheKey = `${q}::${sortParam}::${orderParam}`;
+  const cacheKey = `${mode}::${q}::${sortParam}::${orderParam}`;
   if (!forceRefresh && recentSearchCache && recentSearchCache.key === cacheKey) {
     // Update store with cached rate limits
     if (recentSearchCache.rateLimit) {
       store.setRateLimit(recentSearchCache.rateLimit);
     }
+    store.setLastSearchMetadata({
+      mode,
+      queryPreview: q,
+      lookupRepoContext: recentSearchCache.results.map(getLookupRepoContextFromIssue).find(Boolean) || store.lookupRepoContext
+    });
+    store.setSearchState(false, null, recentSearchCache.results);
     return recentSearchCache.results;
   }
 
   store.setSearchState(true, null);
 
   const token = store.githubToken;
-  const url = buildSearchIssuesUrl(queryText, filters);
+  const url = buildSearchIssuesUrl(queryText, filters, { mode });
 
   try {
     const response = await fetch(url, createGitHubRequestOptions(url, token));
 
     // Parse rate limits from headers
-    const remaining = response.headers.get('x-ratelimit-remaining');
-    const limit = response.headers.get('x-ratelimit-limit');
-    const reset = response.headers.get('x-ratelimit-reset');
-    const rateLimitInfo = {
-      remaining: remaining ? parseInt(remaining, 10) : null,
-      limit: limit ? parseInt(limit, 10) : null,
-      reset: reset ? parseInt(reset, 10) : null
-    };
+    const rateLimitInfo = rateLimitFromResponse(response);
     store.setRateLimit(rateLimitInfo);
 
     if (!response.ok) {
@@ -278,16 +341,29 @@ export async function searchGitHubIssues(queryText, forceRefresh = false) {
     
     // Filter out pull requests just in case (is:issue usually takes care of it, but good to be safe)
     const items = (data.items || []).filter(item => !item.pull_request).map(normalizeGitHubIssue);
+    const hydratedItems = await hydrateIssueRepositories(items, {
+      token,
+      forceRefresh: Boolean(options.forceRepoRefresh)
+    });
+    const locallyFilteredItems = (mode === 'find' || filters.useFiltersInLookup)
+      ? filterIssuesByStars(hydratedItems, filters.stars)
+      : hydratedItems;
 
     // Save in-memory cache
     recentSearchCache = {
       key: cacheKey,
-      results: items,
+      results: locallyFilteredItems,
       rateLimit: rateLimitInfo
     };
 
-    store.setSearchState(false, null, items);
-    return items;
+    const firstRepo = locallyFilteredItems.map(getLookupRepoContextFromIssue).find(Boolean) || store.lookupRepoContext;
+    store.setLastSearchMetadata({
+      mode,
+      queryPreview: q,
+      lookupRepoContext: firstRepo
+    });
+    store.setSearchState(false, null, locallyFilteredItems);
+    return locallyFilteredItems;
 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'GitHub API request failed.';

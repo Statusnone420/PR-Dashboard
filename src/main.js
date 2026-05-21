@@ -1,9 +1,11 @@
 import { store } from './state/store.js';
-import { buildQueryPreview, createGitHubRequestOptions, fetchIssueMetadata, searchGitHubIssues } from './api/github.js';
+import { buildQueryPreview, createGitHubRequestOptions, fetchExactIssue, fetchIssueMetadata, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
 import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
+import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
+import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -24,91 +26,16 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Calculates issue fit score from 0-100
+ * Calculates issue match score from 0-100.
  */
 function calculateFitScore(issue) {
-  let score = 0;
-  const debugLog = [];
-
-  if (isClosedIssue(issue)) {
-    return {
-      score: 0,
-      logs: ['Issue is closed and should not be treated as an active candidate'],
-      isAssigned: Boolean(issue.assignee || (issue.assignees && issue.assignees.length > 0)),
-      hasGoodFirstLabel: false,
-      hasStaleLabel: false
-    };
-  }
-
-  // 1. Labels (+25, -20)
-  const labels = (issue.labels || []).map(l => (typeof l === 'object' ? l.name : l).toLowerCase());
-  const hasGoodFirstLabel = labels.some(l => l.includes('good first issue') || l.includes('help wanted'));
-  if (hasGoodFirstLabel) {
-    score += 25;
-    debugLog.push("+25 Good first issue / help wanted label");
-  } else {
-    debugLog.push("No beginner-friendly label found");
-  }
-
-  const hasStaleLabel = labels.some(l => l.includes('stale') || l.includes('blocked') || l.includes('wontfix'));
-  if (hasStaleLabel) {
-    score -= 20;
-    debugLog.push("-20 Stale / blocked / wontfix labels");
-  }
-
-  // 2. Assignee status (+15, -10)
-  const isAssigned = issue.assignee || (issue.assignees && issue.assignees.length > 0);
-  if (!isAssigned) {
-    score += 15;
-    debugLog.push("+15 Unassigned");
-  } else {
-    score -= 10;
-    debugLog.push("-10 Assigned");
-  }
-
-  // 3. Recency (+15) - updated in the last 7 days
-  const updatedAt = new Date(issue.updated_at);
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  if (updatedAt > sevenDaysAgo) {
-    score += 15;
-    debugLog.push("+15 Updated recently (last 7 days)");
-  } else {
-    debugLog.push("Not updated in the last 7 days");
-  }
-
-  // 4. Comments (+10, -15)
-  const commentCount = issue.comments || 0;
-  if (commentCount <= 5) {
-    score += 10;
-    debugLog.push("+10 Low comment count (0-5)");
-  } else if (commentCount > 15) {
-    score -= 15;
-    debugLog.push("-15 Too many comments (>15)");
-  } else {
-    debugLog.push("Moderate comment count");
-  }
-
-  // 5. Body useful length (+10)
-  const bodyLength = issue.body ? issue.body.length : 0;
-  if (bodyLength > 200) {
-    score += 10;
-    debugLog.push("+10 Issue body has useful length (>200 chars)");
-  }
-
-  // 6. Repo stars (+10)
-  const starsCount = issue.repository && issue.repository.stargazers_count ? issue.repository.stargazers_count : 0;
-  if (starsCount > 1000) {
-    score += 10;
-    debugLog.push("+10 Repository has stars (>1000)");
-  }
-
+  const result = calculateMatchScore(issue);
   return {
-    score: Math.max(0, Math.min(100, score)),
-    logs: debugLog,
-    isAssigned,
-    hasGoodFirstLabel,
-    hasStaleLabel
+    ...result,
+    logs: result.rows.map(row => `${row.points >= 0 ? '+' : ''}${row.points} ${row.label}`),
+    isAssigned: result.flags.isAssigned,
+    hasGoodFirstLabel: result.flags.hasBeginnerLabel,
+    hasStaleLabel: result.flags.hasStaleLabel
   };
 }
 
@@ -116,10 +43,11 @@ function calculateFitScore(issue) {
  * Returns descriptive tag based on fit score
  */
 function getFitScoreRating(score) {
-  if (score >= 90) return { rating: 'Strong match', colorClass: 'glow-emerald', bgClass: 'bg-tertiary/10 border-tertiary/20 text-tertiary' };
-  if (score >= 75) return { rating: 'Good match', colorClass: 'glow-violet', bgClass: 'bg-primary/10 border-primary/20 text-primary' };
-  if (score >= 55) return { rating: 'Maybe', colorClass: 'text-on-surface-variant', bgClass: 'bg-surface-container-high text-on-surface-variant border-outline-variant' };
-  return { rating: 'Risky', colorClass: 'text-error', bgClass: 'bg-error-container/20 border-error/20 text-error' };
+  const rating = getMatchScoreRating(score);
+  if (score >= 85) return { rating, colorClass: 'glow-emerald', bgClass: 'bg-tertiary/10 border-tertiary/20 text-tertiary' };
+  if (score >= 70) return { rating, colorClass: 'glow-violet', bgClass: 'bg-primary/10 border-primary/20 text-primary' };
+  if (score >= 50) return { rating, colorClass: 'text-on-surface-variant', bgClass: 'bg-surface-container-high text-on-surface-variant border-outline-variant' };
+  return { rating, colorClass: 'text-error', bgClass: 'bg-error-container/20 border-error/20 text-error' };
 }
 
 /**
@@ -251,8 +179,10 @@ function setupGlobalSearch() {
       if (e.key === 'Enter') {
         const val = input.value.trim();
         store.setSearchQuery(val);
+        store.setFinderMode('find');
+        store.applyDraftFilters();
         store.setScreen('find-issues');
-        searchGitHubIssues(val, true);
+        searchGitHubIssues(val, true, { mode: 'find', filters: store.filters });
         input.value = '';
       }
     });
@@ -420,11 +350,11 @@ function renderDashboard(container) {
     }).join('');
   }
 
-  const activePRsHTML = `
+  const localReviewHTML = `
     <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
       <span class="material-symbols-outlined text-on-surface-variant text-3xl">commit</span>
-      <h4 class="text-on-surface font-medium">No live PR data connected</h4>
-      <p class="text-xs text-on-surface-variant max-w-xs">PR tracking is local for now. Saved GitHub issues appear on the board after you save them from search.</p>
+      <h4 class="text-on-surface font-medium">No local review in progress</h4>
+      <p class="text-xs text-on-surface-variant max-w-xs">Saved GitHub issues appear on the board after you save them from search.</p>
     </div>
   `;
 
@@ -487,18 +417,18 @@ function renderDashboard(container) {
             </div>
           </div>
           
-          <!-- Active PRs -->
+          <!-- Local Review -->
           <div class="bento-item bg-surface-container border border-outline-variant p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
                 <span class="material-symbols-outlined text-on-surface-variant">commit</span>
-                Active PRs
+                Local Review
               </h3>
             </div>
             <div class="flex flex-col gap-4">
-              ${activePRsHTML}
+              ${localReviewHTML}
             </div>
-            <button class="mt-auto w-full py-2 border border-outline-variant rounded bg-surface-container-lowest text-on-surface-variant text-sm hover:bg-surface-container-high hover:text-on-surface transition-colors font-medium" id="dash-view-prs-btn">
+            <button class="mt-auto w-full py-2 border border-outline-variant rounded bg-surface-container-lowest text-on-surface-variant text-sm hover:bg-surface-container-high hover:text-on-surface transition-colors font-medium" id="dash-view-local-review-btn">
               View Board
             </button>
           </div>
@@ -543,10 +473,10 @@ function renderDashboard(container) {
     });
   }
 
-  const prsBtn = document.getElementById('dash-view-prs-btn');
-  if (prsBtn) {
-    prsBtn.addEventListener('click', () => {
-      store.setScreen('board'); // Board contains PR columns
+  const localReviewBtn = document.getElementById('dash-view-local-review-btn');
+  if (localReviewBtn) {
+    localReviewBtn.addEventListener('click', () => {
+      store.setScreen('board');
     });
   }
 
@@ -622,16 +552,52 @@ function renderNoResults(queryPreview, filters) {
 function updateQueryPreviewText(value) {
   const preview = document.getElementById('github-query-preview');
   if (preview) {
-    preview.textContent = buildQueryPreview(value, store.filters);
+    const exactLookup = store.finderMode === 'lookup'
+      ? parseExactLookupInput(value, { repoContext: store.lookupRepoContext })
+      : null;
+    preview.textContent = exactLookup
+      ? `GET ${buildExactIssueApiUrl(exactLookup)}`
+      : buildQueryPreview(value, store.draftFilters, { mode: store.finderMode });
   }
+}
+
+async function runFinderSearch(value) {
+  const queryValue = String(value ?? store.searchQuery ?? '').trim();
+  store.setSearchQuery(queryValue);
+  const appliedFilters = store.applyDraftFilters();
+  const mode = store.finderMode;
+
+  if (mode === 'lookup') {
+    const exact = parseExactLookupInput(queryValue, { repoContext: store.lookupRepoContext });
+    if (exact) {
+      return fetchExactIssue(exact);
+    }
+  }
+
+  return searchGitHubIssues(queryValue, true, { mode, filters: appliedFilters });
 }
 
 function renderFindIssues(container) {
   const results = store.searchResults;
   const loading = store.searchLoading;
   const error = store.searchError;
-  const filters = store.filters;
-  const queryPreview = buildQueryPreview(store.searchQuery, filters);
+  const filters = store.draftFilters;
+  const appliedFilters = store.filters;
+  const mode = store.finderMode;
+  const exactLookup = mode === 'lookup'
+    ? parseExactLookupInput(store.searchQuery, { repoContext: store.lookupRepoContext })
+    : null;
+  const queryPreview = exactLookup
+    ? `GET ${buildExactIssueApiUrl(exactLookup)}`
+    : buildQueryPreview(store.searchQuery, filters, { mode });
+  const filtersChanged = store.hasDraftFilterChanges();
+  const isLookupMode = mode === 'lookup';
+  const findModeClass = !isLookupMode
+    ? 'bg-primary text-on-primary border-primary'
+    : 'bg-surface-container text-on-surface-variant border-outline-variant hover:text-on-surface';
+  const lookupModeClass = isLookupMode
+    ? 'bg-primary text-on-primary border-primary'
+    : 'bg-surface-container text-on-surface-variant border-outline-variant hover:text-on-surface';
 
   // Language checkboxes HTML
   const languages = ['TypeScript', 'Rust', 'Go', 'JavaScript', 'CSS', 'HTML'];
@@ -700,7 +666,7 @@ function renderFindIssues(container) {
     `;
     countText = results ? `Showing ${results.length} issues` : 'Request failed';
   } else if (results !== null) {
-    countText = `Showing ${results.length} ${filters.includeClosed ? 'issues' : 'open issues'}`;
+    countText = `Showing ${results.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}`;
     if (results.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
@@ -745,6 +711,12 @@ function renderFindIssues(container) {
       <section class="w-full pt-12 pb-8 px-6 md:px-8 border-b border-outline-variant/30 bg-surface-container-lowest relative">
         <div class="max-w-3xl mx-auto relative z-10">
           <h1 class="text-3xl font-headline font-bold text-on-surface mb-6 tracking-tight text-center">Find your next contribution</h1>
+          <div class="mb-4 flex justify-center">
+            <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" role="group" aria-label="Finder mode">
+              <button class="finder-mode-btn rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${findModeClass}" data-mode="find" type="button">Find Contributions</button>
+              <button class="finder-mode-btn rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${lookupModeClass}" data-mode="lookup" type="button">Lookup</button>
+            </div>
+          </div>
           
           <!-- Command Bar -->
           <div class="flex gap-3">
@@ -752,7 +724,7 @@ function renderFindIssues(container) {
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
               </div>
-              <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="Search issues, labels, or repositories..." type="text" value="${escapeHTML(store.searchQuery)}"/>
+              <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="${isLookupMode ? 'Paste an issue URL, owner/repo#123, or search literally...' : 'Search issues, labels, or repositories...'}" type="text" value="${escapeHTML(store.searchQuery)}"/>
             </div>
             <button class="px-6 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary-container transition-colors active:scale-95 shrink-0" id="search-trigger-btn">
               Search
@@ -786,6 +758,21 @@ function renderFindIssues(container) {
         
         <!-- Left Sidebar Filters -->
         <aside class="w-full lg:w-56 shrink-0 flex flex-col gap-6" id="find-issues-sidebar">
+          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Filters</h3>
+              ${filtersChanged ? '<span class="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Changed</span>' : '<span class="rounded-full border border-outline-variant px-2 py-0.5 text-[10px] text-on-surface-variant">Applied</span>'}
+            </div>
+            <button class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-container transition-colors" id="apply-filters-btn">
+              Apply Filters
+            </button>
+            ${isLookupMode ? `
+              <label class="flex items-start gap-3 group cursor-pointer rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
+                <input class="lookup-filter-checkbox mt-0.5" type="checkbox" ${filters.useFiltersInLookup ? 'checked' : ''} />
+                <span class="text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">Use filters in Lookup</span>
+              </label>
+            ` : ''}
+          </div>
           
           <!-- Language Filter -->
           <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
@@ -839,6 +826,10 @@ function renderFindIssues(container) {
               <input class="include-closed-checkbox" type="checkbox" ${filters.includeClosed ? 'checked' : ''} />
               <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Include closed issues</span>
             </label>
+            <label class="flex items-center gap-3 group cursor-pointer">
+              <input class="unassigned-checkbox" type="checkbox" ${filters.unassigned ? 'checked' : ''} />
+              <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Unassigned only</span>
+            </label>
           </div>
           
         </aside>
@@ -871,23 +862,27 @@ function renderFindIssues(container) {
   const startBtn = document.getElementById('start-search-btn');
   if (startBtn) {
     startBtn.addEventListener('click', () => {
-      searchGitHubIssues(store.searchQuery, true);
+      runFinderSearch(store.searchQuery);
     });
   }
+
+  document.querySelectorAll('.finder-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      store.setFinderMode(btn.getAttribute('data-mode'));
+    });
+  });
 
   const triggerBtn = document.getElementById('search-trigger-btn');
   const keywordInput = document.getElementById('search-keyword-input');
   if (triggerBtn && keywordInput) {
     triggerBtn.addEventListener('click', () => {
       const val = keywordInput.value.trim();
-      store.setSearchQuery(val);
-      searchGitHubIssues(val, true);
+      runFinderSearch(val);
     });
     keywordInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const val = keywordInput.value.trim();
-        store.setSearchQuery(val);
-        searchGitHubIssues(val, true);
+        runFinderSearch(val);
       }
     });
     keywordInput.addEventListener('input', () => {
@@ -901,9 +896,20 @@ function renderFindIssues(container) {
   document.querySelectorAll('.preset-search-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const preset = btn.getAttribute('data-preset');
-      applyPresetSearch(store, preset, searchGitHubIssues);
+      store.setFinderMode('find');
+      applyPresetSearch(store, preset, (query, forceRefresh) => searchGitHubIssues(query, forceRefresh, {
+        mode: 'find',
+        filters: store.filters
+      }));
     });
   });
+
+  const applyFiltersBtn = document.getElementById('apply-filters-btn');
+  if (applyFiltersBtn) {
+    applyFiltersBtn.addEventListener('click', () => {
+      runFinderSearch(store.searchQuery);
+    });
+  }
 
   const relaxBtn = document.getElementById('relax-filters-btn');
   if (relaxBtn) {
@@ -968,6 +974,20 @@ function renderFindIssues(container) {
     });
   }
 
+  const unassignedCheckbox = document.querySelector('.unassigned-checkbox');
+  if (unassignedCheckbox) {
+    unassignedCheckbox.addEventListener('change', () => {
+      applyFilterPatch(store, { unassigned: unassignedCheckbox.checked });
+    });
+  }
+
+  const lookupFilterCheckbox = document.querySelector('.lookup-filter-checkbox');
+  if (lookupFilterCheckbox) {
+    lookupFilterCheckbox.addEventListener('change', () => {
+      applyFilterPatch(store, { useFiltersInLookup: lookupFilterCheckbox.checked });
+    });
+  }
+
   const sortSelect = document.getElementById('sort-filter-select');
   if (sortSelect) {
     sortSelect.addEventListener('change', () => {
@@ -1011,12 +1031,25 @@ function renderIssueCardsList(issuesList) {
     const updatedText = escapeHTML(formatDate(issue.updated_at));
     const stars = issue.repository && issue.repository.stargazers_count ? issue.repository.stargazers_count : 0;
     const starsText = stars >= 1000 ? `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k` : `${stars}`;
+    const forks = issue.repository && issue.repository.forks_count ? issue.repository.forks_count : 0;
+    const forksText = forks >= 1000 ? `${(forks / 1000).toFixed(forks >= 10000 ? 0 : 1)}k` : `${forks}`;
     const issueId = safeInteger(issue.id);
     const issueNumber = safeInteger(issue.number);
     const issueComments = safeInteger(issue.comments);
     const issueTitle = escapeHTML(issue.title);
     const issueBody = escapeHTML(issue.body || 'No summary description provided.');
     const issueUrl = getSafeIssueHtmlUrl(issue);
+    const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
+    const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
+    const lookupWarningHTML = lookupRisky ? `
+      <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
+        <span class="material-symbols-outlined text-[15px]">warning</span>
+        Not a contribution candidate
+      </div>
+    ` : '';
+    const repoUnavailableHTML = repoMetadataUnavailable ? `
+      <span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">Repo metadata unavailable</span>
+    ` : '';
 
     const labelsHTML = (issue.labels || []).slice(0, 3).map(l => {
       const name = String(typeof l === 'object' ? l.name : l || '');
@@ -1045,15 +1078,18 @@ function renderIssueCardsList(issuesList) {
         </h3>
         
         <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issueBody}</p>
+        ${lookupWarningHTML}
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
           <span class="rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          ${repoUnavailableHTML}
         </div>
         
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/40 pt-4">
           <div class="flex items-center gap-4 text-xs text-on-surface-variant">
             <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">star</span>${starsText}</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">fork_right</span>${forksText}</span>
             <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">chat_bubble</span>${issueComments}</span>
             <span class="flex items-center gap-1 ${fitObj.isAssigned ? 'text-primary' : 'text-tertiary'}">
               <span class="material-symbols-outlined text-[15px]">${fitObj.isAssigned ? 'person' : 'person_off'}</span>
@@ -1133,6 +1169,13 @@ function bindIssueCardListEvents() {
       const items = store.searchResults || [];
       const issue = items.find(i => i.id === issueId);
       if (issue) {
+        const fitObj = calculateFitScore(issue);
+        if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
+          btn.setAttribute('data-confirm-risk', 'true');
+          btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">warning</span> Save anyway?`;
+          btn.classList.add('bg-error-container/10', 'text-error', 'border-error/30');
+          return;
+        }
         store.saveIssueToBoard(issue);
         // Toast / alert indicator
         btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">check</span> Saved`;
@@ -1170,11 +1213,11 @@ async function refreshSavedIssuesFromGitHub(statusEl) {
   }
 
   store.setBoardCards(nextBoard);
-  if (statusEl) {
-    statusEl.textContent = failed
-      ? `Refreshed ${refreshed} saved issues. ${failed} could not be refreshed.`
-      : `Refreshed ${refreshed} saved issues.`;
-  }
+  const statusMessage = failed
+    ? `Refreshed ${refreshed} saved issues. ${failed} could not be refreshed.`
+    : `Refreshed ${refreshed} saved issues.`;
+  store.setBoardRefreshStatus(statusMessage);
+  if (statusEl) statusEl.textContent = statusMessage;
 }
 
 function renderBoard(container) {
@@ -1239,8 +1282,8 @@ function renderBoard(container) {
       if (col === 'PR Open') {
         prOpenHTML = `
           <div class="bg-surface-container-lowest border border-outline-variant rounded p-2 mb-3 flex items-center justify-between">
-            <span class="text-[10px] text-on-surface-variant">Checks passing</span>
-            <span class="material-symbols-outlined text-tertiary text-[14px] filled-icon">check_circle</span>
+            <span class="text-[10px] text-on-surface-variant">Manual GitHub follow-up</span>
+            <span class="material-symbols-outlined text-tertiary text-[14px] filled-icon">open_in_new</span>
           </div>
         `;
       }
@@ -1250,7 +1293,7 @@ function renderBoard(container) {
       if (col === 'Merged') {
         mergedTextHTML = `
           <div class="flex justify-between items-center text-[10px] text-on-surface-variant mt-2">
-            <span>Merged by core-team</span>
+            <span>Marked complete locally</span>
             <span class="material-symbols-outlined text-tertiary text-[14px]">merge</span>
           </div>
         `;
@@ -1272,7 +1315,7 @@ function renderBoard(container) {
 
       return `
         <!-- Card -->
-        <div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-4 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
+        <div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-3 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
           <button class="absolute top-2 right-2 text-on-surface-variant hover:text-error bg-transparent border-none delete-card-btn" data-id="${cardId}" style="padding:2px;"><span class="material-symbols-outlined text-[14px]">close</span></button>
           
           <div class="flex justify-between items-start mb-2 pr-4">
@@ -1333,14 +1376,14 @@ function renderBoard(container) {
     <section class="flex min-h-[calc(100vh-3.5rem)] flex-col bg-background">
       
       <!-- Board Header Context -->
-      <div class="px-6 md:px-8 py-5 border-b border-outline-variant flex-shrink-0 flex justify-between items-center bg-surface-container-lowest">
-        <div>
+      <div class="px-6 md:px-8 py-5 border-b border-outline-variant flex-shrink-0 flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-surface-container-lowest">
+        <div class="min-w-0">
           <h1 class="text-2xl font-headline font-bold text-on-surface mb-1">Contribution Board</h1>
-          <p class="text-sm text-on-surface-variant">Tracking open-source PRs and active issues across repositories.</p>
+          <p class="text-sm text-on-surface-variant">Track saved issues and local contribution decisions across repositories.</p>
         </div>
         
-        <div class="flex items-center gap-3">
-          <span class="text-xs text-on-surface-variant" id="board-refresh-status"></span>
+        <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+          <span class="text-xs text-on-surface-variant" id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</span>
           <button class="flex items-center gap-2 bg-surface-container border border-outline-variant hover:border-outline text-on-surface text-sm font-medium py-1.5 px-3 rounded transition-all" id="board-refresh-btn" ${totalCards === 0 ? 'disabled style="opacity:0.45;"' : ''}>
             <span class="material-symbols-outlined text-[16px]">sync</span> Refresh saved issues
           </button>
@@ -1352,7 +1395,7 @@ function renderBoard(container) {
       
       <!-- Scrollable Kanban Area -->
       <div class="flex-1 overflow-x-auto overflow-y-hidden p-6 md:p-8">
-        <div class="flex h-full gap-6 items-start pb-4 min-w-max">
+        <div class="flex h-full gap-4 items-start pb-4 min-w-max">
           ${columnsHTML}
         </div>
       </div>
@@ -1422,6 +1465,7 @@ function renderBoard(container) {
     refreshBtn.addEventListener('click', async () => {
       const statusEl = document.getElementById('board-refresh-status');
       refreshBtn.disabled = true;
+      store.setBoardRefreshStatus('Refreshing saved issues...');
       if (statusEl) statusEl.textContent = 'Refreshing saved issues...';
       await refreshSavedIssuesFromGitHub(statusEl);
     });
@@ -1736,7 +1780,8 @@ function openInspector() {
   const issue = store.inspectedIssue;
   if (!issue) return;
 
-  const { score, logs } = calculateFitScore(issue);
+  const fitObj = calculateFitScore(issue);
+  const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
@@ -1750,6 +1795,7 @@ function openInspector() {
   const safeIssueUrl = getSafeIssueHtmlUrl(issue);
   const safeProgress = safePercent(issue.progress || 0);
   const closed = isClosedIssue(issue);
+  const riskyContribution = !fitObj.isContributionCandidate;
   const closedInspectorHTML = closed ? `
     <div class="rounded-lg border border-error/25 bg-error-container/10 p-4 flex items-start justify-between gap-4">
       <div>
@@ -1759,16 +1805,32 @@ function openInspector() {
       <button class="px-3 py-2 rounded border border-error text-error text-xs font-medium hover:bg-error-container/30" id="inspector-move-passed-btn">Move to Passed</button>
     </div>
   ` : '';
+  const riskyLookupHTML = !closed && riskyContribution ? `
+    <div class="rounded-lg border border-error/25 bg-error-container/10 p-4 flex items-start gap-3">
+      <span class="material-symbols-outlined text-error mt-0.5">warning</span>
+      <div>
+        <h3 class="text-sm font-semibold text-error mb-1">Not a contribution candidate</h3>
+        <p class="text-sm text-on-surface-variant">This can still be saved for tracking, but the score flags it as a likely pass.</p>
+      </div>
+    </div>
+  ` : '';
 
   // Render match score explanations
-  const fitScoreReasonsHTML = logs.map(log => {
+  const fitScoreReasonsHTML = fitObj.rows.map(row => {
+    const signed = `${row.points >= 0 ? '+' : ''}${row.points}`;
+    const tone = row.points >= 0 ? 'text-tertiary' : 'text-error';
     return `
       <li class="flex items-start gap-2 text-sm text-on-surface-variant">
-        <span class="material-symbols-outlined text-tertiary text-[16px] mt-0.5 filled-icon">check</span>
-        <span>${escapeHTML(log)}</span>
+        <span class="font-mono text-xs ${tone} min-w-8">${escapeHTML(signed)}</span>
+        <span>${escapeHTML(row.label)}</span>
       </li>
     `;
   }).join('');
+  const passChipsHTML = fitObj.passReasons.length ? `
+    <div class="mt-4 flex flex-wrap gap-2">
+      ${fitObj.passReasons.map(reason => `<span class="rounded-full border border-error/25 bg-error-container/10 px-2 py-0.5 text-[11px] text-error">${escapeHTML(reason)}</span>`).join('')}
+    </div>
+  ` : '';
 
   // Checklist Action plan
   const checklist = issue.checklist || [];
@@ -1834,6 +1896,7 @@ function openInspector() {
 
       <!-- Description Block -->
       ${closedInspectorHTML}
+      ${riskyLookupHTML}
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -1849,11 +1912,12 @@ function openInspector() {
         <div class="bg-surface-container rounded-lg border border-outline-variant p-4 relative overflow-hidden group">
           <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
             <span class="material-symbols-outlined text-primary text-[18px]">radar</span>
-            Why this fits
+            Why this score?
           </h4>
           <ul class="space-y-2">
             ${fitScoreReasonsHTML}
           </ul>
+          ${passChipsHTML}
         </div>
         
         <!-- Action Plan Action checklist -->
@@ -1902,6 +1966,12 @@ function openInspector() {
   const saveBtn = document.getElementById('inspector-save-issue-btn');
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
+      if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
+        saveBtn.setAttribute('data-confirm-risk', 'true');
+        saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">warning</span> Save anyway?`;
+        saveBtn.classList.add('bg-error-container/10', 'text-error', 'border-error/30');
+        return;
+      }
       store.saveIssueToBoard(issue);
       saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">check</span> Saved to board`;
       saveBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');

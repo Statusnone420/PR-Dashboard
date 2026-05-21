@@ -1,4 +1,8 @@
 export function applyFilterPatch(appStore, patch) {
+  if (typeof appStore.setDraftFilters === 'function') {
+    appStore.setDraftFilters(patch);
+    return;
+  }
   appStore.setFilters(patch);
 }
 
@@ -51,7 +55,8 @@ export function getRelaxedFilters() {
     stars: 'Any',
     comments: 'Any',
     updatedDate: 'Any',
-    includeClosed: false
+    includeClosed: false,
+    unassigned: false
   };
 }
 
