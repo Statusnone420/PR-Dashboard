@@ -24,9 +24,11 @@ test('buildQueryString uses OR for selected beginner-friendly labels by default'
     stars: 'Any',
     comments: 'Any',
     updatedDate: 'Any',
-    sortMode: 'Fit Score'
+    sortMode: 'Fit Score',
+    includeClosed: false
   });
 
+  assert.match(query, /archived:false/);
   assert.match(query, /label:"good first issue","help wanted"/);
   assert.doesNotMatch(query, /label:"good first issue" label:"help wanted"/);
 });
@@ -70,7 +72,79 @@ test('buildQueryString keeps search open-only unless closed issues are explicitl
   });
 
   assert.match(openOnly, /state:open/);
+  assert.match(openOnly, /archived:false/);
   assert.doesNotMatch(includeClosed, /state:open/);
+});
+
+test('buildQueryString adds no:assignee only when unassigned filter is active', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('docs', {
+    languages: [],
+    labels: [],
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false,
+    unassigned: true
+  });
+
+  assert.match(query, /no:assignee/);
+});
+
+test('buildQueryString never sends stars qualifiers for issue search', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('parser', {
+    languages: [],
+    labels: [],
+    stars: '10k+',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false
+  });
+
+  assert.doesNotMatch(query, /stars:>=/);
+});
+
+test('lookup mode is broad and literal until filters are explicitly enabled', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('openai/codex terminal bug', {
+    languages: ['TypeScript'],
+    labels: ['good first issue', 'help wanted'],
+    labelMode: 'OR',
+    stars: '1k+',
+    comments: 'Low (0-5)',
+    updatedDate: 'Last week',
+    sortMode: 'Fit Score',
+    includeClosed: false,
+    useFiltersInLookup: false
+  }, { mode: 'lookup' });
+
+  assert.equal(query, 'is:issue openai/codex terminal bug');
+});
+
+test('lookup mode can explicitly apply normal filters', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('openai/codex terminal bug', {
+    languages: [],
+    labels: ['help wanted'],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Low (0-5)',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false,
+    useFiltersInLookup: true
+  }, { mode: 'lookup' });
+
+  assert.match(query, /state:open/);
+  assert.match(query, /label:"help wanted"/);
+  assert.match(query, /comments:0\.\.5/);
 });
 
 test('query preview matches the q value sent to GitHub search', async () => {

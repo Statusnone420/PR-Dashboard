@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+test('dark mode select options have explicit readable colors', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /select\s+option/);
+  assert.match(css, /background-color:\s*var\(--surface-container\)/);
+  assert.match(css, /color:\s*var\(--on-surface\)/);
+});
