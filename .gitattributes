@@ -1,2 +1,10 @@
-# Auto detect text files and perform LF normalization
+# Normalize text files and keep web source files LF across platforms.
 * text=auto
+
+.gitattributes text eol=lf
+*.js text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf

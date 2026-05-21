@@ -85,3 +85,8 @@
 - Files touched: `src/contributionBrief.js`, `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/contribution-brief.test.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
 - Verification: new tests were written first and failed for the old labels, metadata false positive, bad high-score likely-pass copy, and missing hidden-items module. After implementation, `npm test` passed 61/61 and `npm run build` passed.
 - Known limitations: hidden items are local to the current browser storage and intentionally do not sync across devices. Clearing hidden items restores visibility on the next render/search, but it does not alter saved board cards.
+
+## 2026-05-21 Line Ending Rules
+
+- Updated `.gitattributes` so the attributes file plus JavaScript, JSON, HTML, CSS, and Markdown files keep LF line endings across platforms while retaining automatic text normalization for other files.
+- Verification: `git check-attr eol -- .gitattributes src/main.js STATE.md package.json index.html` reports `lf` for those representative files, and `git diff --check` passes.
