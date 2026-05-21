@@ -7,6 +7,7 @@ import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.j
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation } from './dashboardHero.js';
+import { buildContributionBrief } from './contributionBrief.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -340,8 +341,10 @@ function renderDashboard(container) {
     `;
   } else {
     savedIssuesHTML = dashboardSavedCards.slice(0, 3).map(issue => {
-      const { score } = calculateFitScore(issue);
+      const fitObj = calculateFitScore(issue);
+      const { score } = fitObj;
       const rating = getFitScoreRating(score);
+      const contributionBrief = buildContributionBrief(issue, fitObj);
       const labelsSlice = (issue.labels || []).slice(0, 2);
       const labelsHTML = labelsSlice.map(l => {
         const name = String(typeof l === 'object' ? l.name : l || '');
@@ -356,9 +359,12 @@ function renderDashboard(container) {
         <div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group dashboard-issue-card" data-id="${issueId}">
           <div class="flex justify-between items-start mb-1">
             <span class="text-xs font-mono text-on-surface-variant">${repoName}</span>
-            <div class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border ${rating.bgClass}">
-              <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
-              ${score}% Match
+            <div class="flex flex-wrap justify-end gap-1">
+              <div class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border ${rating.bgClass}">
+                <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
+                ${score}% Match
+              </div>
+              <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Best For: ${escapeHTML(contributionBrief.bestFor)}</span>
             </div>
           </div>
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
@@ -1054,6 +1060,7 @@ function renderIssueCardsList(issuesList) {
   const cardsHTML = sorted.map((issue, index) => {
     const fitObj = issue.fitRating;
     const rating = getFitScoreRating(fitObj.score);
+    const contributionBrief = buildContributionBrief(issue, fitObj);
     const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
     const isFeatured = index === 0 && sorted.length > 1;
     const updatedText = escapeHTML(formatDate(issue.updated_at));
@@ -1111,6 +1118,7 @@ function renderIssueCardsList(issuesList) {
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
           <span class="rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Best For: ${escapeHTML(contributionBrief.bestFor)}</span>
           ${repoUnavailableHTML}
         </div>
         
@@ -1811,6 +1819,7 @@ function openInspector() {
   const fitObj = calculateFitScore(issue);
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
+  const contributionBrief = buildContributionBrief(issue, fitObj);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
   const safeIssueTitle = escapeHTML(issue.title);
@@ -1857,6 +1866,32 @@ function openInspector() {
   const passChipsHTML = fitObj.passReasons.length ? `
     <div class="mt-4 flex flex-wrap gap-2">
       ${fitObj.passReasons.map(reason => `<span class="rounded-full border border-error/25 bg-error-container/10 px-2 py-0.5 text-[11px] text-error">${escapeHTML(reason)}</span>`).join('')}
+    </div>
+  ` : '';
+  const briefVerdictTone = contributionBrief.verdict === 'Good candidate'
+    ? 'border-tertiary/25 bg-tertiary/10 text-tertiary'
+    : contributionBrief.verdict === 'Likely pass'
+      ? 'border-error/25 bg-error-container/10 text-error'
+      : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
+  const briefBestForTone = contributionBrief.bestFor === 'Likely Pass'
+    ? 'border-error/25 bg-error-container/10 text-error'
+    : 'border-primary/20 bg-primary/10 text-primary';
+  const contributionBriefWhyHTML = contributionBrief.why.map(reason => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-tertiary text-[14px] mt-0.5">check_circle</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const contributionBriefRisksHTML = contributionBrief.risks.map(risk => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-error text-[14px] mt-0.5">error</span>
+      <span>${escapeHTML(risk)}</span>
+    </li>
+  `).join('');
+  const maintainerQuestionHTML = contributionBrief.maintainerQuestion ? `
+    <div class="mt-4 rounded border border-primary/20 bg-primary/5 p-3">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-primary mb-1">Suggested maintainer question</div>
+      <p class="text-sm text-on-surface-variant">${escapeHTML(contributionBrief.maintainerQuestion)}</p>
     </div>
   ` : '';
 
@@ -1935,6 +1970,37 @@ function openInspector() {
       
       <!-- Fit Details & Analytics Bento -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
+
+        <!-- Contribution Coach Brief -->
+        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
+          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[18px]">assistant_direction</span>
+            Contribution Brief
+          </h4>
+          <div class="mb-4 flex flex-wrap gap-2">
+            <span class="rounded border ${briefVerdictTone} px-2 py-0.5 text-xs">Verdict: ${escapeHTML(contributionBrief.verdict)}</span>
+            <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best For: ${escapeHTML(contributionBrief.bestFor)}</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Why</div>
+              <ul class="space-y-2">
+                ${contributionBriefWhyHTML}
+              </ul>
+            </div>
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Risks</div>
+              <ul class="space-y-2">
+                ${contributionBriefRisksHTML}
+              </ul>
+            </div>
+          </div>
+          <div class="mt-4 border-t border-outline-variant/40 pt-3">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-1">First move</div>
+            <p class="text-sm text-on-surface">${escapeHTML(contributionBrief.firstMove)}</p>
+          </div>
+          ${maintainerQuestionHTML}
+        </div>
         
         <!-- Score Fit Analysis -->
         <div class="bg-surface-container rounded-lg border border-outline-variant p-4 relative overflow-hidden group">
