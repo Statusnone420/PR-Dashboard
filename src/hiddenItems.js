@@ -58,6 +58,28 @@ function issueNumberFromUrl(value) {
   return null;
 }
 
+function issueUrlFromKey(key) {
+  const match = String(key || '').match(/^([^/\s#]+)\/([^#\s]+)#([1-9]\d*)$/);
+  if (!match) return null;
+  return `https://github.com/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}/issues/${match[3]}`;
+}
+
+function repoUrlFromKey(key) {
+  const match = String(key || '').match(/^([^/\s#]+)\/([^#\s]+)$/);
+  if (!match) return null;
+  return `https://github.com/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}`;
+}
+
+function hiddenRows(record, urlBuilder) {
+  return Object.entries(record || {})
+    .map(([key, hiddenAt]) => ({
+      key,
+      hiddenAt,
+      url: urlBuilder(key)
+    }))
+    .sort((a, b) => b.hiddenAt - a.hiddenAt || a.key.localeCompare(b.key));
+}
+
 export function loadHiddenItems(storage = getStorage()) {
   const targetStorage = getStorage(storage);
   if (!targetStorage) return emptyHiddenItems();
@@ -132,6 +154,32 @@ export function clearHiddenItems(storage = getStorage()) {
   if (targetStorage) {
     targetStorage.removeItem(HIDDEN_STORAGE_KEY);
   }
+}
+
+export function listHiddenItems(storage = getStorage()) {
+  const hidden = loadHiddenItems(storage);
+  return {
+    issues: hiddenRows(hidden.issues, issueUrlFromKey),
+    repos: hiddenRows(hidden.repos, repoUrlFromKey)
+  };
+}
+
+export function unhideIssueKey(key, storage = getStorage()) {
+  const hidden = loadHiddenItems(storage);
+  delete hidden.issues[String(key || '')];
+  return saveHiddenItems(storage, hidden);
+}
+
+export function unhideRepoKey(key, storage = getStorage()) {
+  const hidden = loadHiddenItems(storage);
+  delete hidden.repos[String(key || '')];
+  return saveHiddenItems(storage, hidden);
+}
+
+export function unhideHiddenItem(type, key, storage = getStorage()) {
+  if (type === 'issue') return unhideIssueKey(key, storage);
+  if (type === 'repo') return unhideRepoKey(key, storage);
+  return loadHiddenItems(storage);
 }
 
 export function filterHiddenIssues(issues, storage = getStorage()) {

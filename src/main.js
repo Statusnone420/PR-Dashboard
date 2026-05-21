@@ -8,7 +8,10 @@ import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation } from './dashboardHero.js';
 import { buildContributionBrief } from './contributionBrief.js';
-import { filterHiddenIssues } from './hiddenItems.js';
+import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
+
+const HIDDEN_RESULTS_RENDER_LIMIT = 100;
+let hiddenSettingsFilter = '';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -1547,6 +1550,130 @@ function renderBoard(container) {
 /**
  * 4. SETTINGS VIEW
  */
+function hiddenItemMatchesFilter(item, filterText) {
+  const query = String(filterText || '').trim().toLowerCase();
+  if (!query) return true;
+  return item.key.toLowerCase().includes(query);
+}
+
+function renderHiddenRows(items, type) {
+  if (items.length === 0) {
+    return `
+      <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
+        No matching hidden ${type === 'issue' ? 'issues' : 'repositories'}.
+      </div>
+    `;
+  }
+
+  return `
+    <div class="divide-y divide-outline-variant/50 overflow-hidden rounded-lg border border-outline-variant">
+      ${items.map(item => {
+        const typeLabel = type === 'issue' ? 'Issue' : 'Repo';
+        const safeKey = escapeHTML(item.key);
+        const safeDate = escapeHTML(formatDate(item.hiddenAt));
+        const openLinkHTML = item.url
+          ? `<a class="text-primary hover:underline text-xs font-medium" href="${escapeHTML(item.url)}" target="_blank" rel="noopener noreferrer">Open link</a>`
+          : '<span class="text-xs text-on-surface-variant">Open unavailable</span>';
+        return `
+          <div class="grid grid-cols-1 md:grid-cols-[72px_minmax(0,1fr)_120px_auto_auto] items-center gap-3 bg-surface-container-lowest px-4 py-3">
+            <span class="w-fit rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-[11px] text-on-surface-variant">${typeLabel}</span>
+            <span class="min-w-0 truncate font-mono text-sm text-on-surface">${safeKey}</span>
+            <span class="text-xs text-on-surface-variant">${safeDate}</span>
+            ${openLinkHTML}
+            <button class="hidden-result-unhide-btn rounded border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:border-on-surface-variant hover:text-on-surface" data-type="${type}" data-key="${safeKey}">
+              Unhide
+            </button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderHiddenSection(title, type, items, totalMatching) {
+  const shown = items.slice(0, HIDDEN_RESULTS_RENDER_LIMIT);
+  const overflowHTML = totalMatching > HIDDEN_RESULTS_RENDER_LIMIT
+    ? `<p class="mt-2 text-xs text-on-surface-variant">Showing first ${HIDDEN_RESULTS_RENDER_LIMIT} of ${totalMatching.toLocaleString()}. Use search to narrow results.</p>`
+    : '';
+
+  return `
+    <section class="space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-on-surface">${title}</h3>
+        <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${totalMatching.toLocaleString()}</span>
+      </div>
+      ${renderHiddenRows(shown, type)}
+      ${overflowHTML}
+    </section>
+  `;
+}
+
+function renderHiddenResultsBody(filterText = hiddenSettingsFilter) {
+  const hidden = listHiddenItems(localStorage);
+  const issues = hidden.issues.filter(item => hiddenItemMatchesFilter(item, filterText));
+  const repos = hidden.repos.filter(item => hiddenItemMatchesFilter(item, filterText));
+  return `
+    ${renderHiddenSection('Issues', 'issue', issues, issues.length)}
+    ${renderHiddenSection('Repositories', 'repo', repos, repos.length)}
+  `;
+}
+
+function renderHiddenResultsManager() {
+  const hidden = listHiddenItems(localStorage);
+  const issueCount = hidden.issues.length;
+  const repoCount = hidden.repos.length;
+  return `
+    <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+      <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">visibility_off</span>
+              Hidden Results
+            </h2>
+            <p class="mt-1 text-sm text-on-surface-variant">Review issues and repositories you hid from search results.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-1 text-xs text-on-surface-variant">${issueCount.toLocaleString()} hidden issues</span>
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-1 text-xs text-on-surface-variant">${repoCount.toLocaleString()} hidden repos</span>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 space-y-5">
+        <input class="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-background placeholder:text-on-surface-variant/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary" id="hidden-results-filter-input" placeholder="Filter hidden items..." type="search" value="${escapeHTML(hiddenSettingsFilter)}" />
+        <div class="space-y-6" id="hidden-results-body">
+          ${renderHiddenResultsBody(hiddenSettingsFilter)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bindHiddenResultActions() {
+  document.querySelectorAll('.hidden-result-unhide-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-type');
+      const key = btn.getAttribute('data-key');
+      if (type && key) {
+        store.unhideHiddenItem(type, key);
+      }
+    });
+  });
+}
+
+function bindHiddenResultsManager() {
+  const filterInput = document.getElementById('hidden-results-filter-input');
+  const body = document.getElementById('hidden-results-body');
+  if (filterInput && body) {
+    filterInput.addEventListener('input', () => {
+      hiddenSettingsFilter = filterInput.value;
+      body.innerHTML = renderHiddenResultsBody(hiddenSettingsFilter);
+      bindHiddenResultActions();
+    });
+  }
+  bindHiddenResultActions();
+}
+
 function renderSettings(container) {
   const token = store.githubToken;
   const remember = store.rememberToken;
@@ -1659,6 +1786,8 @@ function renderSettings(container) {
           </div>
         </div>
         
+        ${renderHiddenResultsManager()}
+
         <!-- Danger Zone -->
         <div class="pt-8 border-t border-outline-variant space-y-4">
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
@@ -1711,6 +1840,7 @@ function renderSettings(container) {
   if (patInput) {
     patInput.value = token;
   }
+  bindHiddenResultsManager();
 
   // Interactive toggle check box warning display
   if (rememberCheckbox && warningBanner) {
@@ -1830,6 +1960,7 @@ function renderSettings(container) {
   const clearHiddenBtn = document.getElementById('clear-hidden-settings-btn');
   if (clearHiddenBtn) {
     clearHiddenBtn.addEventListener('click', () => {
+      hiddenSettingsFilter = '';
       store.clearHiddenItems();
       const statusDiv = document.getElementById('settings-connection-status');
       if (statusDiv) {
@@ -1843,6 +1974,7 @@ function renderSettings(container) {
   const clearAllBtn = document.getElementById('clear-all-settings-btn');
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
+      hiddenSettingsFilter = '';
       store.clearAllLocalData();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;

@@ -90,3 +90,12 @@
 
 - Updated `.gitattributes` so the attributes file plus JavaScript, JSON, HTML, CSS, and Markdown files keep LF line endings across platforms while retaining automatic text normalization for other files.
 - Verification: `git check-attr eol -- .gitattributes src/main.js STATE.md package.json index.html` reports `lf` for those representative files, and `git diff --check` passes.
+
+## 2026-05-21 Hidden Results Manager
+
+- Extended `src/hiddenItems.js` with compact-listing and per-key unhide helpers. Hidden issue/repo rows are derived only from existing keys and timestamps, with GitHub URLs generated from those keys.
+- Added a Settings `Hidden Results` card above Danger Zone with issue/repo counts, a local filter input, Issues and Repositories sections, capped rendering at the first 100 matching rows per section, Open links, and per-row Unhide buttons.
+- Existing `Clear Hidden` and `Clear All App Data` still clear hidden storage; no hidden item titles, bodies, labels, repo metadata, tokens, backend calls, or network fetches were added.
+- Files touched: `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: hidden manager tests were written first and failed for the missing list/unhide helpers and Settings copy. After implementation, `npm test` passed 65/65 and `npm run build` passed.
+- Known limitation: hidden rows show compact keys rather than issue titles by design, because the hidden storage intentionally avoids storing or fetching full issue data.

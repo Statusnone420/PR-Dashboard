@@ -8,7 +8,8 @@ import {
 import {
   clearHiddenItems as clearHiddenItemsFromStorage,
   hideIssue as hideIssueInStorage,
-  hideRepo as hideRepoInStorage
+  hideRepo as hideRepoInStorage,
+  unhideHiddenItem as unhideHiddenItemFromStorage
 } from '../hiddenItems.js';
 
 export function createDefaultFilters() {
@@ -151,6 +152,11 @@ export class AppStore {
 
   clearHiddenItems() {
     clearHiddenItemsFromStorage(localStorage);
+    this.notify();
+  }
+
+  unhideHiddenItem(type, key) {
+    unhideHiddenItemFromStorage(type, key, localStorage);
     this.notify();
   }
 
