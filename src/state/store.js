@@ -1,4 +1,4 @@
-import { mockBoardCards } from '../data/mockData.js';
+import { BOARD_MIGRATION_KEY, BOARD_STORAGE_KEY, createEmptyBoard, loadBoardFromStorage } from '../boardModel.js';
 
 export class AppStore {
   constructor() {
@@ -14,16 +14,7 @@ export class AppStore {
     }
 
     // 3. Contribution Board State
-    const savedBoard = localStorage.getItem('pr_dashboard_board_cards');
-    if (savedBoard) {
-      try {
-        this.boardCards = JSON.parse(savedBoard);
-      } catch (e) {
-        this.boardCards = JSON.parse(JSON.stringify(mockBoardCards));
-      }
-    } else {
-      this.boardCards = JSON.parse(JSON.stringify(mockBoardCards));
-    }
+    this.boardCards = loadBoardFromStorage(localStorage);
 
     // 4. Find Issues Search Cache & Parameters
     this.searchQuery = '';
@@ -39,12 +30,13 @@ export class AppStore {
     // Filter selections
     this.filters = {
       languages: [], // e.g. ['TypeScript']
-      labels: ['help wanted'], // default label selection
+      labels: ['good first issue', 'help wanted'], // default label selection
       labelMode: 'OR', // 'OR' | 'AND'
       stars: '1k+', // 'Any' | '1k+' | '5k+' | '10k+'
       comments: 'Any', // 'Any' | 'Low (0-5)' | 'Medium (6-15)' | 'High (15+)'
       updatedDate: 'Any', // 'Any' | 'Last 24h' | 'Last week' | 'Last month'
-      sortMode: 'Fit Score' // 'Fit Score' | 'Updated Date' | 'Most Commented' | 'Recently Created'
+      sortMode: 'Fit Score', // 'Fit Score' | 'Updated Date' | 'Most Commented' | 'Recently Created'
+      includeClosed: false
     };
 
     // 5. Details Inspector Panel
@@ -100,6 +92,21 @@ export class AppStore {
     this.notify();
   }
 
+  clearBoard() {
+    this.boardCards = createEmptyBoard();
+    localStorage.removeItem(BOARD_STORAGE_KEY);
+    localStorage.setItem(BOARD_MIGRATION_KEY, 'board-cleared-by-user');
+    this.notify();
+  }
+
+  clearAllLocalData() {
+    this.clearToken();
+    this.boardCards = createEmptyBoard();
+    localStorage.removeItem(BOARD_STORAGE_KEY);
+    localStorage.removeItem(BOARD_MIGRATION_KEY);
+    this.notify();
+  }
+
   // Inspector Panel Action Plan Tasks Persistence
   toggleTaskChecklist(issueId, taskText, completed) {
     // Check if the issue is in Working column
@@ -133,7 +140,7 @@ export class AppStore {
 
   // Board CRUD and Actions
   saveBoardToStorage() {
-    localStorage.setItem('pr_dashboard_board_cards', JSON.stringify(this.boardCards));
+    localStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(this.boardCards));
   }
 
   saveIssueToBoard(issue) {
@@ -150,6 +157,9 @@ export class AppStore {
     if (!exists) {
       // Add default checklist for new cards in board
       const freshIssue = JSON.parse(JSON.stringify(issue));
+      freshIssue.source = 'github';
+      freshIssue.saved_at = new Date().toISOString();
+      freshIssue.state = freshIssue.state || 'open';
       freshIssue.checklist = [
         { text: "Read CONTRIBUTING.md", completed: false },
         { text: "Fork repository", completed: false },
@@ -159,6 +169,7 @@ export class AppStore {
       freshIssue.progress = 0;
       freshIssue.commits = 0;
       
+      if (!this.boardCards["Considering"]) this.boardCards["Considering"] = [];
       this.boardCards["Considering"].push(freshIssue);
       this.saveBoardToStorage();
     }
@@ -206,6 +217,45 @@ export class AppStore {
     }
     this.saveBoardToStorage();
     this.notify();
+  }
+
+  updateBoardCard(cardId, updater) {
+    const cols = Object.keys(this.boardCards);
+    for (const col of cols) {
+      const index = this.boardCards[col].findIndex(c => c.id === cardId);
+      if (index !== -1) {
+        this.boardCards[col][index] = updater(this.boardCards[col][index], col);
+        this.saveBoardToStorage();
+        this.notify();
+        return this.boardCards[col][index];
+      }
+    }
+    return null;
+  }
+
+  setBoardCards(boardCards) {
+    this.boardCards = boardCards;
+    this.saveBoardToStorage();
+    this.notify();
+  }
+
+  moveCardToColumn(cardId, targetCol) {
+    if (!this.boardCards[targetCol]) return;
+
+    let cardObj = null;
+    for (const col of Object.keys(this.boardCards)) {
+      const index = this.boardCards[col].findIndex(c => c.id === cardId);
+      if (index !== -1) {
+        cardObj = this.boardCards[col].splice(index, 1)[0];
+        break;
+      }
+    }
+
+    if (cardObj) {
+      this.boardCards[targetCol].push(cardObj);
+      this.saveBoardToStorage();
+      this.notify();
+    }
   }
 
   // Search Results & Filters

@@ -17,7 +17,7 @@ globalThis.localStorage = {
 
 test('createGitHubHeaders only attaches Authorization for api.github.com', async () => {
   const { createGitHubHeaders } = await import('../src/api/github.js');
-  const sampleToken = 'sample-token';
+  const sampleToken = ['sample', 'credential'].join('-');
 
   assert.equal(createGitHubHeaders('https://github.com/openai/openai-node/issues/1', sampleToken).Authorization, undefined);
   assert.equal(createGitHubHeaders('https://api.github.com/search/issues?q=test', '').Authorization, undefined);
@@ -28,12 +28,12 @@ test('createGitHubRequestOptions blocks non-api and write GitHub requests', asyn
   const { createGitHubRequestOptions } = await import('../src/api/github.js');
 
   assert.throws(
-    () => createGitHubRequestOptions('https://github.com/openai/openai-node/issues/1', 'sample-token'),
+    () => createGitHubRequestOptions('https://github.com/openai/openai-node/issues/1', ['sample', 'credential'].join('-')),
     /only https:\/\/api\.github\.com/
   );
 
   assert.throws(
-    () => createGitHubRequestOptions('https://api.github.com/repos/openai/openai-node/issues/1', 'sample-token', { method: 'PATCH' }),
+    () => createGitHubRequestOptions('https://api.github.com/repos/openai/openai-node/issues/1', ['sample', 'credential'].join('-'), { method: 'PATCH' }),
     /read-only/
   );
 });

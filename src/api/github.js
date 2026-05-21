@@ -8,7 +8,11 @@ let recentSearchCache = null;
  * Build standard GitHub search query q parameter
  */
 export function buildQueryString(queryText, filters) {
-  let parts = ['is:issue', 'state:open'];
+  let parts = ['is:issue'];
+
+  if (!filters.includeClosed) {
+    parts.push('state:open');
+  }
 
   if (queryText && queryText.trim().length > 0) {
     parts.push(queryText.trim());
@@ -28,11 +32,11 @@ export function buildQueryString(queryText, filters) {
 
   // Labels filter
   if (filters.labels && filters.labels.length > 0) {
-    const labelQueries = filters.labels.map(label => `label:"${label}"`);
+    const labelQueries = filters.labels.map(label => `"${String(label).replace(/"/g, '\\"')}"`);
     if (labelQueries.length === 1 || filters.labelMode === 'AND') {
-      parts.push(...labelQueries);
+      parts.push(...labelQueries.map(label => `label:${label}`));
     } else {
-      parts.push(`(${labelQueries.join(' OR ')})`);
+      parts.push(`label:${labelQueries.join(',')}`);
     }
   }
 
@@ -66,6 +70,60 @@ export function buildQueryString(queryText, filters) {
   }
 
   return parts.join(' ');
+}
+
+export function buildQueryPreview(queryText, filters) {
+  return buildQueryString(queryText, filters);
+}
+
+export function buildSearchIssuesUrl(queryText, filters) {
+  const q = buildQueryString(queryText, filters);
+  let sortParam = '';
+  const orderParam = 'desc';
+
+  if (filters.sortMode === 'Updated Date') {
+    sortParam = 'updated';
+  } else if (filters.sortMode === 'Most Commented') {
+    sortParam = 'comments';
+  } else if (filters.sortMode === 'Recently Created') {
+    sortParam = 'created';
+  }
+
+  let url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}`;
+  if (sortParam) {
+    url += `&sort=${sortParam}&order=${orderParam}`;
+  }
+  return url;
+}
+
+function repositoryFromApiUrl(repositoryUrl) {
+  try {
+    const url = new URL(repositoryUrl || '');
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (url.protocol === 'https:' && url.hostname === 'api.github.com' && segments.length === 3 && segments[0] === 'repos') {
+      return {
+        owner: { login: segments[1] },
+        name: segments[2],
+        full_name: `${segments[1]}/${segments[2]}`,
+        url: repositoryUrl
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function normalizeGitHubIssue(issue) {
+  const repository = issue.repository?.full_name
+    ? issue.repository
+    : repositoryFromApiUrl(issue.repository_url);
+
+  return {
+    ...issue,
+    repository: repository || issue.repository || { name: 'github', full_name: 'github' }
+  };
 }
 
 export function createGitHubHeaders(url, token = '') {
@@ -102,6 +160,54 @@ export function createGitHubRequestOptions(url, token = '', init = {}) {
   };
 }
 
+function getIssueApiUrl(issue) {
+  const number = Number.parseInt(issue?.number, 10);
+  const fullName = issue?.repository?.full_name;
+  if (fullName && Number.isFinite(number) && number > 0) {
+    const [owner, repo] = fullName.split('/');
+    if (owner && repo) {
+      return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}`;
+    }
+  }
+
+  try {
+    const url = new URL(issue?.html_url || '');
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (url.protocol === 'https:' && url.hostname === 'github.com' && segments.length >= 4 && segments[2] === 'issues') {
+      return `https://api.github.com/repos/${encodeURIComponent(segments[0])}/${encodeURIComponent(segments[1])}/issues/${encodeURIComponent(segments[3])}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export async function fetchIssueMetadata(issue) {
+  const url = getIssueApiUrl(issue);
+  if (!url) {
+    throw new Error('Cannot refresh issue metadata because the saved card does not have a valid GitHub issue URL.');
+  }
+
+  const response = await fetch(url, createGitHubRequestOptions(url, store.githubToken));
+
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  const limit = response.headers.get('x-ratelimit-limit');
+  const reset = response.headers.get('x-ratelimit-reset');
+  store.setRateLimit({
+    remaining: remaining ? parseInt(remaining, 10) : null,
+    limit: limit ? parseInt(limit, 10) : null,
+    reset: reset ? parseInt(reset, 10) : null
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `GitHub issue refresh failed with status code ${response.status}`);
+  }
+
+  return response.json();
+}
+
 /**
  * Query GitHub REST API
  */
@@ -134,10 +240,7 @@ export async function searchGitHubIssues(queryText, forceRefresh = false) {
   store.setSearchState(true, null);
 
   const token = store.githubToken;
-  let url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}`;
-  if (sortParam) {
-    url += `&sort=${sortParam}&order=${orderParam}`;
-  }
+  const url = buildSearchIssuesUrl(queryText, filters);
 
   try {
     const response = await fetch(url, createGitHubRequestOptions(url, token));
@@ -174,7 +277,7 @@ export async function searchGitHubIssues(queryText, forceRefresh = false) {
     const data = await response.json();
     
     // Filter out pull requests just in case (is:issue usually takes care of it, but good to be safe)
-    const items = (data.items || []).filter(item => !item.pull_request);
+    const items = (data.items || []).filter(item => !item.pull_request).map(normalizeGitHubIssue);
 
     // Save in-memory cache
     recentSearchCache = {

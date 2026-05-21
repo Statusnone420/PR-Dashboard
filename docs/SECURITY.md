@@ -13,7 +13,7 @@
 - Session-only memory is the default. If "Remember token locally" is not checked, the token is not written to `localStorage`.
 - Remember mode is opt-in. When enabled, the token is stored in browser `localStorage`.
 - `localStorage` is convenience storage, not secure secret storage. Do not use remember mode on shared or untrusted machines.
-- Clear Data removes token storage keys and local token settings. It does not wipe the contribution board.
+- Settings has separate destructive actions for token/settings, board data, and all app data. "Clear Token/Settings" does not wipe the board.
 
 ## Recommended Token Permissions
 
@@ -25,6 +25,7 @@
 ## Data Sent To GitHub
 
 - Public issue searches send the GitHub search query and selected filters to `https://api.github.com/search/issues`.
+- Saved issue refresh sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests.
 - Settings "Test Connection" sends a read-only `GET https://api.github.com/user` request with the entered token.
 - The app does not have a backend and does not send tokens, board data, or settings to any app-owned server.
 - Board cards and non-secret UI state are stored locally in the browser.

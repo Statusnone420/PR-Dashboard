@@ -1,9 +1,9 @@
 import { store } from './state/store.js';
-import { createGitHubRequestOptions, searchGitHubIssues } from './api/github.js';
-import { mockActivePRs, mockSearchIssues } from './data/mockData.js';
+import { buildQueryPreview, createGitHubRequestOptions, fetchIssueMetadata, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
-import { applyFilterPatch, applyPresetSearch } from './searchInteractions.js';
+import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
+import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -30,12 +30,24 @@ function calculateFitScore(issue) {
   let score = 0;
   const debugLog = [];
 
+  if (isClosedIssue(issue)) {
+    return {
+      score: 0,
+      logs: ['Issue is closed and should not be treated as an active candidate'],
+      isAssigned: Boolean(issue.assignee || (issue.assignees && issue.assignees.length > 0)),
+      hasGoodFirstLabel: false,
+      hasStaleLabel: false
+    };
+  }
+
   // 1. Labels (+25, -20)
   const labels = (issue.labels || []).map(l => (typeof l === 'object' ? l.name : l).toLowerCase());
   const hasGoodFirstLabel = labels.some(l => l.includes('good first issue') || l.includes('help wanted'));
   if (hasGoodFirstLabel) {
     score += 25;
     debugLog.push("+25 Good first issue / help wanted label");
+  } else {
+    debugLog.push("No beginner-friendly label found");
   }
 
   const hasStaleLabel = labels.some(l => l.includes('stale') || l.includes('blocked') || l.includes('wontfix'));
@@ -61,6 +73,8 @@ function calculateFitScore(issue) {
   if (updatedAt > sevenDaysAgo) {
     score += 15;
     debugLog.push("+15 Updated recently (last 7 days)");
+  } else {
+    debugLog.push("Not updated in the last 7 days");
   }
 
   // 4. Comments (+10, -15)
@@ -71,6 +85,8 @@ function calculateFitScore(issue) {
   } else if (commentCount > 15) {
     score -= 15;
     debugLog.push("-15 Too many comments (>15)");
+  } else {
+    debugLog.push("Moderate comment count");
   }
 
   // 5. Body useful length (+10)
@@ -305,6 +321,11 @@ function renderActiveScreen() {
 function renderDashboard(container) {
   // Grab dynamic data
   const boardConsidering = store.boardCards["Considering"] || [];
+  const boardCards = Object.values(store.boardCards).flat();
+  const closedCards = boardCards.filter(isClosedIssue);
+  const activeCards = boardCards.filter(card => !isClosedIssue(card));
+  const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
+  const mergedOrPassedCount = (store.boardCards["Merged"] || []).length + (store.boardCards["Passed"] || []).length + closedCards.length;
   
   // Find current working card on board to resume review
   const workingCards = store.boardCards["Working"] || [];
@@ -357,7 +378,7 @@ function renderDashboard(container) {
 
   // Saved Issues lists the Board Considering lane (or mocks if empty)
   let savedIssuesHTML = '';
-  if (boardConsidering.length === 0) {
+  if (dashboardSavedCards.length === 0) {
     savedIssuesHTML = `
       <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
         <span class="material-symbols-outlined text-on-surface-variant text-3xl">bookmarks</span>
@@ -367,7 +388,7 @@ function renderDashboard(container) {
       </div>
     `;
   } else {
-    savedIssuesHTML = boardConsidering.slice(0, 3).map(issue => {
+    savedIssuesHTML = dashboardSavedCards.slice(0, 3).map(issue => {
       const { score } = calculateFitScore(issue);
       const rating = getFitScoreRating(score);
       const labelsSlice = (issue.labels || []).slice(0, 2);
@@ -399,41 +420,13 @@ function renderDashboard(container) {
     }).join('');
   }
 
-  // Active PRs lists the active mock items
-  const activePRsHTML = mockActivePRs.map(pr => {
-    let prIcon = 'adjust';
-    let prColor = 'text-tertiary';
-    let prBg = 'bg-surface-container-high';
-    let statusText = pr.state;
-
-    if (pr.status === 'draft') {
-      prIcon = 'edit_note';
-      prColor = 'text-on-surface-variant';
-    } else if (pr.status === 'error') {
-      prIcon = 'unpublished';
-      prColor = 'text-error';
-      prBg = 'bg-error/10 border-error/20';
-      statusText = 'Changes Requested';
-    }
-
-    return `
-      <div class="flex items-start gap-4">
-        <div class="w-8 h-8 rounded border border-outline-variant flex items-center justify-center shrink-0 mt-1 ${prBg}">
-          <span class="material-symbols-outlined ${prColor} text-[18px]">${prIcon}</span>
-        </div>
-        <div>
-          <h4 class="text-sm font-medium text-on-surface hover:text-primary cursor-pointer mb-0.5 pr-link-card" data-repo="${escapeHTML(pr.repository)}" data-num="${safeInteger(pr.number)}">${escapeHTML(pr.title)}</h4>
-          <div class="flex items-center gap-2 text-xs">
-            <span class="text-on-surface-variant font-mono">${escapeHTML(pr.repository)} #${safeInteger(pr.number)}</span>
-            <span class="w-1 h-1 rounded-full bg-outline-variant"></span>
-            <span class="${prColor} font-medium">${escapeHTML(statusText)}</span>
-            <span class="w-1 h-1 rounded-full bg-outline-variant"></span>
-            <span class="text-on-surface-variant">${escapeHTML(pr.reviews)}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
+  const activePRsHTML = `
+    <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
+      <span class="material-symbols-outlined text-on-surface-variant text-3xl">commit</span>
+      <h4 class="text-on-surface font-medium">No live PR data connected</h4>
+      <p class="text-xs text-on-surface-variant max-w-xs">PR tracking is local for now. Saved GitHub issues appear on the board after you save them from search.</p>
+    </div>
+  `;
 
   container.innerHTML = `
     <section class="p-6 md:p-8">
@@ -446,34 +439,34 @@ function renderDashboard(container) {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
             <div class="flex justify-between items-start">
-              <span class="text-on-surface-variant text-sm font-medium">PRs Merged (30d)</span>
+              <span class="text-on-surface-variant text-sm font-medium">Resolved / Passed</span>
               <span class="material-symbols-outlined text-tertiary">merge</span>
             </div>
             <div class="flex items-end gap-3 mt-2">
-              <span class="text-4xl font-headline font-bold text-on-surface">24</span>
-              <span class="text-tertiary text-sm font-medium mb-1 flex items-center"><span class="material-symbols-outlined text-[16px]">arrow_upward</span> 12%</span>
+              <span class="text-4xl font-headline font-bold text-on-surface">${mergedOrPassedCount}</span>
+              <span class="text-on-surface-variant text-sm mb-1">From saved board</span>
             </div>
           </div>
           
           <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
             <div class="flex justify-between items-start">
-              <span class="text-on-surface-variant text-sm font-medium">Issues Solved</span>
+              <span class="text-on-surface-variant text-sm font-medium">Saved Issues</span>
               <span class="material-symbols-outlined text-primary">bug_report</span>
             </div>
             <div class="flex items-end gap-3 mt-2">
-              <span class="text-4xl font-headline font-bold text-on-surface">18</span>
-              <span class="text-on-surface-variant text-sm mb-1">Total this month</span>
+              <span class="text-4xl font-headline font-bold text-on-surface">${boardCards.length}</span>
+              <span class="text-on-surface-variant text-sm mb-1">Local board total</span>
             </div>
           </div>
           
           <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
             <div class="flex justify-between items-start">
-              <span class="text-on-surface-variant text-sm font-medium">Current Streak</span>
-              <span class="material-symbols-outlined text-tertiary filled-icon">local_fire_department</span>
+              <span class="text-on-surface-variant text-sm font-medium">Active Candidates</span>
+              <span class="material-symbols-outlined text-tertiary filled-icon">radio_button_checked</span>
             </div>
             <div class="flex items-end gap-3 mt-2">
-              <span class="text-4xl font-headline font-bold text-on-surface">14</span>
-              <span class="text-on-surface-variant text-sm mb-1">Days active</span>
+              <span class="text-4xl font-headline font-bold text-on-surface">${activeCards.length}</span>
+              <span class="text-on-surface-variant text-sm mb-1">Open saved issues</span>
             </div>
           </div>
         </div>
@@ -506,7 +499,7 @@ function renderDashboard(container) {
               ${activePRsHTML}
             </div>
             <button class="mt-auto w-full py-2 border border-outline-variant rounded bg-surface-container-lowest text-on-surface-variant text-sm hover:bg-surface-container-high hover:text-on-surface transition-colors font-medium" id="dash-view-prs-btn">
-              View All Pull Requests
+              View Board
             </button>
           </div>
         </div>
@@ -574,11 +567,71 @@ function renderDashboard(container) {
 /**
  * 2. FIND ISSUES VIEW
  */
+function describeActiveFilters(filters) {
+  const parts = [];
+  if (filters.languages?.length) parts.push(`Languages: ${filters.languages.join(', ')}`);
+  if (filters.labels?.length) parts.push(`Labels: ${filters.labels.join(' OR ')}`);
+  if (filters.stars && filters.stars !== 'Any') parts.push(`Stars: ${filters.stars}`);
+  if (filters.comments && filters.comments !== 'Any') parts.push(`Comments: ${filters.comments}`);
+  if (filters.updatedDate && filters.updatedDate !== 'Any') parts.push(`Updated: ${filters.updatedDate}`);
+  if (filters.includeClosed) parts.push('Includes closed issues');
+  return parts.length ? parts : ['No restrictive filters'];
+}
+
+function getFirstRelaxationHint(filters) {
+  if (filters.labels?.length > 1) return 'Relax labels first: try only help wanted.';
+  if (filters.stars && filters.stars !== 'Any') return 'Relax stars first: switch stars to Any.';
+  if (filters.comments && filters.comments !== 'Any') return 'Relax comments first: switch comments to Any.';
+  if (filters.languages?.length) return 'Relax language first: clear selected languages.';
+  if (filters.updatedDate && filters.updatedDate !== 'Any') return 'Relax updated date first: switch updated date to Any.';
+  return 'Try a broader keyword or remove repository-specific terms.';
+}
+
+function renderNoResults(queryPreview, filters) {
+  const filtersHTML = describeActiveFilters(filters)
+    .map(filter => `<li>${escapeHTML(filter)}</li>`)
+    .join('');
+
+  return `
+    <div class="p-8 rounded-lg bg-surface-container border border-outline-variant flex flex-col gap-5">
+      <div class="flex items-start gap-4">
+        <span class="material-symbols-outlined text-on-surface-variant text-4xl">search_off</span>
+        <div>
+          <h3 class="text-on-surface font-medium text-lg mb-1">No matching open issues found</h3>
+          <p class="text-sm text-on-surface-variant">GitHub returned zero issues for the current query and filters.</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
+        <div class="rounded border border-outline-variant bg-surface-container-lowest p-4">
+          <div class="text-xs uppercase tracking-wider text-on-surface-variant mb-2">Exact query sent</div>
+          <code class="text-xs text-on-surface break-words">${escapeHTML(queryPreview)}</code>
+        </div>
+        <div class="rounded border border-outline-variant bg-surface-container-lowest p-4">
+          <div class="text-xs uppercase tracking-wider text-on-surface-variant mb-2">Active filters</div>
+          <ul class="list-disc list-inside text-on-surface-variant space-y-1">${filtersHTML}</ul>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded border border-primary/20 bg-primary/10 p-4">
+        <span class="text-sm text-on-surface">${escapeHTML(getFirstRelaxationHint(filters))}</span>
+        <button class="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary-container" id="relax-filters-btn">Relax Filters</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateQueryPreviewText(value) {
+  const preview = document.getElementById('github-query-preview');
+  if (preview) {
+    preview.textContent = buildQueryPreview(value, store.filters);
+  }
+}
+
 function renderFindIssues(container) {
   const results = store.searchResults;
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.filters;
+  const queryPreview = buildQueryPreview(store.searchQuery, filters);
 
   // Language checkboxes HTML
   const languages = ['TypeScript', 'Rust', 'Go', 'JavaScript', 'CSS', 'HTML'];
@@ -647,22 +700,16 @@ function renderFindIssues(container) {
     `;
     countText = results ? `Showing ${results.length} issues` : 'Request failed';
   } else if (results !== null) {
-    countText = `Showing ${results.length} issues`;
+    countText = `Showing ${results.length} ${filters.includeClosed ? 'issues' : 'open issues'}`;
     if (results.length === 0) {
-      resultsHTML = `
-        <div class="p-12 rounded-lg bg-surface-container border border-outline-variant text-center flex flex-col items-center justify-center gap-3 py-20">
-          <span class="material-symbols-outlined text-on-surface-variant text-4xl">search_off</span>
-          <h3 class="text-on-surface font-medium text-lg">No matching issues found</h3>
-          <p class="text-sm text-on-surface-variant max-w-sm">Try broadening your labels list, checking other languages, or lowering the minimum stars threshold.</p>
-        </div>
-      `;
+      resultsHTML = renderNoResults(queryPreview, filters);
     } else {
       resultsHTML = renderIssueCardsList(results);
     }
   } else {
     // Initial screen state - explain Token details
     const token = store.githubToken;
-    countText = 'Suggested starter issues';
+    countText = 'No search run yet';
     resultsHTML = `
       <div class="mb-6 flex flex-col items-center justify-center text-center gap-4 border border-outline-variant bg-surface-container-lowest rounded-xl p-6">
         <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -687,7 +734,6 @@ function renderFindIssues(container) {
           Perform Initial Query
         </button>
       </div>
-      ${renderIssueCardsList(mockSearchIssues)}
     `;
   }
 
@@ -712,6 +758,10 @@ function renderFindIssues(container) {
               Search
             </button>
           </div>
+          <div class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
+            <div class="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1">GitHub query preview</div>
+            <code class="block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
+          </div>
           
           <!-- Presets -->
           <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
@@ -723,6 +773,9 @@ function renderFindIssues(container) {
             </button>
             <button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2 preset-search-btn" data-preset="docs-only">
               <span class="material-symbols-outlined text-[16px]">description</span> Documentation Only
+            </button>
+            <button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2 preset-search-btn" data-preset="low-noise">
+              <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
             </button>
           </div>
         </div>
@@ -779,6 +832,14 @@ function renderFindIssues(container) {
               <option ${filters.updatedDate === 'Last month' ? 'selected' : ''}>Last month</option>
             </select>
           </div>
+
+          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">State</h3>
+            <label class="flex items-center gap-3 group cursor-pointer">
+              <input class="include-closed-checkbox" type="checkbox" ${filters.includeClosed ? 'checked' : ''} />
+              <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Include closed issues</span>
+            </label>
+          </div>
           
         </aside>
         
@@ -829,6 +890,11 @@ function renderFindIssues(container) {
         searchGitHubIssues(val, true);
       }
     });
+    keywordInput.addEventListener('input', () => {
+      const val = keywordInput.value.trim();
+      store.setSearchQuery(val);
+      updateQueryPreviewText(val);
+    });
   }
 
   // Preset quick filters
@@ -838,6 +904,13 @@ function renderFindIssues(container) {
       applyPresetSearch(store, preset, searchGitHubIssues);
     });
   });
+
+  const relaxBtn = document.getElementById('relax-filters-btn');
+  if (relaxBtn) {
+    relaxBtn.addEventListener('click', () => {
+      applyFilterPatch(store, getRelaxedFilters());
+    });
+  }
 
   // Checkbox filters
   document.querySelectorAll('.lang-filter-checkbox').forEach(cb => {
@@ -885,6 +958,13 @@ function renderFindIssues(container) {
   if (updatedSelect) {
     updatedSelect.addEventListener('change', () => {
       applyFilterPatch(store, { updatedDate: updatedSelect.value });
+    });
+  }
+
+  const includeClosedCheckbox = document.querySelector('.include-closed-checkbox');
+  if (includeClosedCheckbox) {
+    includeClosedCheckbox.addEventListener('change', () => {
+      applyFilterPatch(store, { includeClosed: includeClosedCheckbox.checked });
     });
   }
 
@@ -1007,7 +1087,7 @@ function bindIssueCardListEvents() {
     title.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(title.getAttribute('data-id'), 10);
-      const items = store.searchResults || mockSearchIssues;
+      const items = store.searchResults || [];
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1022,7 +1102,7 @@ function bindIssueCardListEvents() {
       // Avoid firing if they click an active button inside the card
       if (e.target.closest('button') || e.target.closest('a')) return;
       const issueId = parseInt(card.getAttribute('data-id'), 10);
-      const items = store.searchResults || mockSearchIssues;
+      const items = store.searchResults || [];
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1036,7 +1116,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || mockSearchIssues;
+      const items = store.searchResults || [];
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1050,7 +1130,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || mockSearchIssues;
+      const items = store.searchResults || [];
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.saveIssueToBoard(issue);
@@ -1066,8 +1146,40 @@ function bindIssueCardListEvents() {
 /**
  * 3. KANBAN BOARD VIEW
  */
+async function refreshSavedIssuesFromGitHub(statusEl) {
+  const nextBoard = {};
+  let refreshed = 0;
+  let failed = 0;
+
+  for (const column of BOARD_COLUMNS) {
+    nextBoard[column] = [];
+    for (const card of store.boardCards[column] || []) {
+      try {
+        const metadata = await fetchIssueMetadata(card);
+        nextBoard[column].push(mergeIssueMetadata(card, metadata));
+        refreshed += 1;
+      } catch {
+        nextBoard[column].push({
+          ...card,
+          refresh_error: 'GitHub refresh failed for this card.',
+          last_refreshed_at: new Date().toISOString()
+        });
+        failed += 1;
+      }
+    }
+  }
+
+  store.setBoardCards(nextBoard);
+  if (statusEl) {
+    statusEl.textContent = failed
+      ? `Refreshed ${refreshed} saved issues. ${failed} could not be refreshed.`
+      : `Refreshed ${refreshed} saved issues.`;
+  }
+}
+
 function renderBoard(container) {
-  const cols = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open', 'Merged', 'Passed'];
+  const cols = BOARD_COLUMNS;
+  const totalCards = Object.values(store.boardCards).flat().length;
   
   // Render Board lane columns
   const columnsHTML = cols.map((col, cIdx) => {
@@ -1087,6 +1199,16 @@ function renderBoard(container) {
       const cardTitle = escapeHTML(card.title);
       const cardDate = escapeHTML(formatDate(card.updated_at));
       const cardProgress = safePercent(card.progress || 0);
+      const closed = isClosedIssue(card);
+      const closedWarningHTML = closed ? `
+        <div class="mb-3 rounded border border-error/25 bg-error-container/10 p-2 text-[11px] text-error">
+          Closed${card.state_reason ? `: ${escapeHTML(card.state_reason)}` : ''}${card.closed_at ? ` on ${escapeHTML(formatDate(card.closed_at))}` : ''}
+          ${col !== 'Passed' ? `<button class="ml-2 underline move-passed-btn" data-id="${cardId}">Move to Passed</button>` : ''}
+        </div>
+      ` : '';
+      const refreshErrorHTML = card.refresh_error ? `
+        <div class="mb-3 rounded border border-error/25 bg-error-container/10 p-2 text-[11px] text-error">${escapeHTML(card.refresh_error)}</div>
+      ` : '';
       
       // Inline checklist for Working column
       let workingChecklistHTML = '';
@@ -1161,8 +1283,10 @@ function renderBoard(container) {
             <span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#${cardNumber}</span>
           </div>
           
-          <h4 class="text-sm font-medium text-on-surface leading-snug mb-3 ${col === 'Merged' ? 'line-through opacity-70' : ''}">${cardTitle}</h4>
+          <h4 class="text-sm font-medium text-on-surface leading-snug mb-3 ${col === 'Merged' || closed ? 'line-through opacity-70' : ''}">${cardTitle}</h4>
           
+          ${closedWarningHTML}
+          ${refreshErrorHTML}
           ${workingChecklistHTML}
           ${prOpenHTML}
           ${mergedTextHTML}
@@ -1216,9 +1340,12 @@ function renderBoard(container) {
         </div>
         
         <div class="flex items-center gap-3">
-          <!-- Reset button for ease -->
-          <button class="flex items-center gap-2 bg-surface-container border border-outline-variant hover:border-outline text-on-surface text-sm font-medium py-1.5 px-3 rounded transition-all" id="board-reset-btn">
-            <span class="material-symbols-outlined text-[16px]">restart_alt</span> Reset Board
+          <span class="text-xs text-on-surface-variant" id="board-refresh-status"></span>
+          <button class="flex items-center gap-2 bg-surface-container border border-outline-variant hover:border-outline text-on-surface text-sm font-medium py-1.5 px-3 rounded transition-all" id="board-refresh-btn" ${totalCards === 0 ? 'disabled style="opacity:0.45;"' : ''}>
+            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh saved issues
+          </button>
+          <button class="flex items-center gap-2 bg-surface-container border border-error/30 hover:border-error text-error text-sm font-medium py-1.5 px-3 rounded transition-all" id="board-clear-btn" ${totalCards === 0 ? 'disabled style="opacity:0.45;"' : ''}>
+            <span class="material-symbols-outlined text-[16px]">delete</span> Clear Board
           </button>
         </div>
       </div>
@@ -1273,6 +1400,14 @@ function renderBoard(container) {
     });
   });
 
+  document.querySelectorAll('.move-passed-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cardId = parseInt(btn.getAttribute('data-id'), 10);
+      store.moveCardToColumn(cardId, 'Passed');
+    });
+  });
+
   // Board Checklist items change state
   document.querySelectorAll('.board-task-checkbox').forEach(cb => {
     cb.addEventListener('change', (e) => {
@@ -1282,12 +1417,20 @@ function renderBoard(container) {
     });
   });
 
-  // Reset board mock data
-  const resetBtn = document.getElementById('board-reset-btn');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      localStorage.removeItem('pr_dashboard_board_cards');
-      location.reload();
+  const refreshBtn = document.getElementById('board-refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      const statusEl = document.getElementById('board-refresh-status');
+      refreshBtn.disabled = true;
+      if (statusEl) statusEl.textContent = 'Refreshing saved issues...';
+      await refreshSavedIssuesFromGitHub(statusEl);
+    });
+  }
+
+  const clearBoardBtn = document.getElementById('board-clear-btn');
+  if (clearBoardBtn) {
+    clearBoardBtn.addEventListener('click', () => {
+      store.clearBoard();
     });
   }
 }
@@ -1412,11 +1555,29 @@ function renderSettings(container) {
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
           <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
             <div>
-              <div class="font-medium text-on-surface mb-1">Clear local storage</div>
-              <div class="text-sm text-on-surface-variant">Permanently remove your token and connection settings from this browser.</div>
+              <div class="font-medium text-on-surface mb-1">Clear token and settings</div>
+              <div class="text-sm text-on-surface-variant">Remove the token, remember-token setting, and connection state. Board cards are kept.</div>
             </div>
-            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-settings-btn">
-              Clear Data
+            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-token-settings-btn">
+              Clear Token/Settings
+            </button>
+          </div>
+          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+            <div>
+              <div class="font-medium text-on-surface mb-1">Clear board data</div>
+              <div class="text-sm text-on-surface-variant">Remove saved issue cards and local board progress. Token settings are kept.</div>
+            </div>
+            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-board-settings-btn">
+              Clear Board
+            </button>
+          </div>
+          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+            <div>
+              <div class="font-medium text-on-surface mb-1">Clear all app data</div>
+              <div class="text-sm text-on-surface-variant">Remove token/settings and saved board data from this browser.</div>
+            </div>
+            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-all-settings-btn">
+              Clear All
             </button>
           </div>
         </div>
@@ -1515,9 +1676,9 @@ function renderSettings(container) {
   }
 
   // Clear data settings
-  const clearBtn = document.getElementById('clear-settings-btn');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
+  const clearTokenBtn = document.getElementById('clear-token-settings-btn');
+  if (clearTokenBtn) {
+    clearTokenBtn.addEventListener('click', () => {
       store.clearToken();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;
@@ -1532,6 +1693,35 @@ function renderSettings(container) {
       
       const avatarInitial = document.getElementById('user-avatar-initials');
       if (avatarInitial) avatarInitial.textContent = 'JD';
+    });
+  }
+
+  const clearBoardBtn = document.getElementById('clear-board-settings-btn');
+  if (clearBoardBtn) {
+    clearBoardBtn.addEventListener('click', () => {
+      store.clearBoard();
+      const statusDiv = document.getElementById('settings-connection-status');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+        statusDiv.textContent = "Board data removed. Token settings were kept.";
+      }
+    });
+  }
+
+  const clearAllBtn = document.getElementById('clear-all-settings-btn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      store.clearAllLocalData();
+      if (patInput) patInput.value = '';
+      if (rememberCheckbox) rememberCheckbox.checked = false;
+      if (warningBanner) warningBanner.style.display = 'none';
+      const statusDiv = document.getElementById('settings-connection-status');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+        statusDiv.textContent = "All PR-Dashboard local app data removed from this browser.";
+      }
     });
   }
 }
@@ -1559,6 +1749,16 @@ function openInspector() {
   const safeIssueBody = escapeHTML(issue.body || 'No detailed issue summary description offered.');
   const safeIssueUrl = getSafeIssueHtmlUrl(issue);
   const safeProgress = safePercent(issue.progress || 0);
+  const closed = isClosedIssue(issue);
+  const closedInspectorHTML = closed ? `
+    <div class="rounded-lg border border-error/25 bg-error-container/10 p-4 flex items-start justify-between gap-4">
+      <div>
+        <h3 class="text-sm font-semibold text-error mb-1">This issue is closed</h3>
+        <p class="text-sm text-on-surface-variant">GitHub reports this issue as closed${issue.state_reason ? ` (${escapeHTML(issue.state_reason)})` : ''}${issue.closed_at ? ` since ${escapeHTML(formatDate(issue.closed_at))}` : ''}. Treat it as inactive, not an active candidate.</p>
+      </div>
+      <button class="px-3 py-2 rounded border border-error text-error text-xs font-medium hover:bg-error-container/30" id="inspector-move-passed-btn">Move to Passed</button>
+    </div>
+  ` : '';
 
   // Render match score explanations
   const fitScoreReasonsHTML = logs.map(log => {
@@ -1601,8 +1801,8 @@ function openInspector() {
             <span class="material-symbols-outlined text-[18px]">schedule</span>
             <span>Updated ${safeIssueDate}</span>
           </div>
-          <div class="flex items-center gap-1.5 text-tertiary">
-            <span class="material-symbols-outlined text-[18px] filled-icon">check_circle</span>
+          <div class="flex items-center gap-1.5 ${closed ? 'text-error' : 'text-tertiary'}">
+            <span class="material-symbols-outlined text-[18px] filled-icon">${closed ? 'cancel' : 'check_circle'}</span>
             <span>${safeIssueState}</span>
           </div>
         </div>
@@ -1633,6 +1833,7 @@ function openInspector() {
       </div>
 
       <!-- Description Block -->
+      ${closedInspectorHTML}
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -1707,6 +1908,14 @@ function openInspector() {
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();
+    });
+  }
+
+  const movePassedBtn = document.getElementById('inspector-move-passed-btn');
+  if (movePassedBtn) {
+    movePassedBtn.addEventListener('click', () => {
+      store.moveCardToColumn(issue.id, 'Passed');
+      closeInspector();
     });
   }
 

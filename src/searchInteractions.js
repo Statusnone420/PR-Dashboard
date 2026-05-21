@@ -30,7 +30,29 @@ export function getPresetFilterPatch(preset) {
     };
   }
 
+  if (preset === 'low-noise') {
+    return {
+      labels: ['help wanted'],
+      labelMode: 'OR',
+      comments: 'Low (0-5)',
+      stars: 'Any',
+      updatedDate: 'Last month'
+    };
+  }
+
   return null;
+}
+
+export function getRelaxedFilters() {
+  return {
+    languages: [],
+    labels: ['help wanted'],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    includeClosed: false
+  };
 }
 
 export function applyPresetSearch(appStore, preset, searchFn) {

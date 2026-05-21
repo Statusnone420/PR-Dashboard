@@ -40,3 +40,27 @@ test('quick-wins preset keeps beginner labels in OR mode and runs one explicit s
   });
   assert.equal(searchCalls, 1);
 });
+
+test('low-noise preset applies quiet filters and runs one explicit search', async () => {
+  const { applyPresetSearch } = await import('../src/searchInteractions.js');
+  let searchCalls = 0;
+  const fakeStore = {
+    searchQuery: 'accessibility',
+    setFilters(patch) {
+      this.patch = patch;
+    }
+  };
+
+  applyPresetSearch(fakeStore, 'low-noise', () => {
+    searchCalls += 1;
+  });
+
+  assert.deepEqual(fakeStore.patch, {
+    labels: ['help wanted'],
+    labelMode: 'OR',
+    comments: 'Low (0-5)',
+    stars: 'Any',
+    updatedDate: 'Last month'
+  });
+  assert.equal(searchCalls, 1);
+});

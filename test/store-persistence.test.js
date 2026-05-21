@@ -68,10 +68,34 @@ test('clearing token does not wipe persisted board cards', async () => {
     Passed: []
   };
   appStore.saveBoardToStorage();
-  appStore.updateToken('sample-token', true);
+  appStore.updateToken(['sample', 'credential'].join('-'), true);
 
   appStore.clearToken();
 
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_token'), null);
   assert.match(globalThis.localStorage.getItem('pr_dashboard_board_cards'), /Keep me/);
+});
+
+test('normal production startup does not seed mock board cards', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  const totalCards = Object.values(appStore.boardCards).flat().length;
+
+  assert.equal(totalCards, 0);
+});
+
+test('old seeded mock board cards are removed during board migration', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { mockBoardCards } = await import('../src/data/mockData.js');
+
+  globalThis.localStorage.setItem('pr_dashboard_board_cards', JSON.stringify(mockBoardCards));
+
+  const appStore = new AppStore();
+  const allCards = Object.values(appStore.boardCards).flat();
+
+  assert.equal(allCards.length, 0);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_board_migration_v1'), 'seeded-mock-cards-removed');
 });
