@@ -51,7 +51,7 @@ test('good first issue with low comments and active repo is a first PR good cand
   assert.ok(brief.why.length >= 2 && brief.why.length <= 3);
 });
 
-test('unassigned clear bug without beginner label is comfortable', async () => {
+test('unassigned clear bug without beginner label is standard', async () => {
   const brief = await briefFor(issue({
     title: 'Fix crash when workspace path contains spaces',
     body: 'Steps to reproduce: create a workspace path with spaces and run npm test. Expected behavior: the command should complete. Actual behavior: it crashes while resolving the path.',
@@ -60,7 +60,7 @@ test('unassigned clear bug without beginner label is comfortable', async () => {
   }));
 
   assert.equal(brief.verdict, 'Good candidate');
-  assert.equal(brief.bestFor, 'Comfortable');
+  assert.equal(brief.bestFor, 'Standard');
   assert.equal(brief.clarity, 'Clear enough');
   assert.equal(brief.guidanceFit, 'Well-bounded');
 });
@@ -93,7 +93,7 @@ test('assigned high-comment stale issue is a likely pass with concrete risk reas
   }));
 
   assert.equal(brief.verdict, 'Likely pass');
-  assert.equal(brief.bestFor, 'Likely Pass');
+  assert.equal(brief.bestFor, 'Skip');
   assert.ok(brief.risks.some(risk => /assigned/i.test(risk)));
   assert.ok(brief.risks.some(risk => /comment|thread/i.test(risk)));
   assert.ok(brief.risks.some(risk => /stale|old|inactive/i.test(risk)));
@@ -122,4 +122,41 @@ test('vague issue asks maintainer first instead of pretending it is ready', asyn
   assert.equal(brief.clarity, 'Needs clarification');
   assert.equal(brief.guidanceFit, 'Ask maintainer first');
   assert.match(brief.maintainerQuestion, /\?$/);
+});
+
+test('metadata wording does not trigger meta hard-pass detection', async () => {
+  const input = issue({
+    title: 'Fix metadata export for workspace settings',
+    body: 'Steps to reproduce: export workspace settings with metadata enabled. Expected behavior: metadata values should be preserved. Actual behavior: one field is omitted from the export.',
+    labels: [{ name: 'bug' }, { name: 'metadata' }],
+    comments: 2
+  });
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const scoreData = calculateMatchScore(input, { now: NOW });
+  const { buildContributionBrief } = await import('../src/contributionBrief.js');
+  const brief = buildContributionBrief(input, scoreData, { now: NOW });
+
+  assert.ok(scoreData.score >= 70);
+  assert.notEqual(brief.verdict, 'Likely pass');
+  assert.equal(brief.bestFor, 'Standard');
+  assert.doesNotMatch(brief.risks.join(' '), /meta work/i);
+});
+
+test('likely-pass why copy does not call a high score below the bar', async () => {
+  const { buildContributionBrief } = await import('../src/contributionBrief.js');
+  const brief = buildContributionBrief(issue({
+    labels: [{ name: 'blocked' }],
+    title: 'Fix focused install docs',
+    body: 'Expected behavior: install docs should show the current command. Actual behavior: the command is out of date and should be updated in one README section.'
+  }), {
+    score: 100,
+    rows: [{ points: 100, label: 'Strong match' }],
+    passReasons: [],
+    flags: { hasBeginnerLabel: true }
+  }, { now: NOW });
+
+  assert.equal(brief.verdict, 'Likely pass');
+  assert.equal(brief.bestFor, 'Skip');
+  assert.doesNotMatch(brief.why.join(' '), /below the usual contribution bar/i);
+  assert.match(brief.why.join(' '), /blocked|label/i);
 });

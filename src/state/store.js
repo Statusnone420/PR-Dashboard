@@ -5,6 +5,11 @@ import {
   createEmptyBoard,
   loadBoardFromStorage
 } from '../boardModel.js';
+import {
+  clearHiddenItems as clearHiddenItemsFromStorage,
+  hideIssue as hideIssueInStorage,
+  hideRepo as hideRepoInStorage
+} from '../hiddenItems.js';
 
 export function createDefaultFilters() {
   return {
@@ -126,6 +131,26 @@ export class AppStore {
     this.boardCards = createEmptyBoard();
     localStorage.removeItem(BOARD_STORAGE_KEY);
     localStorage.removeItem(BOARD_MIGRATION_KEY);
+    clearHiddenItemsFromStorage(localStorage);
+    this.notify();
+  }
+
+  hideIssue(issue) {
+    hideIssueInStorage(issue, localStorage);
+    if (this.inspectedIssue && this.inspectedIssue.id === issue?.id) {
+      this.inspectedIssue = null;
+    }
+    this.notify();
+  }
+
+  hideRepo(issue) {
+    hideRepoInStorage(issue, localStorage);
+    this.inspectedIssue = null;
+    this.notify();
+  }
+
+  clearHiddenItems() {
+    clearHiddenItemsFromStorage(localStorage);
     this.notify();
   }
 

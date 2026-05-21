@@ -75,3 +75,13 @@
 - Files touched: `src/contributionBrief.js`, `src/main.js`, `test/contribution-brief.test.js`, `test/ui-copy.test.js`, `STATE.md`, and generated HMR log lines in `qa_screenshots/vite-dev.log` from the already-running Vite server.
 - Verification: contribution brief tests were written first and failed before the helper existed; `npm test` passed 55/55, `npm run build` passed, and a local browser smoke at `http://127.0.0.1:3000/#find-issues` found 30 rendered result cards with `Best For` chips and one inspector `Contribution Brief`.
 - Known limitations: the coach is intentionally rules-only and depends on the metadata already available in GitHub issue/search responses plus hydrated repo fields. It does not add AI, backend services, or any new network dependency beyond the existing GitHub API calls.
+
+## 2026-05-21 Contribution Coach Cleanup + Hide
+
+- Tightened `src/contributionBrief.js` so Match/Fit Score remains the base signal: `Likely pass` now requires a low score or a true hard-pass condition such as closed issue, archived/disabled repo, hard-pass label, assigned plus stale/noisy thread, or very vague plus large/unclear scope.
+- Replaced broad `meta` substring detection with whole-term/phrase checks so normal `metadata` issues are not treated as roadmap/meta work.
+- Renamed fit labels from `Comfortable` to `Standard` and `Likely Pass` to `Skip`; cards now show `Fit: First PR`, `Fit: Standard`, `Fit: Deep Dive`, or `Fit: Skip`, while the inspector shows `Best fit` copy.
+- Added local hide support in `src/hiddenItems.js` using `pr_dashboard_hidden_v1` compact JSON with issue/repo keys and timestamps only. Search rendering filters hidden issues/repos, card and inspector actions hide immediately, and Settings includes `Clear Hidden`.
+- Files touched: `src/contributionBrief.js`, `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/contribution-brief.test.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: new tests were written first and failed for the old labels, metadata false positive, bad high-score likely-pass copy, and missing hidden-items module. After implementation, `npm test` passed 61/61 and `npm run build` passed.
+- Known limitations: hidden items are local to the current browser storage and intentionally do not sync across devices. Clearing hidden items restores visibility on the next render/search, but it does not alter saved board cards.

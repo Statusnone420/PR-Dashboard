@@ -8,6 +8,7 @@ import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation } from './dashboardHero.js';
 import { buildContributionBrief } from './contributionBrief.js';
+import { filterHiddenIssues } from './hiddenItems.js';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,6 +51,12 @@ function getFitScoreRating(score) {
   if (score >= 70) return { rating, colorClass: 'glow-violet', bgClass: 'bg-primary/10 border-primary/20 text-primary' };
   if (score >= 50) return { rating, colorClass: 'text-on-surface-variant', bgClass: 'bg-surface-container-high text-on-surface-variant border-outline-variant' };
   return { rating, colorClass: 'text-error', bgClass: 'bg-error-container/20 border-error/20 text-error' };
+}
+
+function getInspectorBestFitLabel(bestFor) {
+  if (bestFor === 'Standard') return 'Standard contributor';
+  if (bestFor === 'Deep Dive') return 'Deep dive';
+  return bestFor;
 }
 
 /**
@@ -364,7 +371,7 @@ function renderDashboard(container) {
                 <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
                 ${score}% Match
               </div>
-              <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Best For: ${escapeHTML(contributionBrief.bestFor)}</span>
+              <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
             </div>
           </div>
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
@@ -613,6 +620,11 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
+  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
+  const hiddenResultsCount = Array.isArray(results) && Array.isArray(visibleResults)
+    ? results.length - visibleResults.length
+    : 0;
+  const hiddenCountText = hiddenResultsCount > 0 ? ` (${hiddenResultsCount} hidden)` : '';
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.draftFilters;
@@ -695,16 +707,16 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${results ? renderIssueCardsList(results) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
       </div>
     `;
-    countText = results ? `Showing ${results.length} issues` : 'Request failed';
-  } else if (results !== null) {
-    countText = `Showing ${results.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}`;
-    if (results.length === 0) {
+    countText = visibleResults ? `Showing ${visibleResults.length} issues${hiddenCountText}` : 'Request failed';
+  } else if (visibleResults !== null) {
+    countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}${hiddenCountText}`;
+    if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(results);
+      resultsHTML = renderIssueCardsList(visibleResults);
     }
   } else {
     // Initial screen state - explain Token details
@@ -1038,7 +1050,7 @@ function renderFindIssues(container) {
  */
 function renderIssueCardsList(issuesList) {
   // Sort list if local sorting is needed
-  let sorted = [...issuesList];
+  let sorted = filterHiddenIssues(issuesList);
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
@@ -1118,7 +1130,7 @@ function renderIssueCardsList(issuesList) {
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
           <span class="rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Best For: ${escapeHTML(contributionBrief.bestFor)}</span>
+          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
           ${repoUnavailableHTML}
         </div>
         
@@ -1140,6 +1152,10 @@ function renderIssueCardsList(issuesList) {
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'Saved' : 'Save'}
             </button>
+            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 hide-issue-btn bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant" data-id="${issueId}">
+              <span class="material-symbols-outlined text-[14px]">visibility_off</span>
+              Hide
+            </button>
             ${issueUrl ? `<a class="px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors flex items-center justify-center gap-1" href="${escapeHTML(issueUrl)}" target="_blank" rel="noopener noreferrer">
               GitHub
               <span class="material-symbols-outlined text-[12px]">open_in_new</span>
@@ -1159,7 +1175,7 @@ function bindIssueCardListEvents() {
     title.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(title.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1174,7 +1190,7 @@ function bindIssueCardListEvents() {
       // Avoid firing if they click an active button inside the card
       if (e.target.closest('button') || e.target.closest('a')) return;
       const issueId = parseInt(card.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1188,7 +1204,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1202,7 +1218,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         const fitObj = calculateFitScore(issue);
@@ -1217,6 +1233,19 @@ function bindIssueCardListEvents() {
         btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">check</span> Saved`;
         btn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
         btn.classList.remove('bg-transparent', 'text-on-surface-variant', 'border-outline-variant');
+      }
+    });
+  });
+
+  // Hide button click
+  document.querySelectorAll('.hide-issue-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const issueId = parseInt(btn.getAttribute('data-id'), 10);
+      const items = filterHiddenIssues(store.searchResults || []);
+      const issue = items.find(i => i.id === issueId);
+      if (issue) {
+        store.hideIssue(issue);
       }
     });
   });
@@ -1653,6 +1682,15 @@ function renderSettings(container) {
           </div>
           <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
             <div>
+              <div class="font-medium text-on-surface mb-1">Clear hidden items</div>
+              <div class="text-sm text-on-surface-variant">Show previously hidden issues and repositories in future results.</div>
+            </div>
+            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-hidden-settings-btn">
+              Clear Hidden
+            </button>
+          </div>
+          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+            <div>
               <div class="font-medium text-on-surface mb-1">Clear all app data</div>
               <div class="text-sm text-on-surface-variant">Remove token/settings and saved board data from this browser.</div>
             </div>
@@ -1789,6 +1827,19 @@ function renderSettings(container) {
     });
   }
 
+  const clearHiddenBtn = document.getElementById('clear-hidden-settings-btn');
+  if (clearHiddenBtn) {
+    clearHiddenBtn.addEventListener('click', () => {
+      store.clearHiddenItems();
+      const statusDiv = document.getElementById('settings-connection-status');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+        statusDiv.textContent = "Hidden issues and repositories cleared. New renders will show normal results.";
+      }
+    });
+  }
+
   const clearAllBtn = document.getElementById('clear-all-settings-btn');
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
@@ -1820,6 +1871,7 @@ function openInspector() {
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const contributionBrief = buildContributionBrief(issue, fitObj);
+  const inspectorBestFitLabel = getInspectorBestFitLabel(contributionBrief.bestFor);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
   const safeIssueTitle = escapeHTML(issue.title);
@@ -1873,7 +1925,7 @@ function openInspector() {
     : contributionBrief.verdict === 'Likely pass'
       ? 'border-error/25 bg-error-container/10 text-error'
       : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
-  const briefBestForTone = contributionBrief.bestFor === 'Likely Pass'
+  const briefBestForTone = contributionBrief.bestFor === 'Skip'
     ? 'border-error/25 bg-error-container/10 text-error'
     : 'border-primary/20 bg-primary/10 text-primary';
   const contributionBriefWhyHTML = contributionBrief.why.map(reason => `
@@ -1949,6 +2001,14 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
+          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-issue-btn">
+            <span class="material-symbols-outlined text-[16px]">visibility_off</span>
+            Hide issue
+          </button>
+          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-repo-btn">
+            <span class="material-symbols-outlined text-[16px]">folder_off</span>
+            Hide repo
+          </button>
           
           ${safeIssueUrl ? `<a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
             Open on GitHub
@@ -1979,7 +2039,7 @@ function openInspector() {
           </h4>
           <div class="mb-4 flex flex-wrap gap-2">
             <span class="rounded border ${briefVerdictTone} px-2 py-0.5 text-xs">Verdict: ${escapeHTML(contributionBrief.verdict)}</span>
-            <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best For: ${escapeHTML(contributionBrief.bestFor)}</span>
+            <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best fit: ${escapeHTML(inspectorBestFitLabel)}</span>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -2072,6 +2132,22 @@ function openInspector() {
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();
+    });
+  }
+
+  const hideIssueBtn = document.getElementById('inspector-hide-issue-btn');
+  if (hideIssueBtn) {
+    hideIssueBtn.addEventListener('click', () => {
+      closeInspector();
+      store.hideIssue(issue);
+    });
+  }
+
+  const hideRepoBtn = document.getElementById('inspector-hide-repo-btn');
+  if (hideRepoBtn) {
+    hideRepoBtn.addEventListener('click', () => {
+      closeInspector();
+      store.hideRepo(issue);
     });
   }
 

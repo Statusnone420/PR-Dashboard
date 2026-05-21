@@ -6,7 +6,7 @@ const SMALL_SCOPE_TERMS = ['docs', 'readme', 'typo', 'config', 'cleanup', 'spell
 const CLEAR_TERMS = ['expected', 'actual', 'should', 'steps to reproduce', 'acceptance criteria', 'repro'];
 const VAGUE_TERMS = ['details are unclear', 'unclear', 'not sure', 'somehow', 'needs discussion', 'tbd'];
 const COMPLEX_TERMS = ['rewrite', 'entire', 'architecture', 'large refactor', 'refactor', 'migration', 'redesign'];
-const META_TERMS = ['roadmap', 'meta', 'community onboarding', 'contributors wanted', 'growth', 'starter issues board'];
+const META_PHRASES = ['community onboarding', 'contributors wanted', 'growth plan', 'starter issues board'];
 
 function labelNames(issue) {
   return (issue?.labels || [])
@@ -26,6 +26,24 @@ function daysSince(value, now) {
 
 function includesAny(value, terms) {
   return terms.some(term => value.includes(term));
+}
+
+function escapedRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function includesWholeTerm(value, term) {
+  return new RegExp(`(^|[^a-z0-9])${escapedRegex(term)}([^a-z0-9]|$)`, 'i').test(value);
+}
+
+function includesAnyWholeTerm(value, terms) {
+  return terms.some(term => includesWholeTerm(value, term));
+}
+
+function isMetaWork(text, labels) {
+  return includesAny(text, META_PHRASES)
+    || includesAnyWholeTerm(text, ['meta', 'roadmap'])
+    || labels.some(label => label === 'meta' || label === 'roadmap' || includesAnyWholeTerm(label, ['marketing', 'community', 'growth']));
 }
 
 function hasTaskList(issue) {
@@ -113,15 +131,23 @@ function getGuidanceFit({ verdict, scope, clarity, repoHealth, hasHardPassLabel,
   return 'Well-bounded';
 }
 
-function getVerdict({ score, closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel, isMeta }) {
+function getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel }) {
+  const reasons = [];
+  if (closed) pushUnique(reasons, 'The issue is closed.');
+  if (repoHealth.hard) pushUnique(reasons, `${repoHealth.label} makes new contribution work unlikely to land.`);
+  if (hasHardPassLabel) pushUnique(reasons, 'A blocked, duplicate, wontfix, or invalid label makes this a poor target.');
+  if (assigned && comments > 15) pushUnique(reasons, 'The issue is already assigned and has a crowded thread.');
+  if (assigned && stale) pushUnique(reasons, 'The issue is already assigned and stale.');
+  if (clarity === 'Too vague' && scope === 'Large/unclear scope') {
+    pushUnique(reasons, 'The issue is both too vague and too broad to bound.');
+  }
+  return reasons;
+}
+
+function getVerdict({ score, closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel }) {
   if (
-    closed
-    || score < 50
-    || repoHealth.hard
-    || hasHardPassLabel
-    || isMeta
-    || (assigned && (comments > 15 || stale))
-    || (clarity === 'Too vague' && scope === 'Large/unclear scope')
+    score < 50
+    || getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel }).length > 0
   ) {
     return 'Likely pass';
   }
@@ -132,16 +158,19 @@ function getVerdict({ score, closed, assigned, comments, stale, repoHealth, scop
 }
 
 function getBestFor({ verdict, assigned, hasBeginnerLabel, scope, clarity }) {
-  if (verdict === 'Likely pass') return 'Likely Pass';
+  if (verdict === 'Likely pass') return 'Skip';
   if (scope === 'Large/unclear scope') return 'Deep Dive';
   if (!assigned && hasBeginnerLabel && scope === 'Small scope' && clarity === 'Clear enough') return 'First PR';
-  return 'Comfortable';
+  return 'Standard';
 }
 
-function buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth }) {
+function buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }) {
   const why = [];
   if (verdict === 'Likely pass') {
-    pushUnique(why, `Match score is ${score}, below the usual contribution bar.`);
+    if (score < 50) {
+      pushUnique(why, `Match score is ${score}, below the usual contribution bar.`);
+    }
+    hardPassReasons.forEach(reason => pushUnique(why, reason));
     if (socialRisk === 'Already assigned') pushUnique(why, 'Someone is already assigned to the issue.');
     if (socialRisk === 'Crowded thread') pushUnique(why, 'The discussion is already crowded.');
     if (repoHealth.inactive || repoHealth.hard) pushUnique(why, `${repoHealth.label} raises follow-through risk.`);
@@ -199,13 +228,14 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
   const assigned = Boolean(issue?.assignee || (Array.isArray(issue?.assignees) && issue.assignees.length > 0));
   const hasBeginnerLabel = Boolean(scoreData?.flags?.hasBeginnerLabel)
     || labels.some(label => BEGINNER_LABELS.some(beginner => label.includes(beginner)));
-  const hasHardPassLabel = labels.some(label => HARD_PASS_LABELS.some(hardPass => label.includes(hardPass)));
-  const isMeta = includesAny(text, META_TERMS) || labels.some(label => /meta|roadmap|community|growth/.test(label));
+  const hasHardPassLabel = labels.some(label => HARD_PASS_LABELS.some(hardPass => includesWholeTerm(label, hardPass)));
+  const isMeta = isMetaWork(text, labels);
   const stale = issueUpdatedDays > 180 || hasScoreSignal(scoreData, 'old');
   const repoHealth = getRepoHealth(issue, now);
   const scope = getScope(issue, text, scoreData);
   const clarity = getClarity(issue, text, scoreData);
   const socialRisk = getSocialRisk(issue, issueUpdatedDays);
+  const hardPassReasons = getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel });
   const verdict = getVerdict({
     score,
     closed,
@@ -215,8 +245,7 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
     repoHealth,
     scope,
     clarity,
-    hasHardPassLabel,
-    isMeta
+    hasHardPassLabel
   });
   const bestFor = getBestFor({ verdict, assigned, hasBeginnerLabel, scope, clarity });
   const guidanceFit = getGuidanceFit({ verdict, scope, clarity, repoHealth, hasHardPassLabel, isMeta });
@@ -232,7 +261,7 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
     socialRisk,
     repoHealth: repoHealth.label,
     guidanceFit,
-    why: buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth }),
+    why: buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }),
     risks: buildRisks({ issue, text, scoreData, scope, clarity, socialRisk, issueUpdatedDays, repoHealth, hasHardPassLabel, isMeta }),
     firstMove: getFirstMove({ verdict, bestFor, guidanceFit }),
     maintainerQuestion
