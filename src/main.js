@@ -313,7 +313,7 @@ function renderDashboard(container) {
       <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
         <span class="material-symbols-outlined text-on-surface-variant text-3xl">bookmarks</span>
         <h4 class="text-on-surface font-medium">No saved issues</h4>
-        <p class="text-xs text-on-surface-variant max-w-xs">Save issues from "Find Issues" search results to see them listed in your Dashboard panel.</p>
+        <p class="text-xs text-on-surface-variant max-w-xs">Save issues from Find Contributions results to see them listed in your Dashboard panel.</p>
         <button class="mt-2 px-4 py-1.5 bg-primary text-on-primary rounded text-xs font-semibold hover:bg-primary-container" id="dash-go-find-btn">Browse Issues</button>
       </div>
     `;
