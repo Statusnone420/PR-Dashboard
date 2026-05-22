@@ -99,3 +99,25 @@
 - Files touched: `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
 - Verification: hidden manager tests were written first and failed for the missing list/unhide helpers and Settings copy. After implementation, `npm test` passed 65/65 and `npm run build` passed.
 - Known limitation: hidden rows show compact keys rather than issue titles by design, because the hidden storage intentionally avoids storing or fetching full issue data.
+
+## 2026-05-21 Repository Docs Polish
+
+- Replaced the placeholder README with a polished project overview, badges, screenshot, feature summary, local setup commands, data-handling notes, and license summary.
+- Kept the project under MIT while updating the copyright line to credit `Statusnone420 and contributors`.
+- Updated `docs/SECURITY.md` to document hidden-results storage under `pr_dashboard_hidden_v1`, including compact key/timestamp storage and the absence of titles, bodies, labels, repo metadata, API responses, Authorization headers, or tokens.
+- Added `LICENSE` to the LF line-ending rules in `.gitattributes`.
+- Files touched: `README.md`, `LICENSE`, `docs/SECURITY.md`, `.gitattributes`, and `STATE.md`.
+
+## 2026-05-21 Dashboard Hidden Results Regression
+
+- Fixed a dashboard regression where hidden issues/repos were still visible in the Dashboard `Saved Issues` preview.
+- Dashboard saved preview and resume hero now use the same hidden issue/repo filtering as search results, without deleting saved board cards.
+- Added regression coverage in `test/dashboard-hero.test.js` for hidden saved preview cards and hidden resume recommendations.
+- Verification: `node --test test/dashboard-hero.test.js` passed 9/9, `npm test` passed 68/68, and `npm run build` passed.
+
+## 2026-05-21 Saved Board Toggle Regression
+
+- Fixed saved issue actions so clicking a saved result card action or inspector `Remove from board` removes that issue from the local board instead of entering the risky `Save anyway?` confirmation path.
+- Saved result cards now show `Remove`; saved inspector actions now show `Remove from board`.
+- Added UI copy coverage for the remove-from-board action.
+- Verification: `node --test test/ui-copy.test.js` passed 4/4, `npm test` passed 69/69, and `npm run build` passed.

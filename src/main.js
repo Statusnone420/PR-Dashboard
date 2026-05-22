@@ -6,7 +6,7 @@ import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent }
 import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
-import { getDashboardHeroRecommendation } from './dashboardHero.js';
+import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { buildContributionBrief } from './contributionBrief.js';
 import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
 
@@ -60,6 +60,10 @@ function getInspectorBestFitLabel(bestFor) {
   if (bestFor === 'Standard') return 'Standard contributor';
   if (bestFor === 'Deep Dive') return 'Deep dive';
   return bestFor;
+}
+
+function isIssueSavedToBoard(issue) {
+  return Object.values(store.boardCards).flat().some(card => card.id === issue?.id);
 }
 
 /**
@@ -265,11 +269,14 @@ function renderDashboard(container) {
   const boardCards = Object.values(store.boardCards).flat();
   const closedCards = boardCards.filter(isClosedIssue);
   const activeCards = boardCards.filter(card => !isClosedIssue(card));
-  const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
+  const dashboardSavedCards = getDashboardSavedPreviewCards(store.boardCards, {
+    hiddenFilter: filterHiddenIssues
+  });
   const mergedOrPassedCount = (store.boardCards["Merged"] || []).length + (store.boardCards["Passed"] || []).length + closedCards.length;
   const heroRecommendation = getDashboardHeroRecommendation({
     boardCards: store.boardCards,
-    githubToken: store.githubToken
+    githubToken: store.githubToken,
+    hiddenFilter: filterHiddenIssues
   });
 
   let heroHTML = '';
@@ -1111,7 +1118,7 @@ function renderIssueCardsList(issuesList) {
       return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${escapeHTML(name)}</span>`;
     }).join(' ');
 
-    const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
+    const saved = isIssueSavedToBoard(issue);
 
     return `
       <article class="issue-card group rounded-xl border border-outline-variant bg-surface-container p-5 cursor-pointer flex flex-col gap-3 transition-colors ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issueId}">
@@ -1152,8 +1159,8 @@ function renderIssueCardsList(issuesList) {
             Inspect
             </button>
             <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/20' : 'bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant'}" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
-              ${saved ? 'Saved' : 'Save'}
+              <span class="material-symbols-outlined text-[14px]">${saved ? 'bookmark_remove' : 'bookmark'}</span>
+              ${saved ? 'Remove' : 'Save'}
             </button>
             <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 hide-issue-btn bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
@@ -1225,6 +1232,10 @@ function bindIssueCardListEvents() {
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         const fitObj = calculateFitScore(issue);
+        if (isIssueSavedToBoard(issue)) {
+          store.removeBoardCard(issue.id);
+          return;
+        }
         if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
           btn.setAttribute('data-confirm-risk', 'true');
           btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">warning</span> Save anyway?`;
@@ -2005,7 +2016,7 @@ function openInspector() {
   const contributionBrief = buildContributionBrief(issue, fitObj);
   const inspectorBestFitLabel = getInspectorBestFitLabel(contributionBrief.bestFor);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
-  const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
+  const saved = isIssueSavedToBoard(issue);
   const safeIssueTitle = escapeHTML(issue.title);
   const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
   const safeIssueNumber = safeInteger(issue.number);
@@ -2130,8 +2141,8 @@ function openInspector() {
         <span class="text-xs text-on-surface-variant">Action center</span>
         <div class="flex gap-2">
           <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/30' : 'bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-container-high'}" id="inspector-save-issue-btn">
-            <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
-            ${saved ? 'Saved to board' : 'Save issue'}
+            <span class="material-symbols-outlined text-[16px]">${saved ? 'bookmark_remove' : 'bookmark'}</span>
+            ${saved ? 'Remove from board' : 'Save issue'}
           </button>
           <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-issue-btn">
             <span class="material-symbols-outlined text-[16px]">visibility_off</span>
@@ -2252,6 +2263,11 @@ function openInspector() {
   const saveBtn = document.getElementById('inspector-save-issue-btn');
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
+      if (isIssueSavedToBoard(issue)) {
+        store.removeBoardCard(issue.id);
+        openInspector();
+        return;
+      }
       if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
         saveBtn.setAttribute('data-confirm-risk', 'true');
         saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">warning</span> Save anyway?`;

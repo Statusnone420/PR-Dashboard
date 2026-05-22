@@ -14,7 +14,7 @@
 - Session-only memory is the default. If "Remember token locally" is not checked, the token is not written to `localStorage`.
 - Remember mode is opt-in. When enabled, the token is stored in browser `localStorage`.
 - `localStorage` is convenience storage, not secure secret storage. Do not use remember mode on shared or untrusted machines.
-- Settings has separate destructive actions for token/settings, board data, and all app data. "Clear Token/Settings" does not wipe the board.
+- Settings has separate destructive actions for token/settings, board data, hidden results, and all app data. "Clear Token/Settings" does not wipe the board.
 
 ## Recommended Token Permissions
 
@@ -31,8 +31,17 @@
 - Saved issue refresh sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests.
 - Settings "Test Connection" sends a read-only `GET https://api.github.com/user` request with the entered token.
 - The app does not have a backend and does not send tokens, board data, or settings to any app-owned server.
-- Board cards and non-secret UI state are stored locally in the browser.
+- Board cards, hidden result keys, and non-secret UI state are stored locally in the browser.
 - Repository metadata hydration caches only non-secret repository fields for 24 hours. Tokens, Authorization headers, API errors, and request URLs containing secrets are never cached.
+
+## Hidden Results Storage
+
+- Hidden issues and repositories are stored under `pr_dashboard_hidden_v1` in browser `localStorage`.
+- Hidden issue entries use compact keys like `owner/repo#123` plus a timestamp.
+- Hidden repository entries use compact keys like `owner/repo` plus a timestamp.
+- Hidden storage does not include issue titles, issue bodies, labels, repository metadata, API responses, Authorization headers, or tokens.
+- The Settings Hidden Results manager derives GitHub links from the stored keys. It does not fetch hidden issue titles or repository details.
+- "Clear Hidden" removes hidden issue/repo keys only. "Clear All App Data" removes hidden keys along with token/settings and board data.
 
 ## Rendering Rules
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createEmptyBoard } from '../src/boardModel.js';
-import { getDashboardHeroRecommendation } from '../src/dashboardHero.js';
+import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from '../src/dashboardHero.js';
 
 function issue(id, overrides = {}) {
   return {
@@ -87,4 +87,42 @@ test('working issue is prioritized before normal board order', () => {
   assert.equal(recommendation.kind, 'resume');
   assert.equal(recommendation.card.id, 2);
   assert.equal(recommendation.column, 'Working');
+});
+
+test('dashboard hero does not recommend hidden saved issues', () => {
+  const boardCards = createEmptyBoard();
+  boardCards.Working.push(issue(1));
+
+  const recommendation = getDashboardHeroRecommendation({
+    boardCards,
+    githubToken: 'sample-token',
+    hiddenFilter: () => []
+  });
+
+  assert.equal(recommendation.kind, 'find-contributions');
+});
+
+test('dashboard saved preview filters hidden saved issues without deleting board cards', () => {
+  const boardCards = createEmptyBoard();
+  boardCards.Considering.push(issue(1, { repository: { full_name: 'owner/repo' } }));
+  boardCards.Working.push(issue(2, { repository: { full_name: 'owner/keep' } }));
+
+  const preview = getDashboardSavedPreviewCards(boardCards, {
+    hiddenFilter: cards => cards.filter(card => card.repository.full_name !== 'owner/repo')
+  });
+
+  assert.deepEqual(preview.map(card => card.id), [2]);
+  assert.equal(boardCards.Considering.length, 1);
+  assert.equal(boardCards.Working.length, 1);
+});
+
+test('dashboard saved preview is empty when all saved candidates are hidden', () => {
+  const boardCards = createEmptyBoard();
+  boardCards.Considering.push(issue(1));
+
+  const preview = getDashboardSavedPreviewCards(boardCards, {
+    hiddenFilter: () => []
+  });
+
+  assert.deepEqual(preview, []);
 });

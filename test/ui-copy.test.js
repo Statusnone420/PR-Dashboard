@@ -26,3 +26,9 @@ test('settings exposes hidden results management copy', () => {
   assert.match(mainJs, /Unhide/);
   assert.match(mainJs, /Clear Hidden/);
 });
+
+test('saved issue actions expose remove-from-board copy', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Remove from board/);
+});
