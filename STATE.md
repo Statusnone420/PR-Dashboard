@@ -145,12 +145,12 @@
 
 - Added canonical issue keys, local Proof Log storage, local profile metadata, local alerts, and local export/import helpers.
 - Saved items no longer disappear when hidden or clicked while already saved; hide only suppresses future discovery results, and explicit board delete remains the removal path.
-- Exact Lookup now accepts GitHub pull request URLs, bypasses hidden filtering, shows `Hidden locally`, and allows manual `Add to Proof Log` from cards and inspector.
+- Exact Lookup accepts GitHub pull request URLs, bypasses hidden filtering, and shows `Hidden locally`; Proof Log creation now requires saving to the board and moving the card to `Merged` as described in the board-only cleanup below.
 - Board cards now get local movement timestamps, and moving to `Merged` through either move path creates local `marked_complete` proof history.
 - Replaced the board's fixed horizontal row with a responsive wrapping grid and added a real `#profile` route plus an enabled local-alert bell.
 - Export Local Data includes board, hidden keys, profile metadata, and Proof Log entries while excluding tokens and repo metadata cache.
 - Files touched include `src/issueKeys.js`, `src/proofLog.js`, `src/profile.js`, `src/localAlerts.js`, `src/localData.js`, `src/state/store.js`, `src/main.js`, `src/styles.css`, `src/lookup.js`, docs, and focused tests.
-- Verification: new tests were written first and failed before implementation. Final `npm test` passed 108/108, `npm run build` passed, and Browser smoke at `http://127.0.0.1:4173/` verified dashboard load, profile route, local alerts popover, responsive board grid without horizontal overflow, exact Lookup for `TEAMMATES/teammates#13998`, hide recovery, Proof Log add, profile proof visibility, and mobile `390x844` profile/board overflow checks with no console warnings/errors.
+- Verification: new tests were written first and failed before implementation. Final `npm test` passed 108/108, `npm run build` passed, and Browser smoke at `http://127.0.0.1:4173/` verified dashboard load, profile route, local alerts popover, responsive board grid without horizontal overflow, exact Lookup for `TEAMMATES/teammates#13998`, hide recovery, profile proof visibility, and mobile `390x844` profile/board overflow checks with no console warnings/errors.
 - Known limitations: Proof Log entries are local completion records, not remote merge verification. Export/import is the v1 multi-device bridge; automatic sync still requires a backend or user-managed sync layer later.
 
 ## 2026-05-22 v1 Local-First Hardening
@@ -161,3 +161,13 @@
 - Documentation now states that GitHub tokens are never exported and repository metadata cache is excluded from exported local data.
 - Verification on 2026-05-22: `npm test` passed 98/98 after the hardening coverage was added, and `npm run build` passed. A built-preview Playwright smoke verified dashboard and profile Proof Log history, exact Lookup recovery for a hidden item, and no horizontal board overflow at `1366x768` or `390x844`, with no console warnings/errors.
 - Remaining risk: v1 cross-device movement is manual export/import only. Live GitHub data and public API rate limits can still vary over time, and no real PAT was used during this pass.
+
+## 2026-05-22 Proof Log Board-Only + Profile Avatar Cleanup
+
+- Removed manual Proof Log creation from result cards and the inspector. Proof Log creation now comes from board cards entering `Merged` through `moveBoardCard()`, `moveCardToColumn()`, or startup backfill of existing `Merged` cards.
+- Result card actions are now Inspect, Save/View on board, Hide, Unhide when hidden, and GitHub. The inspector shows a non-interactive `In Proof Log` / `Not in Proof Log` status chip.
+- Kept legacy `manual_lookup` entries loadable/importable as local history; no v1 UI creates new manual proof entries.
+- Extended profile storage with whitelisted `github_id` and safe `avatar_url` fields from the existing Settings Test Connection response.
+- Added strict avatar URL validation for `https://avatars.githubusercontent.com/...` with digit-only `v` and `s` query params. Header/Profile render safe avatars with no-referrer/lazy/async attributes and initials fallback.
+- Docs now state that Exact Lookup does not directly create Proof Log entries and that GitHub avatar images are loaded without tokens in image URLs or image requests.
+- Verification on 2026-05-22: `npm test` passed 100/100, `npm run build` passed, `git diff --check` passed, and a built-preview Playwright smoke verified mocked Test Connection avatar storage/rendering, export token exclusion, inspector status-only proof chip, board-to-`Merged` Proof Log creation, Profile removal, and no console warnings/errors.

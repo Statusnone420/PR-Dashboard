@@ -29,14 +29,14 @@ The app runs entirely in the browser. There is no backend sync in v1, no AI API 
 - **Contribution Brief** explains who an issue is best for, why it may be worth trying, and what to do first.
 - **Hidden Results** lets you hide noisy issues or repos locally, then review or unhide them in Settings.
 - **Board flow** saves candidates into a local contribution board for follow-up.
-- **Proof Log** preserves completed local contribution history after active board work is done.
-- **Profile and local alerts** summarize local proof history, board health, and follow-up reminders without a backend.
+- **Proof Log** preserves completed local contribution history when board cards move to Merged.
+- **Profile and local alerts** summarize local proof history, board health, profile avatar, and follow-up reminders without a backend.
 - **Export/Import Local Data** moves board, hidden, profile, and Proof Log data between browsers without exporting tokens.
 - **Optional GitHub PAT** increases rate limits while staying browser-local unless you choose remember mode.
 
 ## v1 Local-First Scope
 
-v1 deliberately ships without GitHub OAuth, GitHub App auth, backend sync, encrypted sync, a database, or remote avatar rendering. GitHub auth and encrypted sync are future backend-sync work, not part of this local durability pass.
+v1 deliberately ships without GitHub OAuth, GitHub App auth, backend sync, encrypted sync, or a database. Profile/header avatars can render from safe GitHub avatar URLs returned by the existing Settings connection test; GitHub auth and encrypted sync are future backend-sync work.
 
 ## Quick Start
 
@@ -63,6 +63,7 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
 - Proof Log entries, profile metadata, hidden keys, and local alert inputs stay local to your browser.
+- GitHub avatar images load directly from safe GitHub avatar URLs. Tokens are never placed in avatar URLs or sent with image requests.
 - Export/Import Local Data is the current cross-device bridge.
 - GitHub tokens are never exported, and repo metadata cache is excluded from exports.
 - Hidden results are stored as compact issue/repo keys and timestamps only.

@@ -51,11 +51,11 @@ Completed local contribution history is stored separately from the active board 
 
 Proof Log entries use canonical lowercase issue keys such as `owner/repo#123` for storage identity. Display snapshots preserve the original GitHub repository casing when available.
 
-Moving a board card into `Merged` creates or updates a local Proof Log entry with `status=marked_complete`. This is intentionally a local history record, not remote merge verification. Re-saving the same proof entry preserves its original `completed_at` and `created_at` values while updating `updated_at` and `last_seen_at`.
+Moving a board card into `Merged` creates or updates a local Proof Log entry with `status=marked_complete`. Startup also backfills entries for existing `Merged` cards. No other v1 UI path creates Proof Log entries. This is intentionally a local history record, not remote merge verification. Re-saving the same proof entry preserves its original `completed_at` and `created_at` values while updating `updated_at` and `last_seen_at`.
 
 ## Local Profile, Alerts, And Export
 
-Profile metadata is stored under `pr_dashboard_profile_v1` and contains only non-secret GitHub identity fields from the Settings connection test. Remote avatar images are not rendered in v1.
+Profile metadata is stored under `pr_dashboard_profile_v1` and contains only whitelisted non-secret GitHub identity fields from the Settings connection test: `github_id`, `login`, `name`, `github_url`, `avatar_url`, and `saved_at`. Profile/header avatars render only from safe `https://avatars.githubusercontent.com/...` URLs and fall back to initials when unavailable.
 
 Local alerts are computed from board state and local workflow timestamps such as `column_entered_at`, `last_moved_at`, and `last_refreshed_at`.
 

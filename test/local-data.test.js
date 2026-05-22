@@ -22,11 +22,21 @@ test('exported local data excludes token and repo metadata cache', async () => {
   storage.setItem('pr_dashboard_token', 'secret-token');
   storage.setItem('pr_dashboard_repo_metadata_cache_v1', JSON.stringify({ 'owner/repo': { stargazers_count: 1 } }));
   storage.setItem('pr_dashboard_board_cards', JSON.stringify({ Considering: [{ id: 1, number: 1, repository: { full_name: 'Owner/Repo' } }] }));
+  storage.setItem('pr_dashboard_profile_v1', JSON.stringify({
+    version: 1,
+    github_id: '12345',
+    login: 'Statusnone420',
+    name: 'Anthony Stone',
+    github_url: 'https://github.com/Statusnone420',
+    avatar_url: 'https://avatars.githubusercontent.com/u/123?v=4',
+    saved_at: '2026-05-22T11:00:00.000Z'
+  }));
 
   const exported = exportLocalData(storage, { now: '2026-05-22T12:00:00.000Z' });
 
   assert.equal(exported.version, 1);
   assert.equal(exported.exported_at, '2026-05-22T12:00:00.000Z');
+  assert.equal(exported.profile.avatar_url, 'https://avatars.githubusercontent.com/u/123?v=4');
   assert.equal(exported.token, undefined);
   assert.equal(exported.repoMetadata, undefined);
   assert.doesNotMatch(JSON.stringify(exported), /secret-token|repo_metadata_cache/i);

@@ -39,12 +39,25 @@ test('profile, proof log, export import, and local alerts are visible product su
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
 });
 
-test('lookup hidden recovery and proof actions are represented in UI copy', () => {
+test('lookup hidden recovery and board-only proof status are represented in UI copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
   assert.match(mainJs, /Hidden locally/);
-  assert.match(mainJs, /Add to Proof Log/);
+  assert.match(mainJs, /In Proof Log/);
+  assert.match(mainJs, /Not in Proof Log/);
   assert.match(mainJs, /applyHiddenFilter/);
+  assert.doesNotMatch(mainJs, /proof-log-add-btn/);
+  assert.doesNotMatch(mainJs, /inspector-proof-log-btn/);
+  assert.doesNotMatch(mainJs, /source:\s*['"]manual_lookup['"]/);
+});
+
+test('profile avatar markup is safe and falls back to initials', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /referrerpolicy="no-referrer"/);
+  assert.match(mainJs, /loading="lazy"/);
+  assert.match(mainJs, /decoding="async"/);
+  assert.match(mainJs, /user-avatar-initials/);
 });
 
 test('empty results recovery uses broaden search copy', () => {

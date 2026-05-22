@@ -40,7 +40,8 @@
 - Settings "Test Connection" sends a read-only `GET https://api.github.com/user` request with the entered token.
 - The app does not have a backend and does not send tokens, board data, or settings to any app-owned server.
 - Board cards, hidden result keys, and non-secret UI state are stored locally in the browser.
-- Proof Log entries and profile metadata are stored locally in the browser. Profile metadata is limited to non-secret GitHub identity fields from the Settings connection test and does not render remote avatar images in v1.
+- Proof Log entries and profile metadata are stored locally in the browser. Profile metadata is limited to whitelisted non-secret GitHub identity fields from the Settings connection test.
+- Profile/header avatar images may load from `https://avatars.githubusercontent.com/...` after strict URL validation. Tokens are never placed in avatar URLs or sent with image requests.
 - Export Local Data includes board cards, hidden keys, profile metadata, and Proof Log entries. It excludes GitHub tokens and repository metadata cache.
 - Repository metadata hydration caches only non-secret repository fields for 24 hours. Tokens, Authorization headers, API errors, and request URLs containing secrets are never cached.
 
@@ -57,7 +58,8 @@
 
 - Proof Log entries are stored under `pr_dashboard_proof_log_v1` in browser `localStorage`.
 - Proof Log identity uses canonical lowercase keys like `owner/repo#123`; display casing from GitHub is preserved in snapshots when available.
-- Entries created from the board `Merged` lane are local completion records with `status: marked_complete`. They are not remote merge verification.
+- Entries are created only when board cards enter the `Merged` lane or from startup backfill of existing `Merged` cards. They are local completion records with `status: marked_complete`, not remote merge verification.
+- Exact Lookup does not directly create Proof Log entries. Save the item to the board and move it to `Merged` to create completed history.
 - Proof Log storage does not include GitHub tokens or Authorization headers.
 
 ## Rendering Rules

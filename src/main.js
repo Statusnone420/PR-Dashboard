@@ -2,7 +2,7 @@ import { store } from './state/store.js';
 import { buildQueryPreview, createGitHubRequestOptions, fetchExactIssue, fetchIssueMetadata, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
 import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
-import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
+import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
@@ -177,10 +177,55 @@ function closeMobileMenu() {
   if (drawer) drawer.style.display = 'none';
 }
 
+function renderAvatarInitialsContent(initials, options = {}) {
+  const idAttribute = options.includeInitialsId ? ' id="user-avatar-initials"' : '';
+  return `<div class="w-full h-full bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container"${idAttribute}>${escapeHTML(initials)}</div>`;
+}
+
+function renderProfileAvatarContent(profile, options = {}) {
+  const initials = getProfileInitials(profile);
+  const safeAvatarUrl = getSafeGitHubAvatarUrl(profile?.avatar_url);
+  if (!safeAvatarUrl) {
+    return renderAvatarInitialsContent(initials, options);
+  }
+
+  const altName = profile?.login || profile?.name || 'GitHub user';
+  const fallbackId = options.includeInitialsId ? ' data-avatar-fallback-id="user-avatar-initials"' : '';
+  return `
+    <img
+      class="h-full w-full object-cover"
+      src="${escapeHTML(safeAvatarUrl)}"
+      alt="GitHub avatar for ${escapeHTML(altName)}"
+      referrerpolicy="no-referrer"
+      loading="lazy"
+      decoding="async"
+      data-avatar-fallback="${escapeHTML(initials)}"${fallbackId}
+    />
+  `;
+}
+
+function renderProfileAvatarFrame(profile, className, options = {}) {
+  return `<div class="${className}">${renderProfileAvatarContent(profile, options)}</div>`;
+}
+
+function bindAvatarFallbacks(root = document) {
+  root.querySelectorAll('img[data-avatar-fallback]').forEach(img => {
+    img.addEventListener('error', () => {
+      const initials = img.getAttribute('data-avatar-fallback') || 'GH';
+      const fallbackId = img.getAttribute('data-avatar-fallback-id');
+      const container = img.parentElement;
+      if (container) {
+        container.innerHTML = renderAvatarInitialsContent(initials, { includeInitialsId: fallbackId === 'user-avatar-initials' });
+      }
+    }, { once: true });
+  });
+}
+
 function updateHeaderProfile() {
-  const avatarInitial = document.getElementById('user-avatar-initials');
-  if (avatarInitial) {
-    avatarInitial.textContent = getProfileInitials(store.profile);
+  const avatar = document.getElementById('user-profile-avatar');
+  if (avatar) {
+    avatar.innerHTML = renderProfileAvatarContent(store.profile, { includeInitialsId: true });
+    bindAvatarFallbacks(avatar);
   }
 }
 
@@ -578,7 +623,7 @@ function renderDashboard(container) {
     <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
       <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
       <h4 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h4>
-      <p class="mt-1 text-xs text-on-surface-variant">Move a card to Merged or add an exact Lookup result to preserve completed work.</p>
+      <p class="mt-1 text-xs text-on-surface-variant">Move a board card to Merged to preserve completed work.</p>
     </div>
   `;
 
@@ -1373,7 +1418,6 @@ function renderIssueCardsList(issuesList, options = {}) {
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const hiddenLocally = !applyHiddenFilter && (isIssueHidden(issue) || isRepoHidden(issue));
-    const inProofLog = isIssueInProofLog(issue);
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
         <span class="material-symbols-outlined text-[15px]">warning</span>
@@ -1444,10 +1488,6 @@ function renderIssueCardsList(issuesList, options = {}) {
             <button class="action-button px-3 py-1.5 text-xs save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'View on board' : 'Save'}
-            </button>
-            <button class="action-button px-3 py-1.5 text-xs proof-log-add-btn ${inProofLog ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">${inProofLog ? 'verified' : 'workspace_premium'}</span>
-              ${inProofLog ? 'In Proof Log' : 'Add to Proof Log'}
             </button>
             ${hiddenLocally ? `<button class="action-button interactive-button-secondary px-3 py-1.5 text-xs unhide-card-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility</span>
@@ -1551,19 +1591,6 @@ function bindIssueCardListEvents() {
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.hideIssue(issue);
-      }
-    });
-  });
-
-  document.querySelectorAll('.proof-log-add-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const issue = getSearchItemsForActions().find(i => i.id === issueId);
-      if (issue) {
-        store.addIssueToProofLog(issue, { source: 'manual_lookup' });
-        btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">verified</span> In Proof Log`;
-        btn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
       }
     });
   });
@@ -1926,7 +1953,7 @@ function renderProofLogRows(entries) {
       <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
         <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
         <h3 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h3>
-        <p class="mt-1 text-xs text-on-surface-variant">Use exact Lookup or move a board card to Merged to preserve completed work.</p>
+        <p class="mt-1 text-xs text-on-surface-variant">Move a board card to Merged to preserve completed work.</p>
       </div>
     `;
   }
@@ -1955,9 +1982,12 @@ function renderProfile(container) {
   const proofEntries = listProofEntries(localStorage);
   const alerts = buildLocalAlerts(store.boardCards);
   const profile = store.profile;
-  const initials = getProfileInitials(profile);
   const displayName = profile?.name || profile?.login || 'Local contributor';
   const loginLine = profile?.login ? `GitHub: ${profile.login}` : 'No GitHub identity saved yet';
+  const profileAvatarHTML = renderProfileAvatarFrame(
+    profile,
+    'flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-outline-variant bg-primary-container text-lg font-bold text-on-primary-container'
+  );
 
   container.innerHTML = `
     <section class="p-6 md:p-12">
@@ -1965,7 +1995,7 @@ function renderProfile(container) {
         <header class="interactive-card rounded-xl p-6">
           <div class="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div class="flex items-center gap-4">
-              <div class="flex h-14 w-14 items-center justify-center rounded-full border border-outline-variant bg-primary-container text-lg font-bold text-on-primary-container">${escapeHTML(initials)}</div>
+              ${profileAvatarHTML}
               <div>
                 <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Profile</h1>
                 <p class="text-sm text-on-surface-variant">${escapeHTML(displayName)} - ${escapeHTML(loginLine)}</p>
@@ -2025,6 +2055,7 @@ function renderProfile(container) {
 
   const exportBtn = document.getElementById('profile-export-btn');
   if (exportBtn) exportBtn.addEventListener('click', handleExportLocalData);
+  bindAvatarFallbacks(container);
   bindLocalDataImport('profile-import-input', 'profile-import-status');
   document.querySelectorAll('.proof-remove-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2513,6 +2544,11 @@ function openInspector() {
   const saved = isIssueSavedToBoard(issue);
   const hiddenLocally = isIssueHidden(issue) || isRepoHidden(issue);
   const inProofLog = isIssueInProofLog(issue);
+  const proofStatusText = inProofLog ? 'In Proof Log' : 'Not in Proof Log';
+  const proofStatusTone = inProofLog
+    ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
+    : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
+  const proofStatusIcon = inProofLog ? 'verified' : 'workspace_premium';
   const safeIssueTitle = escapeHTML(issue.title);
   const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
   const safeIssueNumber = safeInteger(issue.number);
@@ -2649,10 +2685,10 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
-          <button class="action-button min-w-fit px-4 py-2 text-xs ${inProofLog ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-proof-log-btn">
-            <span class="material-symbols-outlined text-[16px]">${inProofLog ? 'verified' : 'workspace_premium'}</span>
-            ${inProofLog ? 'In Proof Log' : 'Add to Proof Log'}
-          </button>
+          <span class="proof-status-chip inline-flex min-w-fit items-center gap-2 rounded border px-4 py-2 text-xs ${proofStatusTone}" aria-label="Proof Log status">
+            <span class="material-symbols-outlined text-[16px]">${proofStatusIcon}</span>
+            ${proofStatusText}
+          </span>
           <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
             <span class="material-symbols-outlined text-[16px]">visibility_off</span>
             Hide issue
@@ -2789,15 +2825,6 @@ function openInspector() {
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();
-    });
-  }
-
-  const proofBtn = document.getElementById('inspector-proof-log-btn');
-  if (proofBtn) {
-    proofBtn.addEventListener('click', () => {
-      store.addIssueToProofLog(issue, { source: 'manual_lookup' });
-      proofBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">verified</span> In Proof Log`;
-      proofBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');
     });
   }
 
