@@ -100,3 +100,31 @@ test('known legacy default action plans migrate without rewriting custom tasks',
     'Ask Alice whether this is still wanted'
   ]);
 });
+
+test('inspector checklist toggles persist saved cards outside Working', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.saveIssueToBoard({
+    id: 10,
+    number: 10,
+    title: 'Fix docs',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/10'
+  });
+  appStore.setInspectedIssue({
+    id: 10,
+    number: 10,
+    title: 'Fix docs',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/10'
+  });
+
+  appStore.toggleTaskChecklist(10, 'Read README.', true);
+
+  assert.equal(appStore.boardCards.Considering[0].checklist[0].completed, true);
+  assert.equal(appStore.boardCards.Considering[0].progress, 17);
+  assert.equal(appStore.inspectedIssue.checklist[0].completed, true);
+  assert.equal(appStore.inspectedIssue.progress, 17);
+});

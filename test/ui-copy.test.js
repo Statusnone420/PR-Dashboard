@@ -43,3 +43,11 @@ test('dashboard exposes richer local metric cards', () => {
   assert.match(mainJs, /Filtered from future searches/);
   assert.match(mainJs, /Board Momentum/);
 });
+
+test('inspector action plan checkbox handler does not reopen inspector', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const handlerMatch = mainJs.match(/document\.querySelectorAll\('\.inspector-task-checkbox'\)[\s\S]*?\n  \}\);\n\}/);
+
+  assert.ok(handlerMatch);
+  assert.doesNotMatch(handlerMatch[0], /openInspector\(\)/);
+});

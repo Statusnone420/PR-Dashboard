@@ -178,20 +178,20 @@ export class AppStore {
 
   // Inspector Panel Action Plan Tasks Persistence
   toggleTaskChecklist(issueId, taskText, completed) {
-    // Check if the issue is in Working column
-    const workingCards = this.boardCards["Working"] || [];
-    const card = workingCards.find(c => c.id === issueId);
-    if (card) {
+    for (const column of Object.keys(this.boardCards)) {
+      const card = this.boardCards[column].find(c => c.id === issueId);
+      if (!card) continue;
+
       if (!card.checklist) card.checklist = [];
       const task = card.checklist.find(t => t.text === taskText);
       if (task) {
         task.completed = completed;
-        // Calculate progress
         const total = card.checklist.length;
         const done = card.checklist.filter(t => t.completed).length;
-        card.progress = Math.round((done / total) * 100);
+        card.progress = total > 0 ? Math.round((done / total) * 100) : 0;
+        this.saveBoardToStorage();
       }
-      this.saveBoardToStorage();
+      break;
     }
     // Also update inspectedIssue if it matches
     if (this.inspectedIssue && this.inspectedIssue.id === issueId) {
@@ -201,7 +201,7 @@ export class AppStore {
         insTask.completed = completed;
         const total = this.inspectedIssue.checklist.length;
         const done = this.inspectedIssue.checklist.filter(t => t.completed).length;
-        this.inspectedIssue.progress = Math.round((done / total) * 100);
+        this.inspectedIssue.progress = total > 0 ? Math.round((done / total) * 100) : 0;
       }
     }
     this.notify();

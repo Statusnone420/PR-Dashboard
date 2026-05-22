@@ -129,3 +129,15 @@
 - Files touched: `src/dashboardMetrics.js`, `src/main.js`, `test/dashboard-metrics.test.js`, and `STATE.md`.
 - Verification: focused metric test failed before the helper existed, then passed after implementation. Final `npm test`, `npm run build`, and `git diff --check` passed.
 - Visual check: ran isolated Playwright screenshots against a temporary Vite server on `127.0.0.1:4173` for empty board, one open saved issue, and one closed issue in `Considering`. All three states kept the five metric cards visible; the closed issue case showed `Active Review` as 0 and `Resolved / Passed` as 1. The temporary server was stopped after verification.
+
+## 2026-05-22 Score Gate + Action Plan Scroll Fix
+
+- Tightened Match Score so generic issue quality signals cannot stack into a fake perfect score. Scores without strong contribution-fit evidence are capped at `90`, and broad actionable bugs without a strong contribution label are capped below perfect.
+- A bare `bug` label no longer bypasses the near-perfect gate. Strong fit now comes from labels such as `good first issue`, `help wanted`, docs/test/starter/beginner/easy labels, bounded fix wording, scoped docs/UI-text work, or action-oriented task sections.
+- Narrowed copy detection so `Copy, Paste` and `copy to clipboard` do not count as docs/copywriting scope, while contextual UI/error-message copy still can.
+- Replaced broad task-list detection with heading-aware/action-oriented detection so reproduction steps and template compliance checklists do not count as contributor task lists.
+- Fixed inspector Action Plan toggles so checking a task updates the existing row and progress bar in place instead of rebuilding the inspector drawer. Saved-card checklist progress now persists from any board lane, not only `Working`.
+- Files touched: `src/matchScore.js`, `src/main.js`, `src/state/store.js`, `test/match-score.test.js`, `test/finder-store.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: score and Action Plan regression tests were written first and failed against the old behavior. After implementation, `npm test` passed 90/90 and `npm run build` passed.
+- Browser smoke at `http://127.0.0.1:3000/#find-issues` used Lookup for `openai/codex#23986`, saved the issue, opened the inspector, scrolled to Action Plan, and toggled a checkbox. The drawer scroll stayed at `1969`, focus stayed on the checkbox, progress updated from `0%` to `17%`, and console warnings/errors were `0`.
+- Known limitation: scoring is still deterministic and heuristic. It avoids the observed false-perfect path, but live GitHub issue data can still change rankings over time.
