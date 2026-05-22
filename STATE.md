@@ -141,3 +141,11 @@
 - Verification: score and Action Plan regression tests were written first and failed against the old behavior. After implementation, `npm test` passed 90/90 and `npm run build` passed.
 - Browser smoke at `http://127.0.0.1:3000/#find-issues` used Lookup for `openai/codex#23986`, saved the issue, opened the inspector, scrolled to Action Plan, and toggled a checkbox. The drawer scroll stayed at `1969`, focus stayed on the checkbox, progress updated from `0%` to `17%`, and console warnings/errors were `0`.
 - Known limitation: scoring is still deterministic and heuristic. It avoids the observed false-perfect path, but live GitHub issue data can still change rankings over time.
+
+## 2026-05-22 README Product Proof Point
+
+- Added a README `Product Proof Point` section for the May 22, 2026 merged TEAMMATES contribution discovered through PR Dashboard.
+- Framed TEAMMATES respectfully as a public open-source example, with an explicit note that the mention is not an endorsement or affiliation.
+- Tightened the README wording to focus on the concrete workflow: discovery, fit evaluation, local verification, CI, review feedback, and merge.
+- Verification: checked the public GitHub issue/PR pages for `TEAMMATES/teammates#13997` and merged PR `#13998`, then ran `git diff --check`.
+- Remaining risk: the linked GitHub issue and PR pages are live public pages, so labels, counts, or surrounding GitHub metadata can change over time.

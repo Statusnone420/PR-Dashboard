@@ -21,6 +21,18 @@ PR Dashboard is a local-first GitHub issue finder for people who want to make be
 
 The app runs entirely in the browser. There is no backend, no AI API dependency, and no app-owned server receiving your token or board data.
 
+## Product Proof Point
+
+In May 2026, PR Dashboard helped me discover and complete a [merged contribution to TEAMMATES](https://github.com/TEAMMATES/teammates/pull/13998), a free open-source education platform for peer feedback.
+
+PR Dashboard surfaced [issue #13997](https://github.com/TEAMMATES/teammates/issues/13997), helped me evaluate whether it was a good fit, and supported the workflow from issue discovery through local verification, CI, review feedback, and merge.
+
+That is the workflow PR Dashboard is designed to make easier:
+
+**discovery → confidence → action → contribution**
+
+This is not an endorsement, partnership, or affiliation with TEAMMATES. It is a real example of PR Dashboard helping turn zero prior context into a useful open-source contribution.
+
 ## Highlights
 
 - **Find Contributions** searches GitHub issues with contribution-focused filters.
