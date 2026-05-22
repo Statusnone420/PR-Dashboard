@@ -229,7 +229,6 @@ export class AppStore {
         card.progress = total > 0 ? Math.round((done / total) * 100) : 0;
         this.saveBoardToStorage();
       }
-      break;
     }
     // Also update inspectedIssue if it matches
     if (this.inspectedIssue && this.inspectedIssue.id === issueId) {
