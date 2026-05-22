@@ -1658,6 +1658,56 @@ function formatBoardRefreshStatus(result, label = 'active board cards') {
   return `Refreshed ${result.refreshed} ${label}.`;
 }
 
+function confirmRefreshBatch({ message, requestCount, token }) {
+  return new Promise(resolve => {
+    const existing = document.getElementById('refresh-confirm-dialog');
+    if (existing) existing.remove();
+
+    const isAuthenticated = Boolean(String(token || '').trim());
+    const overlay = document.createElement('div');
+    overlay.id = 'refresh-confirm-dialog';
+    overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm';
+    overlay.innerHTML = `
+      <div class="w-full max-w-md rounded-lg border border-outline-variant bg-surface p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="refresh-confirm-title">
+        <div class="flex items-start gap-3">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+            <span class="material-symbols-outlined text-[18px]">sync</span>
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-base font-headline font-bold text-on-surface" id="refresh-confirm-title">Refresh ${requestCount} saved cards?</h2>
+            <p class="mt-2 text-sm leading-relaxed text-on-surface-variant">${escapeHTML(message)}</p>
+            <p class="mt-3 text-xs text-on-surface-variant">${isAuthenticated ? 'Authenticated REST requests still run serially.' : 'Requests run serially and stop if GitHub reports a rate-limit error.'}</p>
+          </div>
+        </div>
+        <div class="mt-5 flex flex-wrap justify-end gap-2">
+          <button class="interactive-button interactive-button-secondary px-4 py-2" id="refresh-confirm-cancel">Cancel</button>
+          <button class="interactive-button interactive-button-primary px-4 py-2" id="refresh-confirm-submit">
+            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh cards
+          </button>
+        </div>
+      </div>
+    `;
+
+    const close = confirmed => {
+      document.removeEventListener('keydown', handleKeydown);
+      overlay.remove();
+      resolve(confirmed);
+    };
+    const handleKeydown = event => {
+      if (event.key === 'Escape') close(false);
+    };
+
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close(false);
+    });
+    document.addEventListener('keydown', handleKeydown);
+    document.body.appendChild(overlay);
+    document.getElementById('refresh-confirm-cancel')?.addEventListener('click', () => close(false));
+    document.getElementById('refresh-confirm-submit')?.addEventListener('click', () => close(true));
+    document.getElementById('refresh-confirm-submit')?.focus();
+  });
+}
+
 async function refreshBoardEntriesFromGitHub({ statusEl, entries, requestCount, modeLabel, emptyMessage, cancelMessage, confirmLargeBatch = false }) {
   if (requestCount === 0) {
     const statusMessage = emptyMessage;
@@ -1669,7 +1719,11 @@ async function refreshBoardEntriesFromGitHub({ statusEl, entries, requestCount, 
   if (
     confirmLargeBatch
     && shouldConfirmBatchRefresh({ token: store.githubToken, requestCount })
-    && !window.confirm(getBatchRefreshWarning({ token: store.githubToken, requestCount }))
+    && !await confirmRefreshBatch({
+      message: getBatchRefreshWarning({ token: store.githubToken, requestCount }),
+      requestCount,
+      token: store.githubToken
+    })
   ) {
     const statusMessage = cancelMessage;
     store.setBoardRefreshStatus(statusMessage);
@@ -1831,11 +1885,11 @@ function renderBoard(container) {
           <button class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-on-surface-variant transition-colors hover:border-error/30 hover:text-error delete-card-btn" data-id="${cardId}"><span class="material-symbols-outlined text-[14px]">close</span></button>
           
           <div class="flex justify-between items-start mb-2 pr-4">
-            <span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+            <span class="board-card-repo text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
               <span class="material-symbols-outlined text-[12px] filled-icon">bookmark</span>
               ${repoName}
             </span>
-            <span class="text-xs text-on-surface-variant group-hover:text-primary transition-colors">#${cardNumber}</span>
+            <span class="board-card-number shrink-0 whitespace-nowrap text-xs text-on-surface-variant group-hover:text-primary transition-colors">#${cardNumber}</span>
           </div>
           
           <h4 class="text-sm font-medium text-on-surface leading-snug mb-3 ${col === 'Merged' || closed ? 'line-through opacity-70' : ''}">${cardTitle}</h4>
@@ -1867,7 +1921,7 @@ function renderBoard(container) {
 
     return `
       <!-- Column lane -->
-      <div class="kanban-column ${options.compact ? 'kanban-column-compact' : ''} flex flex-col h-full bg-surface-container-lowest/50 rounded-lg p-3">
+      <div class="kanban-column ${options.compact ? 'kanban-column-compact' : ''} flex flex-col h-full bg-surface-container-lowest/50 rounded-lg p-3" data-column="${escapeHTML(col)}">
         <div class="flex items-center justify-between mb-4 px-1 shrink-0">
           <div class="flex items-center gap-2">
             <div class="w-2 h-2 rounded-full ${dotColor}"></div>

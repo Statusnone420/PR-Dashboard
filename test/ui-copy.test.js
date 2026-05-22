@@ -183,3 +183,11 @@ test('result cards and inspector action center do not expose proof log controls'
   assert.match(actionCenter, /Open on GitHub/);
   assert.doesNotMatch(actionCenter, /Proof Log|proof-status-chip|proofStatus|workspace_premium/);
 });
+
+test('refresh batch confirmation uses app modal instead of native browser confirm', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /refresh-confirm-dialog/);
+  assert.match(mainJs, /Refresh cards/);
+  assert.doesNotMatch(mainJs, /window\.confirm/);
+});

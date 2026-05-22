@@ -367,6 +367,8 @@
 
   .kanban-column {
     @apply flex min-h-48 flex-col rounded-lg border border-outline-variant bg-surface-container-lowest/50 p-3;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .kanban-board-grid {
@@ -417,9 +419,10 @@
   .board-active-grid,
   .board-completed-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
     gap: 1rem;
     min-width: 0;
+    align-items: start;
   }
 
   .board-active-grid .kanban-column,
@@ -427,14 +430,61 @@
     min-width: 0;
   }
 
+  .board-lane-cards-container {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
   @media (min-width: 1024px) {
+    .board-page {
+      min-height: 0;
+    }
+
+    .board-page-body {
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: visible;
+    }
+
+    .board-layout-shell {
+      min-height: 0;
+    }
+
+    .board-active-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .board-completed-section {
+      flex: 0 0 auto;
+    }
+
+    .board-active-grid {
+      align-items: start;
+    }
+
+    .board-completed-grid {
+      align-items: start;
+    }
+
+    .board-active-grid .kanban-column {
+      height: clamp(16rem, 46vh, 34rem);
+    }
+
+    .board-completed-grid .kanban-column {
+      height: auto;
+      min-height: 7rem;
+      max-height: 12rem;
+    }
+  }
+
+  @media (min-width: 1536px) {
     .board-page {
       height: calc(100vh - 3.5rem);
       min-height: 0;
     }
 
     .board-page-body {
-      min-height: 0;
       overflow: hidden;
     }
 
@@ -444,14 +494,8 @@
     }
 
     .board-active-section {
-      display: flex;
       min-height: 0;
       flex: 1 1 auto;
-      flex-direction: column;
-    }
-
-    .board-completed-section {
-      flex: 0 0 auto;
     }
 
     .board-active-grid {
@@ -467,6 +511,7 @@
     }
 
     .board-active-grid .kanban-column {
+      height: auto;
       min-height: 0;
     }
 
@@ -478,10 +523,26 @@
 
   .kanban-card {
     @apply cursor-pointer border border-outline-variant bg-surface-container transition-colors;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    overflow-wrap: anywhere;
   }
 
   .kanban-card:hover {
     @apply border-outline bg-surface-container-high;
+  }
+
+  .kanban-card button,
+  .kanban-card .material-symbols-outlined,
+  .board-card-number {
+    flex-shrink: 0;
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+
+  .board-card-repo {
+    min-width: 0;
   }
 
   .callout {

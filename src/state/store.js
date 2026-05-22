@@ -21,6 +21,7 @@ import {
   upsertProofEntry
 } from '../proofLog.js';
 import { clearProfile, loadProfile, saveProfileFromGitHubUser } from '../profile.js';
+import { getCanonicalIssueKey } from '../issueKeys.js';
 
 export function createDefaultFilters() {
   return {
@@ -190,6 +191,13 @@ export class AppStore {
     this.notify();
   }
 
+  removeIssueFromProofLog(issue) {
+    const key = getCanonicalIssueKey(issue);
+    if (key) {
+      removeProofEntry(key, localStorage);
+    }
+  }
+
   updateProfileFromGitHubUser(user, options = {}) {
     this.profile = saveProfileFromGitHubUser(user, localStorage);
     if (options.notify !== false) {
@@ -311,6 +319,8 @@ export class AppStore {
             now: timestamp,
             notify: false
           });
+        } else if (targetCol === 'Passed') {
+          this.removeIssueFromProofLog(cardObj);
         }
         this.saveBoardToStorage();
         this.notify();
@@ -394,6 +404,8 @@ export class AppStore {
           now: timestamp,
           notify: false
         });
+      } else if (targetCol === 'Passed') {
+        this.removeIssueFromProofLog(cardObj);
       }
       this.saveBoardToStorage();
       this.notify();

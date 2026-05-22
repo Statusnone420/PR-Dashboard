@@ -226,6 +226,32 @@ test('moving to Merged through moveCardToColumn creates proof log entry', async 
   assert.equal(listProofEntries(globalThis.localStorage)[0].key, 'teammates/teammates#13997');
 });
 
+test('moving a card to Passed clears matching proof log entry', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { listProofEntries } = await import('../src/proofLog.js');
+
+  const appStore = new AppStore();
+  appStore.saveIssueToBoard({
+    id: 13997,
+    number: 13997,
+    title: 'Closed but not completed',
+    state: 'closed',
+    state_reason: 'completed',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13997'
+  });
+  appStore.addIssueToProofLog(appStore.boardCards.Considering[0], {
+    source: 'board_merged',
+    boardColumn: 'Merged'
+  });
+
+  appStore.moveCardToColumn(13997, 'Passed');
+
+  assert.equal(appStore.boardCards.Passed[0].id, 13997);
+  assert.equal(listProofEntries(globalThis.localStorage).length, 0);
+});
+
 test('marking GitHub activity reviewed stamps acknowledgement without clearing summary', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');

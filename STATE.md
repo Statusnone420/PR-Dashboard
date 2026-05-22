@@ -218,3 +218,28 @@
 - Board-card import behavior, GitHub activity acknowledgement collision handling, Refresh Throttle, Mark Reviewed, and A1 Board layout behavior were left unchanged.
 - Verification on 2026-05-22: regression tests were written first and failed for the old behavior; after the fix, `npm test` passed 131/131, `npm run build` passed, and `npm run test:layout` passed 5/5 across the required A1 viewports.
 - Remaining risk: export/import is still a local manual bridge. Conflict resolution is timestamp-based and does not attempt remote sync, OAuth identity reconciliation, or cross-device locking.
+
+## 2026-05-22 Narrow Desktop Board Layout Hardening
+
+- Fixed the awkward middle-width board layout where the sidebar plus five active lanes made cards unreadably narrow and exposed horizontal lane scrollbars.
+- Added a `1090x1212` A1 layout smoke case matching the narrow-desktop/tablet-landscape band. Active workflow now prioritizes readable lane width: two columns at that cramped width, three around small desktop widths, and five only when the content pane is wide enough.
+- Hardened board cards and lane containers against horizontal overflow while allowing long repository names and issue titles to wrap. Compact card controls and issue numbers stay intact.
+- Added a crowded-lane smoke case with 35 cards in one active lane at `1090x1212`, proving the lane scrolls vertically without horizontal overflow.
+- Verification on 2026-05-22: `npm run test:layout` passed 7/7, including `board-a1-1090x1212.png` and `board-a1-1090x1212-crowded.png`.
+- Remaining risk: responsive checks cover Chromium and the specified smoke widths. Very unusual browser zoom or OS text scaling could still affect wrapping density.
+
+## 2026-05-22 Passed vs Proof Log Boundary
+
+- Clarified the local completion boundary in code: `Merged` remains the only board move that creates a Proof Log entry, while `Passed` means inactive/not pursuing and must not preserve a matching proof record.
+- Moving a board card to `Passed` now removes any matching Proof Log entry for that issue/PR. This covers the closed-card `Move to Passed` path after a GitHub refresh reports a card closed/completed.
+- Added regression coverage proving a matching proof entry is cleared when the card moves to `Passed`.
+- Verification on 2026-05-22: the new regression test failed against the old behavior, then passed after the store fix. Final gates also passed: `npm test` passed 132/132, `npm run build` passed, `npm run test:layout` passed 7/7, and `git diff --check` passed.
+- Remaining risk: this intentionally removes local proof for a card moved to `Passed`; users should keep true completed work in `Merged`.
+
+## 2026-05-22 Refresh Confirmation Modal
+
+- Replaced the native browser confirmation for large manual board refreshes with an in-app modal that matches the dashboard surface, keeps the same public/token REST warning thresholds, and preserves the serial refresh/rate-limit stop behavior.
+- Added copy coverage to prevent `window.confirm` from returning for refresh batch warnings.
+- Browser smoke at `http://127.0.0.1:5173/#board` seeded six stale active cards, opened `Refresh stale cards`, verified the app modal copy/actions, cancelled it, and saved `qa_screenshots/refresh-confirm-dialog.png`.
+- Verification on 2026-05-22: full final gates were rerun after this modal change. `npm test` passed 133/133, `npm run build` passed, `npm run test:layout` passed 7/7, and `git diff --check` passed.
+- Remaining risk: the modal was validated in Chromium with mocked local board data. Live GitHub request failures still depend on GitHub response headers and current rate-limit state.

@@ -9,7 +9,8 @@ const screenshotDir = 'D:/PR Dashboard/qa_screenshots/board-layout-a1';
 const viewports = [
   { width: 390, height: 844, file: 'board-a1-390x844.png', mobile: true },
   { width: 375, height: 667, file: 'board-a1-375x667.png', mobile: true },
-  { width: 1366, height: 768, file: 'board-a1-1366x768.png', mobile: false },
+  { width: 1090, height: 1212, file: 'board-a1-1090x1212.png', expectedColumns: 2 },
+  { width: 1366, height: 768, file: 'board-a1-1366x768.png', expectedColumns: 3 },
   { width: 1920, height: 1080, file: 'board-a1-1920x1080.png', mobile: false },
   { width: 3440, height: 1440, file: 'board-a1-3440x1440.png', mobile: false }
 ];
@@ -34,7 +35,10 @@ function card(id, column, index, overrides = {}) {
 
 function seededBoard() {
   return {
-    Considering: Array.from({ length: 5 }, (_, index) => card(1000 + index, 'Considering', index + 1)),
+    Considering: Array.from({ length: 5 }, (_, index) => card(1000 + index, 'Considering', index + 1, index === 0 ? {
+      title: '[Bounty $5k] [CLI] Validate logs tail is non-negative - logs arguments',
+      repository: { full_name: 'ORCHESTRATION-AGENT/AGENTORCHESTRATOR', name: 'AGENTORCHESTRATOR' }
+    } : {})),
     'Read Docs': Array.from({ length: 4 }, (_, index) => card(1100 + index, 'Read Docs', index + 1)),
     'Asked Maintainer': Array.from({ length: 6 }, (_, index) => card(1200 + index, 'Asked Maintainer', index + 1, index === 0 ? {
       github_activity: {
@@ -47,6 +51,21 @@ function seededBoard() {
     'PR Open': Array.from({ length: 3 }, (_, index) => card(1400 + index, 'PR Open', index + 1)),
     Merged: Array.from({ length: 2 }, (_, index) => card(1500 + index, 'Merged', index + 1)),
     Passed: Array.from({ length: 2 }, (_, index) => card(1600 + index, 'Passed', index + 1, { state: 'closed' }))
+  };
+}
+
+function seededCrowdedBoard() {
+  return {
+    Considering: Array.from({ length: 35 }, (_, index) => card(2000 + index, 'Considering', index + 1, index === 0 ? {
+      title: '[Bounty $5k] [CLI] Validate logs tail is non-negative - logs arguments',
+      repository: { full_name: 'ORCHESTRATION-AGENT/AGENTORCHESTRATOR', name: 'AGENTORCHESTRATOR' }
+    } : {})),
+    'Read Docs': [],
+    'Asked Maintainer': [],
+    Working: [],
+    'PR Open': [],
+    Merged: [],
+    Passed: []
   };
 }
 
@@ -82,6 +101,8 @@ test.describe('A1 board layout', () => {
         const bodyRect = body.getBoundingClientRect();
         const firstLaneRect = firstLane.getBoundingClientRect();
         const secondLaneRect = secondLane.getBoundingClientRect();
+        const firstCard = document.querySelector('.board-active-grid .kanban-card');
+        const firstCardRect = firstCard.getBoundingClientRect();
         return {
           scrollWidth: doc.scrollWidth,
           clientWidth: doc.clientWidth,
@@ -98,6 +119,17 @@ test.describe('A1 board layout', () => {
           completedHeight: completedRect.height,
           firstLaneTop: firstLaneRect.top,
           secondLaneTop: secondLaneRect.top,
+          firstCardWidth: firstCardRect.width,
+          horizontalOverflowItems: Array.from(document.querySelectorAll(
+            '.board-lane-cards-container, .kanban-column, .kanban-card'
+          ))
+            .filter(element => element.scrollWidth > element.clientWidth + 1)
+            .map(element => ({
+              className: element.className,
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth,
+              text: element.textContent.trim().slice(0, 80)
+            })),
           activeGridColumns: getComputedStyle(activeGrid).gridTemplateColumns.split(' ').filter(Boolean).length,
           viewportWidth: window.innerWidth
         };
@@ -105,11 +137,18 @@ test.describe('A1 board layout', () => {
 
       expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
       expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.bodyClientWidth + 1);
+      expect(metrics.horizontalOverflowItems).toEqual([]);
       expect(metrics.completedTop).toBeGreaterThan(metrics.activeTop);
 
       if (viewport.mobile) {
         expect(metrics.secondLaneTop).toBeGreaterThan(metrics.firstLaneTop);
         expect(metrics.activeGridColumns).toBe(1);
+      } else if (viewport.expectedColumns) {
+        expect(metrics.activeGridColumns).toBe(viewport.expectedColumns);
+        expect(metrics.secondLaneTop).toBe(metrics.firstLaneTop);
+        expect(metrics.activeHeight).toBeGreaterThan(metrics.completedHeight);
+        expect(metrics.activeWidth).toBeGreaterThan(metrics.boardBodyWidth * 0.9);
+        expect(metrics.firstCardWidth).toBeGreaterThanOrEqual(280);
       } else {
         expect(metrics.activeGridColumns).toBe(5);
         expect(metrics.activeHeight).toBeGreaterThan(metrics.completedHeight);
@@ -121,4 +160,37 @@ test.describe('A1 board layout', () => {
       await page.screenshot({ path: path.join(screenshotDir, viewport.file), fullPage: false });
     });
   }
+
+  test('crowded lane scrolls vertically without horizontal overflow at narrow desktop', async ({ page }) => {
+    await fs.mkdir(screenshotDir, { recursive: true });
+    await page.setViewportSize({ width: 1090, height: 1212 });
+    await page.addInitScript((board) => {
+      localStorage.clear();
+      localStorage.setItem('pr_dashboard_board_cards', JSON.stringify(board));
+    }, seededCrowdedBoard());
+    await page.goto(`${baseURL}/#board`);
+
+    const metrics = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const lane = document.querySelector('.board-lane-cards-container[data-lane="Considering"]');
+      lane.scrollTop = 240;
+      const activeGrid = document.querySelector('.board-active-grid');
+      return {
+        documentHorizontalOverflow: doc.scrollWidth > doc.clientWidth + 1,
+        laneClientHeight: lane.clientHeight,
+        laneScrollHeight: lane.scrollHeight,
+        laneScrollTop: lane.scrollTop,
+        laneHorizontalOverflow: lane.scrollWidth > lane.clientWidth + 1,
+        activeGridColumns: getComputedStyle(activeGrid).gridTemplateColumns.split(' ').filter(Boolean).length
+      };
+    });
+
+    expect(metrics.activeGridColumns).toBe(2);
+    expect(metrics.documentHorizontalOverflow).toBe(false);
+    expect(metrics.laneHorizontalOverflow).toBe(false);
+    expect(metrics.laneScrollHeight).toBeGreaterThan(metrics.laneClientHeight);
+    expect(metrics.laneScrollTop).toBeGreaterThan(0);
+
+    await page.screenshot({ path: path.join(screenshotDir, 'board-a1-1090x1212-crowded.png'), fullPage: false });
+  });
 });
