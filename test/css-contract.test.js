@@ -9,3 +9,19 @@ test('dark mode select options have explicit readable colors', async () => {
   assert.match(css, /background-color:\s*var\(--surface-container\)/);
   assert.match(css, /color:\s*var\(--on-surface\)/);
 });
+
+test('reusable interaction and metric classes are defined in CSS', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  for (const className of [
+    'interactive-card',
+    'interactive-row',
+    'action-button',
+    'metric-card',
+    'metric-progress-fill',
+    'review-flow-chip',
+    'review-flow-segment'
+  ]) {
+    assert.match(css, new RegExp(`\\.${className}\\b`));
+  }
+});

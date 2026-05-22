@@ -100,31 +100,23 @@
 - Verification: hidden manager tests were written first and failed for the missing list/unhide helpers and Settings copy. After implementation, `npm test` passed 65/65 and `npm run build` passed.
 - Known limitation: hidden rows show compact keys rather than issue titles by design, because the hidden storage intentionally avoids storing or fetching full issue data.
 
-## 2026-05-21 Repository Docs Polish
+## 2026-05-21 Interaction Polish + Dashboard Metrics
 
-- Replaced the placeholder README with a polished project overview, badges, screenshot, feature summary, local setup commands, data-handling notes, and license summary.
-- Kept the project under MIT while updating the copyright line to credit `Statusnone420 and contributors`.
-- Updated `docs/SECURITY.md` to document hidden-results storage under `pr_dashboard_hidden_v1`, including compact key/timestamp storage and the absence of titles, bodies, labels, repo metadata, API responses, Authorization headers, or tokens.
-- Added `LICENSE` to the LF line-ending rules in `.gitattributes`.
-- Files touched: `README.md`, `LICENSE`, `docs/SECURITY.md`, `.gitattributes`, and `STATE.md`.
+- Added reusable Tailwind component-layer interaction classes in `src/styles.css` for interactive cards, rows, buttons, chips, action toolbars, and metric/progress components.
+- Replaced the confusing no-results `Relax Filters` action with `Broaden Search`. It now clears contribution filters, keeps the typed query text, and immediately reruns the current search.
+- Polished Find Contributions cards, Dashboard saved rows, Board cards, Hidden Results rows, Settings cards, filter chips, presets, mode tabs, inspector actions, and danger-zone buttons with restrained hover/focus/active states.
+- Fixed inspector/card action button wrapping with `action-button` and no-wrap behavior so labels such as `Save anyway?`, `Saved to board`, `Hide issue`, `Hide repo`, and `Open on GitHub` stay on one line while toolbars can wrap.
+- Upgraded Dashboard metric cards using only local app data: Saved Issues, Active Review, Resolved / Passed, Hidden Results, and Board Momentum with lightweight CSS progress bars.
+- Files touched: `src/styles.css`, `src/searchInteractions.js`, `src/main.js`, `test/css-contract.test.js`, `test/search-interactions.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: tests were written first and failed for missing CSS classes, old Relax Filters behavior/copy, and missing dashboard metric copy. After implementation, `npm test` passed 69/69 and `npm run build` passed.
+- Known limitation: dashboard metrics are local board/storage summaries only; they do not infer team velocity, PR activity, or remote GitHub state beyond data already saved/hydrated in the app.
 
-## 2026-05-21 Dashboard Hidden Results Regression
+## 2026-05-21 Board Momentum Purpose Follow-up
 
-- Fixed a dashboard regression where hidden issues/repos were still visible in the Dashboard `Saved Issues` preview.
-- Dashboard saved preview and resume hero now use the same hidden issue/repo filtering as search results, without deleting saved board cards.
-- Added regression coverage in `test/dashboard-hero.test.js` for hidden saved preview cards and hidden resume recommendations.
-- Verification: `node --test test/dashboard-hero.test.js` passed 9/9, `npm test` passed 68/68, and `npm run build` passed.
-
-## 2026-05-21 Saved Board Toggle Regression
-
-- Fixed saved issue actions so clicking a saved result card action or inspector `Remove from board` removes that issue from the local board instead of entering the risky `Save anyway?` confirmation path.
-- Saved result cards now show `Remove`; saved inspector actions now show `Remove from board`.
-- Added UI copy coverage for the remove-from-board action.
-- Verification: `node --test test/ui-copy.test.js` passed 4/4, `npm test` passed 69/69, and `npm run build` passed.
-
-## 2026-05-21 Hide Also Unsaves
-
-- Changed hide behavior so hiding an issue removes that exact issue from the saved board, and hiding a repo removes saved board cards from that repository.
-- Hidden storage remains compact key/timestamp data; the unsave step updates only local board storage.
-- Added store persistence regression tests for hide-issue and hide-repo board cleanup.
-- Verification: `node --test test/store-persistence.test.js` passed 6/6, `npm test` passed 71/71, and `npm run build` passed.
+- Kept all five Dashboard metric cards visible when the board is empty; no metric cards are removed or hidden in the empty state.
+- Kept the `Board Momentum` card label and visual shell, but changed its populated-state content to show only non-zero board lanes, a dominant-lane headline such as `1 in Considering`, and a short next-move line.
+- Added hover/focus feedback inside Board Momentum so lane chips highlight their matching progress segment and update the next-move line without changing board data.
+- Added `src/dashboardReviewFlow.js` for deterministic local board-lane summaries and tests for empty, single-lane, and dominant-lane cases.
+- Files touched: `src/dashboardReviewFlow.js`, `src/main.js`, `src/styles.css`, `test/dashboard-review-flow.test.js`, `test/css-contract.test.js`, and `STATE.md`.
+- Verification: `npm test` passed 72/72, `npm run build` passed, and `git diff --check` passed.
+- Known limitation: Board Momentum is still a local board summary only; it does not fetch remote PR status or infer team velocity.

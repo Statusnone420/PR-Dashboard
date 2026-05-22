@@ -64,3 +64,18 @@ test('low-noise preset applies quiet filters and runs one explicit search', asyn
   });
   assert.equal(searchCalls, 1);
 });
+
+test('broaden search clears contribution filters instead of swapping labels', async () => {
+  const { getRelaxedFilters } = await import('../src/searchInteractions.js');
+
+  assert.deepEqual(getRelaxedFilters(), {
+    languages: [],
+    labels: [],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    includeClosed: false,
+    unassigned: false
+  });
+});
