@@ -7,6 +7,8 @@ import {
 } from '../boardModel.js';
 import {
   clearHiddenItems as clearHiddenItemsFromStorage,
+  getIssueHideKey,
+  getRepoHideKey,
   hideIssue as hideIssueInStorage,
   hideRepo as hideRepoInStorage,
   unhideHiddenItem as unhideHiddenItemFromStorage
@@ -137,7 +139,14 @@ export class AppStore {
   }
 
   hideIssue(issue) {
+    const hiddenIssueKey = getIssueHideKey(issue);
     hideIssueInStorage(issue, localStorage);
+    if (hiddenIssueKey) {
+      for (const column of Object.keys(this.boardCards)) {
+        this.boardCards[column] = this.boardCards[column].filter(card => getIssueHideKey(card) !== hiddenIssueKey);
+      }
+      this.saveBoardToStorage();
+    }
     if (this.inspectedIssue && this.inspectedIssue.id === issue?.id) {
       this.inspectedIssue = null;
     }
@@ -145,7 +154,14 @@ export class AppStore {
   }
 
   hideRepo(issue) {
+    const hiddenRepoKey = getRepoHideKey(issue);
     hideRepoInStorage(issue, localStorage);
+    if (hiddenRepoKey) {
+      for (const column of Object.keys(this.boardCards)) {
+        this.boardCards[column] = this.boardCards[column].filter(card => getRepoHideKey(card) !== hiddenRepoKey);
+      }
+      this.saveBoardToStorage();
+    }
     this.inspectedIssue = null;
     this.notify();
   }

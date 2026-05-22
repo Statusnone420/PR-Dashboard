@@ -121,3 +121,10 @@
 - Saved result cards now show `Remove`; saved inspector actions now show `Remove from board`.
 - Added UI copy coverage for the remove-from-board action.
 - Verification: `node --test test/ui-copy.test.js` passed 4/4, `npm test` passed 69/69, and `npm run build` passed.
+
+## 2026-05-21 Hide Also Unsaves
+
+- Changed hide behavior so hiding an issue removes that exact issue from the saved board, and hiding a repo removes saved board cards from that repository.
+- Hidden storage remains compact key/timestamp data; the unsave step updates only local board storage.
+- Added store persistence regression tests for hide-issue and hide-repo board cleanup.
+- Verification: `node --test test/store-persistence.test.js` passed 6/6, `npm test` passed 71/71, and `npm run build` passed.
