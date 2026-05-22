@@ -1,4 +1,8 @@
-export const BOARD_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open', 'Merged', 'Passed'];
+import { getCanonicalIssueKey } from './issueKeys.js';
+import { buildGitHubActivity, buildUnchangedGitHubActivity } from './githubActivity.js';
+import { BOARD_COLUMNS } from './boardConstants.js';
+
+export { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
 
 export const BOARD_STORAGE_KEY = 'pr_dashboard_board_cards';
 export const BOARD_MIGRATION_KEY = 'pr_dashboard_board_migration_v1';
@@ -71,6 +75,8 @@ export function migrateActionPlanChecklist(checklist) {
 }
 
 export function getIssueSignature(issue) {
+  const canonical = getCanonicalIssueKey(issue);
+  if (canonical) return canonical;
   const repo = issue?.repository?.full_name || '';
   const number = issue?.number || '';
   return `${repo}#${number}`;
@@ -83,6 +89,7 @@ export function isSeededMockCard(card) {
 export function normalizeBoardCards(boardData) {
   const board = createEmptyBoard();
   let migratedCount = 0;
+  const fallbackTimestamp = new Date().toISOString();
 
   if (!boardData || typeof boardData !== 'object') {
     return { board, migratedCount };
@@ -95,8 +102,11 @@ export function normalizeBoardCards(boardData) {
         migratedCount += 1;
         continue;
       }
+      const localTimestamp = card.column_entered_at || card.last_moved_at || card.saved_at || card.last_refreshed_at || card.updated_at || fallbackTimestamp;
       board[column].push({
         ...card,
+        last_moved_at: card.last_moved_at || localTimestamp,
+        column_entered_at: card.column_entered_at || localTimestamp,
         checklist: migrateActionPlanChecklist(card.checklist)
       });
     }
@@ -129,9 +139,11 @@ export function isClosedIssue(issue) {
   return String(issue?.state || '').toLowerCase() === 'closed';
 }
 
-export function mergeIssueMetadata(savedCard, apiIssue) {
+export function mergeIssueMetadata(savedCard, apiIssue, options = {}) {
+  const { refresh_error: _refreshError, ...localCard } = savedCard;
+  const now = options.now || new Date().toISOString();
   return {
-    ...savedCard,
+    ...localCard,
     id: apiIssue.id ?? savedCard.id,
     number: apiIssue.number ?? savedCard.number,
     title: apiIssue.title ?? savedCard.title,
@@ -149,6 +161,23 @@ export function mergeIssueMetadata(savedCard, apiIssue) {
       ...(savedCard.repository || {}),
       ...(apiIssue.repository || {})
     },
-    last_refreshed_at: new Date().toISOString()
+    last_refreshed_at: now,
+    github_activity: buildGitHubActivity(savedCard, apiIssue, {
+      now,
+      etag: options.etag
+    })
+  };
+}
+
+export function markIssueMetadataUnchanged(savedCard, options = {}) {
+  const { refresh_error: _refreshError, ...localCard } = savedCard;
+  const now = options.now || new Date().toISOString();
+  return {
+    ...localCard,
+    last_refreshed_at: now,
+    github_activity: buildUnchangedGitHubActivity(savedCard, {
+      now,
+      etag: options.etag
+    })
   };
 }

@@ -36,6 +36,25 @@ export function isGitHubApiUrl(value) {
   }
 }
 
+export function getSafeGitHubAvatarUrl(value) {
+  try {
+    const url = new URL(String(value ?? ''));
+    if (url.protocol !== 'https:' || url.hostname !== 'avatars.githubusercontent.com') return null;
+    if (url.username || url.password || url.hash) return null;
+    if (!url.pathname || url.pathname === '/') return null;
+
+    for (const [key, paramValue] of url.searchParams.entries()) {
+      if (!['v', 's'].includes(key) || !/^\d+$/.test(paramValue)) {
+        return null;
+      }
+    }
+
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 function isSafeGitHubIssueUrl(value) {
   try {
     const url = new URL(String(value ?? ''));

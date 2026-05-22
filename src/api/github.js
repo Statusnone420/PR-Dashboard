@@ -172,6 +172,17 @@ export function createGitHubRequestOptions(url, token = '', init = {}) {
   };
 }
 
+export class GitHubRefreshRateLimitError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'GitHubRefreshRateLimitError';
+    this.isRateLimit = true;
+    this.status = details.status ?? null;
+    this.rateLimit = details.rateLimit || { remaining: null, limit: null, reset: null };
+    this.retryAfter = details.retryAfter ?? null;
+  }
+}
+
 function getIssueApiUrl(issue) {
   const number = Number.parseInt(issue?.number, 10);
   const fullName = issue?.repository?.full_name;
@@ -195,29 +206,73 @@ function getIssueApiUrl(issue) {
   return null;
 }
 
-export async function fetchIssueMetadata(issue) {
+function retryAfterFromResponse(response) {
+  const retryAfter = response.headers.get('retry-after');
+  const number = retryAfter ? parseInt(retryAfter, 10) : null;
+  return Number.isFinite(number) ? number : null;
+}
+
+function isRefreshRateLimitResponse(response, errorData, rateLimit) {
+  if (response.status === 429) return true;
+  if (response.status !== 403) return false;
+
+  const message = String(errorData?.message || '').toLowerCase();
+  return rateLimit.remaining === 0
+    || Boolean(response.headers.get('retry-after'))
+    || message.includes('rate limit')
+    || message.includes('abuse detection');
+}
+
+export async function fetchIssueMetadataForRefresh(issue, options = {}) {
   const url = getIssueApiUrl(issue);
   if (!url) {
     throw new Error('Cannot refresh issue metadata because the saved card does not have a valid GitHub issue URL.');
   }
 
-  const response = await fetch(url, createGitHubRequestOptions(url, store.githubToken));
+  const etag = options.etag || issue?.github_activity?.etag || '';
+  const headers = etag ? { 'If-None-Match': etag } : {};
+  const token = options.token ?? store.githubToken;
+  const fetchImpl = options.fetchImpl || fetch;
+  const response = await fetchImpl(url, createGitHubRequestOptions(url, token, { headers }));
 
-  const remaining = response.headers.get('x-ratelimit-remaining');
-  const limit = response.headers.get('x-ratelimit-limit');
-  const reset = response.headers.get('x-ratelimit-reset');
-  store.setRateLimit({
-    remaining: remaining ? parseInt(remaining, 10) : null,
-    limit: limit ? parseInt(limit, 10) : null,
-    reset: reset ? parseInt(reset, 10) : null
-  });
+  const rateLimit = rateLimitFromResponse(response);
+  store.setRateLimit(rateLimit);
+  const responseEtag = response.headers.get('etag') || etag || '';
+
+  if (response.status === 304) {
+    return {
+      notModified: true,
+      issue: null,
+      etag: responseEtag,
+      rateLimit,
+      retryAfter: retryAfterFromResponse(response)
+    };
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    if (isRefreshRateLimitResponse(response, errorData, rateLimit)) {
+      throw new GitHubRefreshRateLimitError(errorData.message || 'GitHub API rate limit reached.', {
+        status: response.status,
+        rateLimit,
+        retryAfter: retryAfterFromResponse(response)
+      });
+    }
     throw new Error(errorData.message || `GitHub issue refresh failed with status code ${response.status}`);
   }
 
-  return response.json();
+  return {
+    notModified: false,
+    issue: normalizeGitHubIssue(await response.json()),
+    etag: responseEtag,
+    rateLimit,
+    retryAfter: retryAfterFromResponse(response)
+  };
+}
+
+export async function fetchIssueMetadata(issue) {
+  const result = await fetchIssueMetadataForRefresh(issue);
+  return result.notModified ? normalizeGitHubIssue(issue) : result.issue;
 }
 
 function rateLimitFromResponse(response) {

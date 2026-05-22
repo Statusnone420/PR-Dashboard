@@ -121,15 +121,6 @@
 - Verification: `npm test` passed 72/72, `npm run build` passed, and `git diff --check` passed.
 - Known limitation: Board Momentum is still a local board summary only; it does not fetch remote PR status or infer team velocity.
 
-## 2026-05-21 Dashboard Active Review Count Fix
-
-- Fixed the Dashboard `Active Review` metric so closed saved issues sitting in active lanes no longer count as active review work.
-- Added `src/dashboardMetrics.js` to centralize local Dashboard metric summaries. `Active Review` now requires an active lane and an open issue; `Resolved / Passed` still counts `Merged`, `Passed`, and closed issues.
-- Added regression coverage for a closed issue in `Considering` so it is excluded from `Active Review` and included in `Resolved / Passed`.
-- Files touched: `src/dashboardMetrics.js`, `src/main.js`, `test/dashboard-metrics.test.js`, and `STATE.md`.
-- Verification: focused metric test failed before the helper existed, then passed after implementation. Final `npm test`, `npm run build`, and `git diff --check` passed.
-- Visual check: ran isolated Playwright screenshots against a temporary Vite server on `127.0.0.1:4173` for empty board, one open saved issue, and one closed issue in `Considering`. All three states kept the five metric cards visible; the closed issue case showed `Active Review` as 0 and `Resolved / Passed` as 1. The temporary server was stopped after verification.
-
 ## 2026-05-22 Score Gate + Action Plan Scroll Fix
 
 - Tightened Match Score so generic issue quality signals cannot stack into a fake perfect score. Scores without strong contribution-fit evidence are capped at `90`, and broad actionable bugs without a strong contribution label are capped below perfect.
@@ -149,3 +140,106 @@
 - Tightened the README wording to focus on the concrete workflow: discovery, fit evaluation, local verification, CI, review feedback, and merge.
 - Verification: checked the public GitHub issue/PR pages for `TEAMMATES/teammates#13997` and merged PR `#13998`, then ran `git diff --check`.
 - Remaining risk: the linked GitHub issue and PR pages are live public pages, so labels, counts, or surrounding GitHub metadata can change over time.
+
+## 2026-05-22 Local Proof Log + Recovery Pass
+
+- Added canonical issue keys, local Proof Log storage, local profile metadata, local alerts, and local export/import helpers.
+- Saved items no longer disappear when hidden or clicked while already saved; hide only suppresses future discovery results, and explicit board delete remains the removal path.
+- Exact Lookup accepts GitHub pull request URLs, bypasses hidden filtering, and shows `Hidden locally`; Proof Log creation now requires saving to the board and moving the card to `Merged` as described in the board-only cleanup below.
+- Board cards now get local movement timestamps, and moving to `Merged` through either move path creates local `marked_complete` proof history.
+- Replaced the board's fixed horizontal row with a responsive wrapping grid and added a real `#profile` route plus an enabled local-alert bell.
+- Export Local Data includes board, hidden keys, profile metadata, and Proof Log entries while excluding tokens and repo metadata cache.
+- Files touched include `src/issueKeys.js`, `src/proofLog.js`, `src/profile.js`, `src/localAlerts.js`, `src/localData.js`, `src/state/store.js`, `src/main.js`, `src/styles.css`, `src/lookup.js`, docs, and focused tests.
+- Verification: new tests were written first and failed before implementation. Final `npm test` passed 108/108, `npm run build` passed, and Browser smoke at `http://127.0.0.1:4173/` verified dashboard load, profile route, local alerts popover, responsive board grid without horizontal overflow, exact Lookup for `TEAMMATES/teammates#13998`, hide recovery, profile proof visibility, and mobile `390x844` profile/board overflow checks with no console warnings/errors.
+- Known limitations: Proof Log entries are local completion records, not remote merge verification. Export/import is the v1 multi-device bridge; automatic sync still requires a backend or user-managed sync layer later.
+
+## 2026-05-22 v1 Local-First Hardening
+
+- Direction confirmed: do not implement GitHub OAuth, backend sync, encrypted sync, GitHub App auth, database storage, or remote avatar rendering in this pass.
+- v1 remains local-first. Export/Import Local Data is the current phone/desktop bridge; GitHub auth and encrypted sync are deferred to a later backend-sync project.
+- Hardened regression coverage so Clear Board preserves Proof Log history, Clear All removes token, remember-token, board, migration, proof, profile, hidden, and repository metadata cache keys, and Import ignores token/repo metadata cache fields in hand-edited payloads.
+- Documentation now states that GitHub tokens are never exported and repository metadata cache is excluded from exported local data.
+- Verification on 2026-05-22: `npm test` passed 98/98 after the hardening coverage was added, and `npm run build` passed. A built-preview Playwright smoke verified dashboard and profile Proof Log history, exact Lookup recovery for a hidden item, and no horizontal board overflow at `1366x768` or `390x844`, with no console warnings/errors.
+- Remaining risk: v1 cross-device movement is manual export/import only. Live GitHub data and public API rate limits can still vary over time, and no real PAT was used during this pass.
+
+## 2026-05-22 Proof Log Board-Only + Profile Avatar Cleanup
+
+- Removed manual Proof Log creation from result cards and the inspector. Proof Log creation now comes from board cards entering `Merged` through `moveBoardCard()`, `moveCardToColumn()`, or startup backfill of existing `Merged` cards.
+- Result card actions are now Inspect, Save/View on board, Hide, Unhide when hidden, and GitHub. The inspector shows a non-interactive `In Proof Log` / `Not in Proof Log` status chip.
+- Kept legacy `manual_lookup` entries loadable/importable as local history; no v1 UI creates new manual proof entries.
+- Extended profile storage with whitelisted `github_id` and safe `avatar_url` fields from the existing Settings Test Connection response.
+- Added strict avatar URL validation for `https://avatars.githubusercontent.com/...` with digit-only `v` and `s` query params. Header/Profile render safe avatars with no-referrer/lazy/async attributes and initials fallback.
+- Docs now state that Exact Lookup does not directly create Proof Log entries and that GitHub avatar images are loaded without tokens in image URLs or image requests.
+- Verification on 2026-05-22: `npm test` passed 100/100, `npm run build` passed, `git diff --check` passed, and a built-preview Playwright smoke verified mocked Test Connection avatar storage/rendering, export token exclusion, inspector status-only proof chip, board-to-`Merged` Proof Log creation, Profile removal, and no console warnings/errors.
+
+## 2026-05-22 Product Copy + Inspector Cleanup Sweep
+
+- Used `$impeccable` product-register guidance for the copy sweep because this repo still has no `PRODUCT.md` or `DESIGN.md`.
+- Removed the inspector Proof Log status chip/state entirely. The inspector Action center now renders only Save/Saved to board, Hide issue, Hide repo, Unhide when hidden, and Open on GitHub.
+- Kept Proof Log creation on the Board Merged path and Proof Log display/removal on Dashboard/Profile. Legacy `manual_lookup` entries remain loadable/importable, but no manual lookup Proof Log UI path was added.
+- Renamed visible local alert copy to `Review reminders` in the header bell, popover, Profile metric/card, empty state, and helper text.
+- Tightened visible product copy across Dashboard, Board, Profile, Settings, export/import, danger-zone, Lookup recovery, and Find Contributions surfaces with the preferred vocabulary from the plan.
+- Aligned current README and data-model docs with `Review reminders`, `Proof Log`, `Board`, and `GitHub token` vocabulary where they describe user-facing product behavior.
+- Added copy contract coverage for banned visible phrases in `index.html` and `src/main.js`, inspector/result-card Proof Log control exclusions, `Review reminders` copy, and the extra banned terms `beautiful thing`, `magic`, standalone `wins`, and standalone `momentum`.
+- Browser smoke at `http://127.0.0.1:5173/` saved a Lookup result, confirmed the inspector had no Proof Log chip/status/action, moved the card to `Merged`, confirmed Dashboard/Profile Proof Log visibility, removed the Profile entry, re-opened the inspector with no Proof Log state, verified the bell popover says `Review reminders`, and found no console warnings/errors.
+- Verification on 2026-05-22: `npm test` passed 102/102, `npm run build` passed, and `git diff --check` passed.
+- Remaining risk: live GitHub Lookup data and public API rate limits can vary over time. This pass intentionally added no OAuth, backend sync, encrypted sync, issue-card avatars, new storage keys, or new product surfaces.
+
+## 2026-05-22 README Badge Polish
+
+- Added Tailwind CSS and Live on Vercel badges to the README badge row, keeping the existing compact Shields style.
+- Verification: badge image URLs and the live Vercel URL returned `200`, and `git diff --check` passed.
+
+## 2026-05-22 GitHub Activity Refresh + Review Reminders
+
+- Added local GitHub activity comparison metadata on board cards, including ETag-aware refresh state, comment deltas, state/assignee/label changes, and cleanup for stale activity summaries after no-change refreshes.
+- Reworked saved-card refresh into manual `Refresh this card` and `Refresh active board` paths. Active-board refresh only covers `Considering`, `Read Docs`, `Asked Maintainer`, `Working`, and `PR Open`; `Merged` and `Passed` are excluded by default.
+- Refresh requests use direct GitHub issue endpoints, send `If-None-Match` when available, handle `304 Not Modified`, run active-board batches serially, warn for no-token public batches above 5 requests, and stop on rate-limit errors.
+- Review reminders now include `New GitHub activity` above stale-refresh reminders, and board/inspector cards show a restrained local activity status line when new activity exists.
+- Verification on 2026-05-22: new tests were written first and failed before implementation. Final `npm test` passed 118/118, `npm run build` passed, and a built-preview mocked Playwright smoke at `http://127.0.0.1:4173/` verified Lookup save, `Refresh this card`, card/inspector activity summaries, Review reminders, board-to-`Merged` Proof Log behavior, active-board request count, `Merged` exclusion, serial active-board refresh with max concurrency 1, and no console warnings/errors. The Browser plugin could verify the app shell but could not seed/mock page `localStorage`, so the deterministic API smoke used the repo Playwright dependency.
+- Remaining risk: live GitHub issue metadata and public API limits can vary. No real PAT was used; token behavior was covered by request/header tests and mocked browser traffic.
+
+## 2026-05-22 Refresh Throttle + Mark Reviewed + A1 Board Layout
+
+- Replaced board-wide default refresh with `Refresh stale cards`, selecting only stale active-lane cards and capping the primary batch at 10 requests. `Refresh all active cards` remains available as a secondary serial action with public/token confirmation thresholds.
+- Centralized board lane, refresh threshold, stale-age, and A1 layout-width constants in `src/boardConstants.js`.
+- Added per-card `Mark reviewed` for GitHub activity reminders. It only stamps `github_activity.acknowledged_at`, preserves the activity summary, and suppresses reminders/status lines only when `acknowledged_at >= last_checked_at`.
+- Hardened local import collisions so the newer `github_activity.last_checked_at` wins and stale acknowledgements cannot hide newer activity.
+- Reworked the Board into A1: `Active workflow` lanes first, always-visible compact `Completed` lanes below, centered under a max-width board shell. Added a separate `npm run test:layout` Playwright smoke that saves five viewport screenshots under `qa_screenshots/board-layout-a1/`.
+- README, Security notes, and Settings copy now clarify that Find Contributions uses GitHub Search limits while Lookup and saved-card refresh use REST/core limits.
+- Verification on 2026-05-22: `npm test` passed 127/127, `npm run build` passed, `git diff --check` passed, and `npm run test:layout` passed 5/5 across `390x844`, `375x667`, `1366x768`, `1920x1080`, and `3440x1440`, with screenshots written to `qa_screenshots/board-layout-a1/`. The in-app browser also opened `http://127.0.0.1:5173/#board` and confirmed Active workflow, Completed, both refresh labels, and no document horizontal overflow.
+- Remaining risk: browser smoke uses mocked local board data and a built preview, not live GitHub responses or a real PAT. Live API limits and issue metadata can still vary.
+
+## 2026-05-22 Pre-Merge Cleanup
+
+- Fixed inspector checklist persistence so `toggleTaskChecklist()` searches every board column, not only `Working`, then updates the matching board card, saves board storage, and keeps the inspected issue in sync.
+- Changed local data import to merge durable collections instead of overwriting them: hidden items now union by key with newest timestamp winning, Proof Log entries merge by key while preserving earliest completion/creation dates and keeping newest updated content, and profile import keeps the newer `saved_at`.
+- Import now returns the retained merged profile/hidden/proof data, and the import UI uses the merged profile result instead of assigning from the raw imported payload.
+- Board-card import behavior, GitHub activity acknowledgement collision handling, Refresh Throttle, Mark Reviewed, and A1 Board layout behavior were left unchanged.
+- Verification on 2026-05-22: regression tests were written first and failed for the old behavior; after the fix, `npm test` passed 131/131, `npm run build` passed, and `npm run test:layout` passed 5/5 across the required A1 viewports.
+- Remaining risk: export/import is still a local manual bridge. Conflict resolution is timestamp-based and does not attempt remote sync, OAuth identity reconciliation, or cross-device locking.
+
+## 2026-05-22 Narrow Desktop Board Layout Hardening
+
+- Fixed the awkward middle-width board layout where the sidebar plus five active lanes made cards unreadably narrow and exposed horizontal lane scrollbars.
+- Added a `1090x1212` A1 layout smoke case matching the narrow-desktop/tablet-landscape band. Active workflow now prioritizes readable lane width: two columns at that cramped width, three around small desktop widths, and five only when the content pane is wide enough.
+- Hardened board cards and lane containers against horizontal overflow while allowing long repository names and issue titles to wrap. Compact card controls and issue numbers stay intact.
+- Added a crowded-lane smoke case with 35 cards in one active lane at `1090x1212`, proving the lane scrolls vertically without horizontal overflow.
+- Verification on 2026-05-22: `npm run test:layout` passed 7/7, including `board-a1-1090x1212.png` and `board-a1-1090x1212-crowded.png`.
+- Remaining risk: responsive checks cover Chromium and the specified smoke widths. Very unusual browser zoom or OS text scaling could still affect wrapping density.
+
+## 2026-05-22 Passed vs Proof Log Boundary
+
+- Clarified the local completion boundary in code: `Merged` remains the only board move that creates a Proof Log entry, while `Passed` means inactive/not pursuing and must not preserve a matching proof record.
+- Moving a board card to `Passed` now removes any matching Proof Log entry for that issue/PR. This covers the closed-card `Move to Passed` path after a GitHub refresh reports a card closed/completed.
+- Added regression coverage proving a matching proof entry is cleared when the card moves to `Passed`.
+- Verification on 2026-05-22: the new regression test failed against the old behavior, then passed after the store fix. Final gates also passed: `npm test` passed 132/132, `npm run build` passed, `npm run test:layout` passed 7/7, and `git diff --check` passed.
+- Remaining risk: this intentionally removes local proof for a card moved to `Passed`; users should keep true completed work in `Merged`.
+
+## 2026-05-22 Refresh Confirmation Modal
+
+- Replaced the native browser confirmation for large manual board refreshes with an in-app modal that matches the dashboard surface, keeps the same public/token REST warning thresholds, and preserves the serial refresh/rate-limit stop behavior.
+- Added copy coverage to prevent `window.confirm` from returning for refresh batch warnings.
+- Browser smoke at `http://127.0.0.1:5173/#board` seeded six stale active cards, opened `Refresh stale cards`, verified the app modal copy/actions, cancelled it, and saved `qa_screenshots/refresh-confirm-dialog.png`.
+- Verification on 2026-05-22: full final gates were rerun after this modal change. `npm test` passed 133/133, `npm run build` passed, `npm run test:layout` passed 7/7, and `git diff --check` passed.
+- Remaining risk: the modal was validated in Chromium with mocked local board data. Live GitHub request failures still depend on GitHub response headers and current rate-limit state.

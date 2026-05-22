@@ -1,18 +1,27 @@
 import {
+  BOARD_COLUMNS,
   BOARD_MIGRATION_KEY,
   BOARD_STORAGE_KEY,
   createDefaultActionPlan,
   createEmptyBoard,
   loadBoardFromStorage
 } from '../boardModel.js';
+import { REPO_METADATA_CACHE_KEY } from '../api/repoMetadata.js';
 import {
   clearHiddenItems as clearHiddenItemsFromStorage,
-  getIssueHideKey,
-  getRepoHideKey,
   hideIssue as hideIssueInStorage,
   hideRepo as hideRepoInStorage,
   unhideHiddenItem as unhideHiddenItemFromStorage
 } from '../hiddenItems.js';
+import {
+  backfillProofLogFromBoard,
+  clearProofLog,
+  createProofEntryFromIssue,
+  removeProofEntry,
+  upsertProofEntry
+} from '../proofLog.js';
+import { clearProfile, loadProfile, saveProfileFromGitHubUser } from '../profile.js';
+import { getCanonicalIssueKey } from '../issueKeys.js';
 
 export function createDefaultFilters() {
   return {
@@ -49,6 +58,10 @@ export class AppStore {
     // 3. Contribution Board State
     this.boardCards = loadBoardFromStorage(localStorage);
     this.boardRefreshStatus = '';
+    backfillProofLogFromBoard(this.boardCards, localStorage);
+
+    // 3b. Local Profile State
+    this.profile = loadProfile(localStorage);
 
     // 4. Find Issues Search Cache & Parameters
     this.searchQuery = '';
@@ -119,6 +132,8 @@ export class AppStore {
     this.rememberToken = false;
     localStorage.removeItem('pr_dashboard_remember_token');
     localStorage.removeItem('pr_dashboard_token');
+    clearProfile(localStorage);
+    this.profile = null;
     this.notify();
   }
 
@@ -135,18 +150,15 @@ export class AppStore {
     localStorage.removeItem(BOARD_STORAGE_KEY);
     localStorage.removeItem(BOARD_MIGRATION_KEY);
     clearHiddenItemsFromStorage(localStorage);
+    clearProofLog(localStorage);
+    clearProfile(localStorage);
+    localStorage.removeItem(REPO_METADATA_CACHE_KEY);
+    this.profile = null;
     this.notify();
   }
 
   hideIssue(issue) {
-    const hiddenIssueKey = getIssueHideKey(issue);
     hideIssueInStorage(issue, localStorage);
-    if (hiddenIssueKey) {
-      for (const column of Object.keys(this.boardCards)) {
-        this.boardCards[column] = this.boardCards[column].filter(card => getIssueHideKey(card) !== hiddenIssueKey);
-      }
-      this.saveBoardToStorage();
-    }
     if (this.inspectedIssue && this.inspectedIssue.id === issue?.id) {
       this.inspectedIssue = null;
     }
@@ -154,14 +166,7 @@ export class AppStore {
   }
 
   hideRepo(issue) {
-    const hiddenRepoKey = getRepoHideKey(issue);
     hideRepoInStorage(issue, localStorage);
-    if (hiddenRepoKey) {
-      for (const column of Object.keys(this.boardCards)) {
-        this.boardCards[column] = this.boardCards[column].filter(card => getRepoHideKey(card) !== hiddenRepoKey);
-      }
-      this.saveBoardToStorage();
-    }
     this.inspectedIssue = null;
     this.notify();
   }
@@ -171,6 +176,36 @@ export class AppStore {
     this.notify();
   }
 
+  addIssueToProofLog(issue, options = {}) {
+    const entry = createProofEntryFromIssue(issue, options);
+    if (!entry) return null;
+    const saved = upsertProofEntry(entry, localStorage);
+    if (options.notify !== false) {
+      this.notify();
+    }
+    return saved;
+  }
+
+  removeProofLogEntry(key) {
+    removeProofEntry(key, localStorage);
+    this.notify();
+  }
+
+  removeIssueFromProofLog(issue) {
+    const key = getCanonicalIssueKey(issue);
+    if (key) {
+      removeProofEntry(key, localStorage);
+    }
+  }
+
+  updateProfileFromGitHubUser(user, options = {}) {
+    this.profile = saveProfileFromGitHubUser(user, localStorage);
+    if (options.notify !== false) {
+      this.notify();
+    }
+    return this.profile;
+  }
+
   unhideHiddenItem(type, key) {
     unhideHiddenItemFromStorage(type, key, localStorage);
     this.notify();
@@ -178,10 +213,13 @@ export class AppStore {
 
   // Inspector Panel Action Plan Tasks Persistence
   toggleTaskChecklist(issueId, taskText, completed) {
-    for (const column of Object.keys(this.boardCards)) {
-      const card = this.boardCards[column].find(c => c.id === issueId);
-      if (!card) continue;
+    let card = null;
+    for (const column of BOARD_COLUMNS) {
+      card = (this.boardCards[column] || []).find(c => c.id === issueId);
+      if (card) break;
+    }
 
+    if (card) {
       if (!card.checklist) card.checklist = [];
       const task = card.checklist.find(t => t.text === taskText);
       if (task) {
@@ -191,7 +229,6 @@ export class AppStore {
         card.progress = total > 0 ? Math.round((done / total) * 100) : 0;
         this.saveBoardToStorage();
       }
-      break;
     }
     // Also update inspectedIssue if it matches
     if (this.inspectedIssue && this.inspectedIssue.id === issueId) {
@@ -225,9 +262,12 @@ export class AppStore {
 
     if (!exists) {
       // Add default checklist for new cards in board
+      const timestamp = new Date().toISOString();
       const freshIssue = JSON.parse(JSON.stringify(issue));
       freshIssue.source = 'github';
-      freshIssue.saved_at = new Date().toISOString();
+      freshIssue.saved_at = timestamp;
+      freshIssue.last_moved_at = timestamp;
+      freshIssue.column_entered_at = timestamp;
       freshIssue.state = freshIssue.state || 'open';
       freshIssue.checklist = createDefaultActionPlan();
       freshIssue.progress = 0;
@@ -267,7 +307,21 @@ export class AppStore {
         // Remove from source
         this.boardCards[sourceCol].splice(cardIndex, 1);
         // Add to target
+        const timestamp = new Date().toISOString();
+        cardObj.last_moved_at = timestamp;
+        cardObj.column_entered_at = timestamp;
         this.boardCards[targetCol].push(cardObj);
+        if (targetCol === 'Merged') {
+          this.addIssueToProofLog(cardObj, {
+            source: 'board_merged',
+            boardColumn: 'Merged',
+            completedAt: timestamp,
+            now: timestamp,
+            notify: false
+          });
+        } else if (targetCol === 'Passed') {
+          this.removeIssueFromProofLog(cardObj);
+        }
         this.saveBoardToStorage();
         this.notify();
       }
@@ -297,6 +351,23 @@ export class AppStore {
     return null;
   }
 
+  markGitHubActivityReviewed(cardId, now = new Date().toISOString()) {
+    const updated = this.updateBoardCard(cardId, card => ({
+      ...card,
+      github_activity: {
+        ...(card.github_activity || {}),
+        acknowledged_at: now
+      }
+    }));
+    if (updated && this.inspectedIssue?.id === cardId) {
+      this.inspectedIssue = {
+        ...this.inspectedIssue,
+        github_activity: updated.github_activity
+      };
+    }
+    return updated;
+  }
+
   setBoardCards(boardCards) {
     this.boardCards = boardCards;
     this.saveBoardToStorage();
@@ -321,7 +392,21 @@ export class AppStore {
     }
 
     if (cardObj) {
+      const timestamp = new Date().toISOString();
+      cardObj.last_moved_at = timestamp;
+      cardObj.column_entered_at = timestamp;
       this.boardCards[targetCol].push(cardObj);
+      if (targetCol === 'Merged') {
+        this.addIssueToProofLog(cardObj, {
+          source: 'board_merged',
+          boardColumn: 'Merged',
+          completedAt: timestamp,
+          now: timestamp,
+          notify: false
+        });
+      } else if (targetCol === 'Passed') {
+        this.removeIssueFromProofLog(cardObj);
+      }
       this.saveBoardToStorage();
       this.notify();
     }
@@ -395,6 +480,9 @@ export class AppStore {
         issue.checklist = foundBoardCard.checklist;
         issue.progress = foundBoardCard.progress;
         issue.commits = foundBoardCard.commits;
+        issue.github_activity = foundBoardCard.github_activity;
+        issue.last_refreshed_at = foundBoardCard.last_refreshed_at;
+        issue.refresh_error = foundBoardCard.refresh_error;
       } else {
         // Default checklist for inspection
         issue.checklist = createDefaultActionPlan();

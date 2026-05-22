@@ -39,3 +39,30 @@ test('getSafeIssueHtmlUrl only accepts GitHub issue URLs or derives from GitHub 
     null
   );
 });
+
+test('getSafeGitHubAvatarUrl only accepts strict GitHub avatar URLs', async () => {
+  const { getSafeGitHubAvatarUrl } = await import('../src/security.js');
+
+  assert.equal(
+    getSafeGitHubAvatarUrl('https://avatars.githubusercontent.com/u/123?v=4&s=80'),
+    'https://avatars.githubusercontent.com/u/123?v=4&s=80'
+  );
+  assert.equal(
+    getSafeGitHubAvatarUrl('https://avatars.githubusercontent.com/in/987654?v=1'),
+    'https://avatars.githubusercontent.com/in/987654?v=1'
+  );
+
+  for (const unsafe of [
+    'http://avatars.githubusercontent.com/u/123?v=4',
+    'https://evil.example/u/123?v=4',
+    'https://user:pass@avatars.githubusercontent.com/u/123?v=4',
+    'https://avatars.githubusercontent.com/',
+    'https://avatars.githubusercontent.com/u/123?v=abc',
+    'https://avatars.githubusercontent.com/u/123?s=large',
+    'https://avatars.githubusercontent.com/u/123?token=secret',
+    'https://avatars.githubusercontent.com/u/123?access_token=secret',
+    'https://avatars.githubusercontent.com/u/123#fragment'
+  ]) {
+    assert.equal(getSafeGitHubAvatarUrl(unsafe), null, unsafe);
+  }
+});
