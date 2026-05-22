@@ -97,9 +97,41 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(mainJs, /No changes since last refresh/);
   assert.match(copy, /Public GitHub API limits are tight/);
   assert.match(copy, /GitHub REST API rate limits/);
+  assert.match(copy, /Help/);
+  assert.match(copy, /Feedback/);
+  assert.match(copy, /GitHub API limits/);
+  assert.match(copy, /REST\/core/);
+  assert.match(copy, /Search limits/);
+  assert.match(copy, /Do not paste GitHub tokens or private data/);
   assert.match(mainJs, /No review reminders right now\./);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
+});
+
+test('help and feedback routes are included in navigation setup', () => {
+  const { indexHtml, mainJs } = readCopySources();
+
+  for (const navId of [
+    'tab-help',
+    'tab-feedback',
+    'mobile-tab-help',
+    'mobile-tab-feedback'
+  ]) {
+    assert.match(indexHtml, new RegExp(`id="${navId}"`));
+    assert.match(mainJs, new RegExp(`['"]${navId}['"]`));
+  }
+});
+
+test('interactive chrome uses app tooltips instead of native title attributes', () => {
+  const { indexHtml, mainJs } = readCopySources();
+
+  assert.doesNotMatch(indexHtml, /\stitle=["'][^"']*["']/);
+  assert.doesNotMatch(mainJs, /\.title\s*=/);
+  assert.doesNotMatch(mainJs, /\stitle=["'][^"']*["']/);
+  assert.match(indexHtml, /data-tooltip="Review reminders"/);
+  assert.match(indexHtml, /data-tooltip="Settings"/);
+  assert.match(indexHtml, /data-tooltip="Profile"/);
+  assert.match(mainJs, /data-tooltip="\$\{safeColumn\}: \$\{lane\.count\}"/);
 });
 
 test('lookup hidden recovery is represented without inspector proof status', () => {
