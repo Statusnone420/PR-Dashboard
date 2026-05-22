@@ -181,3 +181,16 @@ export function buildGitHubActivity(savedCard, apiIssue, options = {}) {
 
   return activity;
 }
+
+export function isGitHubActivityAcknowledged(activity) {
+  if (!activity?.has_new_activity) return false;
+  const acknowledgedAt = Date.parse(activity.acknowledged_at || '');
+  const lastCheckedAt = Date.parse(activity.last_checked_at || '');
+  return Number.isFinite(acknowledgedAt)
+    && Number.isFinite(lastCheckedAt)
+    && acknowledgedAt >= lastCheckedAt;
+}
+
+export function isGitHubActivityVisible(activity) {
+  return Boolean(activity?.has_new_activity) && !isGitHubActivityAcknowledged(activity);
+}

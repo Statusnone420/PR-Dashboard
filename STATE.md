@@ -198,3 +198,14 @@
 - Review reminders now include `New GitHub activity` above stale-refresh reminders, and board/inspector cards show a restrained local activity status line when new activity exists.
 - Verification on 2026-05-22: new tests were written first and failed before implementation. Final `npm test` passed 118/118, `npm run build` passed, and a built-preview mocked Playwright smoke at `http://127.0.0.1:4173/` verified Lookup save, `Refresh this card`, card/inspector activity summaries, Review reminders, board-to-`Merged` Proof Log behavior, active-board request count, `Merged` exclusion, serial active-board refresh with max concurrency 1, and no console warnings/errors. The Browser plugin could verify the app shell but could not seed/mock page `localStorage`, so the deterministic API smoke used the repo Playwright dependency.
 - Remaining risk: live GitHub issue metadata and public API limits can vary. No real PAT was used; token behavior was covered by request/header tests and mocked browser traffic.
+
+## 2026-05-22 Refresh Throttle + Mark Reviewed + A1 Board Layout
+
+- Replaced board-wide default refresh with `Refresh stale cards`, selecting only stale active-lane cards and capping the primary batch at 10 requests. `Refresh all active cards` remains available as a secondary serial action with public/token confirmation thresholds.
+- Centralized board lane, refresh threshold, stale-age, and A1 layout-width constants in `src/boardConstants.js`.
+- Added per-card `Mark reviewed` for GitHub activity reminders. It only stamps `github_activity.acknowledged_at`, preserves the activity summary, and suppresses reminders/status lines only when `acknowledged_at >= last_checked_at`.
+- Hardened local import collisions so the newer `github_activity.last_checked_at` wins and stale acknowledgements cannot hide newer activity.
+- Reworked the Board into A1: `Active workflow` lanes first, always-visible compact `Completed` lanes below, centered under a max-width board shell. Added a separate `npm run test:layout` Playwright smoke that saves five viewport screenshots under `qa_screenshots/board-layout-a1/`.
+- README, Security notes, and Settings copy now clarify that Find Contributions uses GitHub Search limits while Lookup and saved-card refresh use REST/core limits.
+- Verification on 2026-05-22: `npm test` passed 127/127, `npm run build` passed, `git diff --check` passed, and `npm run test:layout` passed 5/5 across `390x844`, `375x667`, `1366x768`, `1920x1080`, and `3440x1440`, with screenshots written to `qa_screenshots/board-layout-a1/`. The in-app browser also opened `http://127.0.0.1:5173/#board` and confirmed Active workflow, Completed, both refresh labels, and no document horizontal overflow.
+- Remaining risk: browser smoke uses mocked local board data and a built preview, not live GitHub responses or a real PAT. Live API limits and issue metadata can still vary.

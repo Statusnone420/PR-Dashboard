@@ -42,6 +42,80 @@ test('exported local data excludes token and repo metadata cache', async () => {
   assert.doesNotMatch(JSON.stringify(exported), /secret-token|repo_metadata_cache/i);
 });
 
+test('export and import preserve GitHub activity acknowledgement as board metadata', async () => {
+  const sourceStorage = createLocalStorage();
+  const targetStorage = createLocalStorage();
+  const { exportLocalData, importLocalData } = await import('../src/localData.js');
+  sourceStorage.setItem('pr_dashboard_board_cards', JSON.stringify({
+    Considering: [{
+      id: 13997,
+      number: 13997,
+      title: 'Changed issue',
+      repository: { full_name: 'TEAMMATES/teammates' },
+      column_entered_at: '2026-05-22T10:00:00.000Z',
+      github_activity: {
+        has_new_activity: true,
+        last_checked_at: '2026-05-22T10:00:00.000Z',
+        acknowledged_at: '2026-05-22T10:05:00.000Z',
+        summary: '2 new comments since last refresh.'
+      }
+    }]
+  }));
+
+  const exported = exportLocalData(sourceStorage, { now: '2026-05-22T12:00:00.000Z' });
+  importLocalData(targetStorage, exported);
+  const importedBoard = JSON.parse(targetStorage.getItem('pr_dashboard_board_cards'));
+
+  assert.equal(exported.boardCards.Considering[0].github_activity.acknowledged_at, '2026-05-22T10:05:00.000Z');
+  assert.equal(importedBoard.Considering[0].github_activity.acknowledged_at, '2026-05-22T10:05:00.000Z');
+  assert.equal(importedBoard.Considering[0].github_activity.summary, '2 new comments since last refresh.');
+});
+
+test('import collisions keep newer GitHub activity and drop stale acknowledgements', async () => {
+  const storage = createLocalStorage();
+  const { importLocalData } = await import('../src/localData.js');
+  storage.setItem('pr_dashboard_board_cards', JSON.stringify({
+    Considering: [{
+      id: 13997,
+      number: 13997,
+      title: 'Local newer activity',
+      repository: { full_name: 'TEAMMATES/teammates' },
+      column_entered_at: '2026-05-20T10:00:00.000Z',
+      github_activity: {
+        has_new_activity: true,
+        last_checked_at: '2026-05-22T12:00:00.000Z',
+        summary: '4 new comments since last refresh.',
+        acknowledged_at: '2026-05-22T11:00:00.000Z'
+      }
+    }]
+  }));
+
+  importLocalData(storage, {
+    version: 1,
+    boardCards: {
+      Working: [{
+        id: 99,
+        number: 13997,
+        title: 'Imported newer workflow',
+        repository: { full_name: 'teammates/teammates' },
+        column_entered_at: '2026-05-22T10:00:00.000Z',
+        github_activity: {
+          has_new_activity: true,
+          last_checked_at: '2026-05-21T12:00:00.000Z',
+          summary: '1 new comment since last refresh.',
+          acknowledged_at: '2026-05-21T12:05:00.000Z'
+        }
+      }]
+    }
+  });
+
+  const board = JSON.parse(storage.getItem('pr_dashboard_board_cards'));
+  assert.equal(board.Working[0].title, 'Imported newer workflow');
+  assert.equal(board.Working[0].github_activity.last_checked_at, '2026-05-22T12:00:00.000Z');
+  assert.equal(board.Working[0].github_activity.summary, '4 new comments since last refresh.');
+  assert.equal(board.Working[0].github_activity.acknowledged_at, undefined);
+});
+
 test('imported local data ignores token and repo metadata cache fields', async () => {
   const storage = createLocalStorage();
   const { importLocalData } = await import('../src/localData.js');

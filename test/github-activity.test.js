@@ -153,3 +153,21 @@ test('no-change and 304 activity cleanup clears stale reminder copy', async () =
   assert.equal(noChange.etag, '"new-etag"');
   assert.equal(notModified.etag, '"old-etag"');
 });
+
+test('activity visibility is suppressed only after the latest check is reviewed', async () => {
+  const { isGitHubActivityVisible } = await import('../src/githubActivity.js');
+
+  assert.equal(isGitHubActivityVisible({
+    has_new_activity: true,
+    last_checked_at: '2026-05-22T10:00:00.000Z',
+    acknowledged_at: '2026-05-22T10:00:00.000Z',
+    summary: '2 new comments since last refresh.'
+  }), false);
+
+  assert.equal(isGitHubActivityVisible({
+    has_new_activity: true,
+    last_checked_at: '2026-05-22T11:00:00.000Z',
+    acknowledged_at: '2026-05-22T10:00:00.000Z',
+    summary: '2 new comments since last refresh.'
+  }), true);
+});

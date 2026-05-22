@@ -90,10 +90,13 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(mainJs, /Import Local Data/);
   assert.match(mainJs, /Review reminders/);
   assert.match(mainJs, /Refresh this card/);
-  assert.match(mainJs, /Refresh active board/);
+  assert.match(mainJs, /Refresh stale cards/);
+  assert.match(mainJs, /Refresh all active cards/);
+  assert.match(mainJs, /Mark reviewed/);
   assert.match(mainJs, /New GitHub activity/);
   assert.match(mainJs, /No changes since last refresh/);
   assert.match(copy, /Public GitHub API limits are tight/);
+  assert.match(copy, /GitHub REST API rate limits/);
   assert.match(mainJs, /No review reminders right now\./);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);

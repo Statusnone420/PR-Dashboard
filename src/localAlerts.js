@@ -1,8 +1,10 @@
 import { isClosedIssue } from './boardModel.js';
+import { ACTIVE_BOARD_COLUMNS } from './boardConstants.js';
+import { isGitHubActivityVisible } from './githubActivity.js';
 import { getIssueDisplayKey } from './issueKeys.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ACTIVE_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open'];
+const ACTIVE_COLUMNS = ACTIVE_BOARD_COLUMNS;
 
 function ageDays(value, now) {
   const time = Date.parse(value || '');
@@ -31,7 +33,7 @@ export function buildLocalAlerts(boardCardsByColumn = {}, options = {}) {
   for (const column of ACTIVE_COLUMNS) {
     for (const card of boardCardsByColumn[column] || []) {
       const activity = card?.github_activity;
-      if (activity?.has_new_activity) {
+      if (isGitHubActivityVisible(activity)) {
         const key = getIssueDisplayKey(card) || card?.title || 'Saved issue';
         alerts.push(alertBase(
           'github-activity',

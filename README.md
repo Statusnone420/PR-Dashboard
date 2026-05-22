@@ -62,6 +62,7 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 
 - Public searches work without a token.
 - Tokens are optional and only used for GitHub API requests.
+- Find Contributions uses GitHub Search API limits. Exact Lookup and saved-card refresh use normal REST/core issue endpoints; see [GitHub REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [GitHub Search API limits](https://docs.github.com/en/rest/search/search?apiVersion=2026-03-10).
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
 - Proof Log entries, profile metadata, Hidden Results keys, and board-derived reminder data stay local to your browser.

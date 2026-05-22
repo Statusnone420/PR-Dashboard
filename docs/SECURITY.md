@@ -16,6 +16,13 @@
 - External GitHub issue links are validated before rendering and open in a new tab with `rel="noopener noreferrer"`.
 - Exact Lookup validates GitHub issue URLs and `owner/repo#number` references before constructing an API URL.
 
+## GitHub API Limits
+
+- Find Contributions uses `GET https://api.github.com/search/issues`, which is governed by GitHub Search API limits: 10 requests per minute without a token and 30 requests per minute with authentication.
+- Exact Lookup and saved-card refresh use `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}`, which uses the normal REST/core primary rate limit: 60 requests per hour without a token and 5,000 requests per hour with a user/PAT token.
+- Repository metadata hydration and Settings "Test Connection" also use normal REST/core requests.
+- The app uses response rate-limit headers instead of calling `/rate_limit` for normal operation. See GitHub's [REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [Search API limits](https://docs.github.com/en/rest/search/search?apiVersion=2026-03-10).
+
 ## Token Storage
 
 - Session-only memory is the default. If "Remember token locally" is not checked, the token is not written to `localStorage`.

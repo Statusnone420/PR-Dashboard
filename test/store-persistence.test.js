@@ -226,6 +226,41 @@ test('moving to Merged through moveCardToColumn creates proof log entry', async 
   assert.equal(listProofEntries(globalThis.localStorage)[0].key, 'teammates/teammates#13997');
 });
 
+test('marking GitHub activity reviewed stamps acknowledgement without clearing summary', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.boardCards = {
+    Considering: [{
+      id: 13997,
+      number: 13997,
+      title: 'Changed issue',
+      repository: { full_name: 'TEAMMATES/teammates' },
+      github_activity: {
+        has_new_activity: true,
+        last_checked_at: '2026-05-22T10:00:00.000Z',
+        summary: '2 new comments since last refresh.'
+      }
+    }],
+    'Read Docs': [],
+    'Asked Maintainer': [],
+    Working: [],
+    'PR Open': [],
+    Merged: [],
+    Passed: []
+  };
+  appStore.setInspectedIssue(appStore.boardCards.Considering[0]);
+
+  const updated = appStore.markGitHubActivityReviewed(13997, '2026-05-22T10:05:00.000Z');
+
+  assert.equal(updated.github_activity.acknowledged_at, '2026-05-22T10:05:00.000Z');
+  assert.equal(updated.github_activity.summary, '2 new comments since last refresh.');
+  assert.equal(appStore.inspectedIssue.github_activity.acknowledged_at, '2026-05-22T10:05:00.000Z');
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_board_cards'), /acknowledged_at/);
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_board_cards'), /2 new comments since last refresh/);
+});
+
 test('clearing board data keeps proof log history', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');

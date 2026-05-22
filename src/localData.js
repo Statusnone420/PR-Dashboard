@@ -21,6 +21,46 @@ function workflowTime(card) {
   return Date.parse(card?.column_entered_at || card?.last_moved_at || card?.saved_at || card?.updated_at || '') || 0;
 }
 
+function activityCheckedTime(activity) {
+  const time = Date.parse(activity?.last_checked_at || '');
+  return Number.isFinite(time) ? time : 0;
+}
+
+function validAcknowledgedAt(activity) {
+  const acknowledged = Date.parse(activity?.acknowledged_at || '');
+  const checked = Date.parse(activity?.last_checked_at || '');
+  return Number.isFinite(acknowledged) && Number.isFinite(checked) && acknowledged >= checked;
+}
+
+function mergeGitHubActivity(leftCard, rightCard) {
+  const leftActivity = leftCard?.github_activity;
+  const rightActivity = rightCard?.github_activity;
+  if (!leftActivity && !rightActivity) return undefined;
+
+  const retained = activityCheckedTime(rightActivity) > activityCheckedTime(leftActivity)
+    ? rightActivity
+    : leftActivity || rightActivity;
+  if (!retained) return undefined;
+
+  const merged = { ...retained };
+  if (!validAcknowledgedAt(merged)) {
+    delete merged.acknowledged_at;
+  }
+  return merged;
+}
+
+function withMergedGitHubActivity(selectedCard, leftCard, rightCard) {
+  const activity = mergeGitHubActivity(leftCard, rightCard);
+  if (!activity) {
+    const { github_activity: _activity, ...withoutActivity } = selectedCard;
+    return withoutActivity;
+  }
+  return {
+    ...selectedCard,
+    github_activity: activity
+  };
+}
+
 function mergeBoardCards(currentBoard, importedBoard) {
   const merged = createEmptyBoard();
   const entries = [];
@@ -50,8 +90,15 @@ function mergeBoardCards(currentBoard, importedBoard) {
         }
 
         const previous = entries[existingIndex];
-        if (workflowTime(card) >= workflowTime(previous.card)) {
-          entries[existingIndex] = { column, card };
+        const keepIncomingWorkflow = workflowTime(card) >= workflowTime(previous.card);
+        const selected = keepIncomingWorkflow
+          ? { column, card }
+          : previous;
+        entries[existingIndex] = {
+          column: selected.column,
+          card: withMergedGitHubActivity(selected.card, previous.card, card)
+        };
+        if (keepIncomingWorkflow) {
           if (canonical) canonicalIndex.set(canonical, existingIndex);
           if (numericId) numericIdIndex.set(numericId, existingIndex);
         }

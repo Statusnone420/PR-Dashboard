@@ -177,7 +177,7 @@ test('no-PAT search, board persistence, inspectors, links, and settings token hy
   await page.reload();
   await expect(page.locator('.board-lane-cards-container[data-lane="Read Docs"] .board-card-item').filter({ hasText: firstTitle }).first()).toBeVisible();
 
-  await page.locator('#board-refresh-btn').click();
+  await page.locator('#board-refresh-stale-btn').click();
   await expect(page.locator('.board-card-item').filter({ hasText: 'Closed metadata smoke issue' }).first()).toBeVisible();
   await expect(page.locator('.board-card-item').filter({ hasText: 'Closed metadata smoke issue' }).first()).toContainText('Closed');
   await page.locator('.board-card-item').filter({ hasText: 'Closed metadata smoke issue' }).first().locator('.move-passed-btn').click();

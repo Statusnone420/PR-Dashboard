@@ -338,6 +338,23 @@ export class AppStore {
     return null;
   }
 
+  markGitHubActivityReviewed(cardId, now = new Date().toISOString()) {
+    const updated = this.updateBoardCard(cardId, card => ({
+      ...card,
+      github_activity: {
+        ...(card.github_activity || {}),
+        acknowledged_at: now
+      }
+    }));
+    if (updated && this.inspectedIssue?.id === cardId) {
+      this.inspectedIssue = {
+        ...this.inspectedIssue,
+        github_activity: updated.github_activity
+      };
+    }
+    return updated;
+  }
+
   setBoardCards(boardCards) {
     this.boardCards = boardCards;
     this.saveBoardToStorage();

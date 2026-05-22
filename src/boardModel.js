@@ -1,7 +1,8 @@
 import { getCanonicalIssueKey } from './issueKeys.js';
 import { buildGitHubActivity, buildUnchangedGitHubActivity } from './githubActivity.js';
+import { BOARD_COLUMNS } from './boardConstants.js';
 
-export const BOARD_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open', 'Merged', 'Passed'];
+export { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
 
 export const BOARD_STORAGE_KEY = 'pr_dashboard_board_cards';
 export const BOARD_MIGRATION_KEY = 'pr_dashboard_board_migration_v1';
