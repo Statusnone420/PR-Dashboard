@@ -10,6 +10,15 @@ test('parseExactLookupInput accepts GitHub issue URLs', async () => {
   );
 });
 
+test('parseExactLookupInput accepts GitHub pull request URLs as issue-backed lookup references', async () => {
+  const { parseExactLookupInput } = await import('../src/lookup.js');
+
+  assert.deepEqual(
+    parseExactLookupInput('https://github.com/TEAMMATES/teammates/pull/13998'),
+    { owner: 'TEAMMATES', repo: 'teammates', number: 13998, source: 'pull-url', type: 'pull' }
+  );
+});
+
 test('parseExactLookupInput accepts owner/repo#number references', async () => {
   const { parseExactLookupInput } = await import('../src/lookup.js');
 

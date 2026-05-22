@@ -1,4 +1,4 @@
-const VALID_SCREENS = new Set(['dashboard', 'find-issues', 'board', 'settings']);
+const VALID_SCREENS = new Set(['dashboard', 'find-issues', 'board', 'settings', 'profile']);
 
 export function screenFromHash(hash) {
   const screen = String(hash || '').replace(/^#/, '');

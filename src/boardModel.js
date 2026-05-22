@@ -1,3 +1,5 @@
+import { getCanonicalIssueKey } from './issueKeys.js';
+
 export const BOARD_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open', 'Merged', 'Passed'];
 
 export const BOARD_STORAGE_KEY = 'pr_dashboard_board_cards';
@@ -71,6 +73,8 @@ export function migrateActionPlanChecklist(checklist) {
 }
 
 export function getIssueSignature(issue) {
+  const canonical = getCanonicalIssueKey(issue);
+  if (canonical) return canonical;
   const repo = issue?.repository?.full_name || '';
   const number = issue?.number || '';
   return `${repo}#${number}`;
@@ -83,6 +87,7 @@ export function isSeededMockCard(card) {
 export function normalizeBoardCards(boardData) {
   const board = createEmptyBoard();
   let migratedCount = 0;
+  const fallbackTimestamp = new Date().toISOString();
 
   if (!boardData || typeof boardData !== 'object') {
     return { board, migratedCount };
@@ -95,8 +100,11 @@ export function normalizeBoardCards(boardData) {
         migratedCount += 1;
         continue;
       }
+      const localTimestamp = card.column_entered_at || card.last_moved_at || card.saved_at || card.last_refreshed_at || card.updated_at || fallbackTimestamp;
       board[column].push({
         ...card,
+        last_moved_at: card.last_moved_at || localTimestamp,
+        column_entered_at: card.column_entered_at || localTimestamp,
         checklist: migrateActionPlanChecklist(card.checklist)
       });
     }

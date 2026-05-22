@@ -1,3 +1,5 @@
+import { getCanonicalIssueKey, getCanonicalRepoKey } from './issueKeys.js';
+
 export const HIDDEN_STORAGE_KEY = 'pr_dashboard_hidden_v1';
 
 function emptyHiddenItems() {
@@ -103,18 +105,16 @@ export function saveHiddenItems(storage = getStorage(), hidden = emptyHiddenItem
 }
 
 export function getRepoHideKey(issue) {
-  const fullName = issue?.repository?.full_name || issue?.repository?.nameWithOwner;
-  if (fullName && String(fullName).includes('/')) {
-    return String(fullName).toLowerCase();
-  }
-  return repoFromUrl(issue?.html_url) || repoFromUrl(issue?.repository_url);
+  return getCanonicalRepoKey(issue) || repoFromUrl(issue?.html_url) || repoFromUrl(issue?.repository_url);
 }
 
 export function getIssueHideKey(issue) {
-  const repoKey = getRepoHideKey(issue);
-  const number = Number.parseInt(issue?.number, 10) || issueNumberFromUrl(issue?.html_url);
-  if (!repoKey || !Number.isFinite(number) || number <= 0) return null;
-  return `${repoKey}#${number}`;
+  return getCanonicalIssueKey(issue) || (() => {
+    const repoKey = getRepoHideKey(issue);
+    const number = Number.parseInt(issue?.number, 10) || issueNumberFromUrl(issue?.html_url);
+    if (!repoKey || !Number.isFinite(number) || number <= 0) return null;
+    return `${repoKey}#${number}`;
+  })();
 }
 
 export function isIssueHidden(issue, storage = getStorage()) {

@@ -15,12 +15,14 @@ function isValidRepoParts(owner, repo) {
   return OWNER_RE.test(owner) && REPO_RE.test(repo) && !repo.includes('..');
 }
 
-function exactLookup(owner, repo, number, source) {
+function exactLookup(owner, repo, number, source, type = 'issue') {
   const issueNumber = Number.parseInt(number, 10);
   if (!isValidRepoParts(owner, repo) || !Number.isInteger(issueNumber) || issueNumber <= 0) {
     return null;
   }
-  return { owner, repo, number: issueNumber, source };
+  return type === 'pull'
+    ? { owner, repo, number: issueNumber, source, type: 'pull' }
+    : { owner, repo, number: issueNumber, source };
 }
 
 export function parseExactLookupInput(input, options = {}) {
@@ -34,9 +36,10 @@ export function parseExactLookupInput(input, options = {}) {
       url.protocol === 'https:' &&
       url.hostname === 'github.com' &&
       segments.length === 4 &&
-      segments[2] === 'issues'
+      (segments[2] === 'issues' || segments[2] === 'pull')
     ) {
-      return exactLookup(segments[0], segments[1], segments[3], 'url');
+      const isPull = segments[2] === 'pull';
+      return exactLookup(segments[0], segments[1], segments[3], isPull ? 'pull-url' : 'url', isPull ? 'pull' : 'issue');
     }
     return null;
   } catch {

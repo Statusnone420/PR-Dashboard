@@ -27,6 +27,26 @@ test('settings exposes hidden results management copy', () => {
   assert.match(mainJs, /Clear Hidden/);
 });
 
+test('profile, proof log, export import, and local alerts are visible product surfaces', () => {
+  const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Proof Log/);
+  assert.match(mainJs, /Export Local Data/);
+  assert.match(mainJs, /Import Local Data/);
+  assert.match(mainJs, /Local alerts/);
+  assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
+  assert.doesNotMatch(indexHtml, />\s*JD\s*</);
+});
+
+test('lookup hidden recovery and proof actions are represented in UI copy', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Hidden locally/);
+  assert.match(mainJs, /Add to Proof Log/);
+  assert.match(mainJs, /applyHiddenFilter/);
+});
+
 test('empty results recovery uses broaden search copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 

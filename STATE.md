@@ -120,3 +120,35 @@
 - Files touched: `src/dashboardReviewFlow.js`, `src/main.js`, `src/styles.css`, `test/dashboard-review-flow.test.js`, `test/css-contract.test.js`, and `STATE.md`.
 - Verification: `npm test` passed 72/72, `npm run build` passed, and `git diff --check` passed.
 - Known limitation: Board Momentum is still a local board summary only; it does not fetch remote PR status or infer team velocity.
+
+## 2026-05-22 Score Gate + Action Plan Scroll Fix
+
+- Tightened Match Score so generic issue quality signals cannot stack into a fake perfect score. Scores without strong contribution-fit evidence are capped at `90`, and broad actionable bugs without a strong contribution label are capped below perfect.
+- A bare `bug` label no longer bypasses the near-perfect gate. Strong fit now comes from labels such as `good first issue`, `help wanted`, docs/test/starter/beginner/easy labels, bounded fix wording, scoped docs/UI-text work, or action-oriented task sections.
+- Narrowed copy detection so `Copy, Paste` and `copy to clipboard` do not count as docs/copywriting scope, while contextual UI/error-message copy still can.
+- Replaced broad task-list detection with heading-aware/action-oriented detection so reproduction steps and template compliance checklists do not count as contributor task lists.
+- Fixed inspector Action Plan toggles so checking a task updates the existing row and progress bar in place instead of rebuilding the inspector drawer. Saved-card checklist progress now persists from any board lane, not only `Working`.
+- Files touched: `src/matchScore.js`, `src/main.js`, `src/state/store.js`, `test/match-score.test.js`, `test/finder-store.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: score and Action Plan regression tests were written first and failed against the old behavior. After implementation, `npm test` passed 90/90 and `npm run build` passed.
+- Browser smoke at `http://127.0.0.1:3000/#find-issues` used Lookup for `openai/codex#23986`, saved the issue, opened the inspector, scrolled to Action Plan, and toggled a checkbox. The drawer scroll stayed at `1969`, focus stayed on the checkbox, progress updated from `0%` to `17%`, and console warnings/errors were `0`.
+- Known limitation: scoring is still deterministic and heuristic. It avoids the observed false-perfect path, but live GitHub issue data can still change rankings over time.
+
+## 2026-05-22 README Product Proof Point
+
+- Added a README `Product Proof Point` section for the May 22, 2026 merged TEAMMATES contribution discovered through PR Dashboard.
+- Framed TEAMMATES respectfully as a public open-source example, with an explicit note that the mention is not an endorsement or affiliation.
+- Tightened the README wording to focus on the concrete workflow: discovery, fit evaluation, local verification, CI, review feedback, and merge.
+- Verification: checked the public GitHub issue/PR pages for `TEAMMATES/teammates#13997` and merged PR `#13998`, then ran `git diff --check`.
+- Remaining risk: the linked GitHub issue and PR pages are live public pages, so labels, counts, or surrounding GitHub metadata can change over time.
+
+## 2026-05-22 Local Proof Log + Recovery Pass
+
+- Added canonical issue keys, local Proof Log storage, local profile metadata, local alerts, and local export/import helpers.
+- Saved items no longer disappear when hidden or clicked while already saved; hide only suppresses future discovery results, and explicit board delete remains the removal path.
+- Exact Lookup now accepts GitHub pull request URLs, bypasses hidden filtering, shows `Hidden locally`, and allows manual `Add to Proof Log` from cards and inspector.
+- Board cards now get local movement timestamps, and moving to `Merged` through either move path creates local `marked_complete` proof history.
+- Replaced the board's fixed horizontal row with a responsive wrapping grid and added a real `#profile` route plus an enabled local-alert bell.
+- Export Local Data includes board, hidden keys, profile metadata, and Proof Log entries while excluding tokens and repo metadata cache.
+- Files touched include `src/issueKeys.js`, `src/proofLog.js`, `src/profile.js`, `src/localAlerts.js`, `src/localData.js`, `src/state/store.js`, `src/main.js`, `src/styles.css`, `src/lookup.js`, docs, and focused tests.
+- Verification: new tests were written first and failed before implementation. Final `npm test` passed 108/108, `npm run build` passed, and Browser smoke at `http://127.0.0.1:4173/` verified dashboard load, profile route, local alerts popover, responsive board grid without horizontal overflow, exact Lookup for `TEAMMATES/teammates#13998`, hide recovery, Proof Log add, profile proof visibility, and mobile `390x844` profile/board overflow checks with no console warnings/errors.
+- Known limitations: Proof Log entries are local completion records, not remote merge verification. Export/import is the v1 multi-device bridge; automatic sync still requires a backend or user-managed sync layer later.

@@ -15,6 +15,7 @@
 - Remember mode is opt-in. When enabled, the token is stored in browser `localStorage`.
 - `localStorage` is convenience storage, not secure secret storage. Do not use remember mode on shared or untrusted machines.
 - Settings has separate destructive actions for token/settings, board data, hidden results, and all app data. "Clear Token/Settings" does not wipe the board.
+- "Clear Token/Settings" also clears local non-secret profile identity metadata, while keeping board cards, hidden keys, and Proof Log entries.
 
 ## Recommended Token Permissions
 
@@ -32,6 +33,8 @@
 - Settings "Test Connection" sends a read-only `GET https://api.github.com/user` request with the entered token.
 - The app does not have a backend and does not send tokens, board data, or settings to any app-owned server.
 - Board cards, hidden result keys, and non-secret UI state are stored locally in the browser.
+- Proof Log entries and profile metadata are stored locally in the browser. Profile metadata is limited to non-secret GitHub identity fields from the Settings connection test and does not render remote avatar images in v1.
+- Export Local Data includes board cards, hidden keys, profile metadata, and Proof Log entries. It excludes GitHub tokens and repository metadata cache.
 - Repository metadata hydration caches only non-secret repository fields for 24 hours. Tokens, Authorization headers, API errors, and request URLs containing secrets are never cached.
 
 ## Hidden Results Storage
@@ -42,6 +45,13 @@
 - Hidden storage does not include issue titles, issue bodies, labels, repository metadata, API responses, Authorization headers, or tokens.
 - The Settings Hidden Results manager derives GitHub links from the stored keys. It does not fetch hidden issue titles or repository details.
 - "Clear Hidden" removes hidden issue/repo keys only. "Clear All App Data" removes hidden keys along with token/settings and board data.
+
+## Proof Log Storage
+
+- Proof Log entries are stored under `pr_dashboard_proof_log_v1` in browser `localStorage`.
+- Proof Log identity uses canonical lowercase keys like `owner/repo#123`; display casing from GitHub is preserved in snapshots when available.
+- Entries created from the board `Merged` lane are local completion records with `status: marked_complete`. They are not remote merge verification.
+- Proof Log storage does not include GitHub tokens or Authorization headers.
 
 ## Rendering Rules
 

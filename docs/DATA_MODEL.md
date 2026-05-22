@@ -38,3 +38,19 @@ The board's "Refresh saved issues" action fetches current issue metadata with `G
 - repository identity
 
 Local workflow data such as checklist progress and board column is preserved. Closed issues are shown with a warning and can be moved to Passed.
+
+## Proof Log
+
+Completed local contribution history is stored separately from the active board under `pr_dashboard_proof_log_v1`.
+
+Proof Log entries use canonical lowercase issue keys such as `owner/repo#123` for storage identity. Display snapshots preserve the original GitHub repository casing when available.
+
+Moving a board card into `Merged` creates or updates a local Proof Log entry with `status=marked_complete`. This is intentionally a local history record, not remote merge verification. Re-saving the same proof entry preserves its original `completed_at` and `created_at` values while updating `updated_at` and `last_seen_at`.
+
+## Local Profile, Alerts, And Export
+
+Profile metadata is stored under `pr_dashboard_profile_v1` and contains only non-secret GitHub identity fields from the Settings connection test. Remote avatar images are not rendered in v1.
+
+Local alerts are computed from board state and local workflow timestamps such as `column_entered_at`, `last_moved_at`, and `last_refreshed_at`.
+
+Export Local Data includes board cards, hidden keys, Proof Log entries, and profile metadata. It excludes GitHub tokens and the repository metadata cache.

@@ -364,7 +364,14 @@
   }
 
   .kanban-column {
-    @apply flex h-full w-[280px] shrink-0 flex-col rounded-lg border border-outline-variant bg-surface-container-lowest/50 p-3;
+    @apply flex min-h-48 flex-col rounded-lg border border-outline-variant bg-surface-container-lowest/50 p-3;
+  }
+
+  .kanban-board-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    align-items: start;
   }
 
   .kanban-card {

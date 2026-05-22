@@ -8,13 +8,19 @@ import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { buildContributionBrief } from './contributionBrief.js';
-import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
+import { filterHiddenIssues, isIssueHidden, isRepoHidden, listHiddenItems } from './hiddenItems.js';
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
+import { getCanonicalIssueKey, getCanonicalRepoKey } from './issueKeys.js';
+import { exportLocalData, importLocalData } from './localData.js';
+import { buildLocalAlerts } from './localAlerts.js';
+import { getProfileInitials } from './profile.js';
+import { listProofEntries } from './proofLog.js';
 
 const HIDDEN_RESULTS_RENDER_LIMIT = 100;
 const ACTIVE_REVIEW_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open'];
 const RESOLVED_BOARD_COLUMNS = ['Merged', 'Passed'];
 let hiddenSettingsFilter = '';
+let localAlertsOpen = false;
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,12 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
   store.currentScreen = screenFromHash(window.location.hash);
   
   // Initial render
+  updateHeaderProfile();
   renderActiveScreen();
   updateSidebarActiveState(store.currentScreen);
 
   // Subscribe UI to store changes
   store.subscribe((state) => {
     updateRateLimitBadge(state.rateLimit);
+    updateHeaderProfile();
+    renderLocalAlertsPopover();
     renderActiveScreen();
     updateSidebarActiveState(state.currentScreen);
   });
@@ -66,7 +75,21 @@ function getInspectorBestFitLabel(bestFor) {
 }
 
 function isIssueSavedToBoard(issue) {
-  return Object.values(store.boardCards).flat().some(card => card.id === issue?.id);
+  const issueKey = getCanonicalIssueKey(issue);
+  return Object.values(store.boardCards).flat().some(card => {
+    const cardKey = getCanonicalIssueKey(card);
+    return (issueKey && cardKey === issueKey) || card.id === issue?.id;
+  });
+}
+
+function isIssueInProofLog(issue) {
+  const key = getCanonicalIssueKey(issue);
+  return Boolean(key && listProofEntries(localStorage).some(entry => entry.key === key));
+}
+
+function getSearchItemsForActions() {
+  const items = store.searchResults || [];
+  return store.lastSearchMode === 'lookup' ? items : filterHiddenIssues(items);
 }
 
 /**
@@ -127,11 +150,19 @@ function setupNavigation() {
   const avatar = document.getElementById('user-profile-avatar');
   if (avatar) {
     avatar.addEventListener('click', () => {
-      if (window.location.hash !== '#settings') {
-        window.location.hash = 'settings';
+      if (window.location.hash !== '#profile') {
+        window.location.hash = 'profile';
       } else {
-        store.setScreen('settings');
+        store.setScreen('profile');
       }
+    });
+  }
+
+  const notificationsBtn = document.getElementById('btn-notifications');
+  if (notificationsBtn) {
+    notificationsBtn.addEventListener('click', () => {
+      localAlertsOpen = !localAlertsOpen;
+      renderLocalAlertsPopover();
     });
   }
 
@@ -144,6 +175,67 @@ function setupNavigation() {
 function closeMobileMenu() {
   const drawer = document.getElementById('mobile-nav-drawer');
   if (drawer) drawer.style.display = 'none';
+}
+
+function updateHeaderProfile() {
+  const avatarInitial = document.getElementById('user-avatar-initials');
+  if (avatarInitial) {
+    avatarInitial.textContent = getProfileInitials(store.profile);
+  }
+}
+
+function renderLocalAlertsPopover() {
+  const existing = document.getElementById('local-alerts-popover');
+  if (existing) existing.remove();
+  const button = document.getElementById('btn-notifications');
+  if (!button) return;
+
+  const alerts = buildLocalAlerts(store.boardCards);
+  button.classList.toggle('text-primary', alerts.length > 0);
+  button.title = alerts.length ? `${alerts.length} local alerts` : 'Local alerts';
+  if (!localAlertsOpen) return;
+
+  const popover = document.createElement('div');
+  popover.id = 'local-alerts-popover';
+  popover.className = 'fixed right-4 top-16 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-outline-variant bg-surface p-4 shadow-2xl';
+  const alertsHTML = alerts.length
+    ? alerts.slice(0, 8).map(alert => `
+        <button class="interactive-row w-full rounded border border-outline-variant bg-surface-container-lowest p-3 text-left text-sm local-alert-row" data-card-id="${escapeHTML(String(alert.cardId || ''))}">
+          <div class="mb-1 flex items-center justify-between gap-3">
+            <span class="font-medium text-on-surface">${escapeHTML(alert.title)}</span>
+            <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
+          </div>
+          <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
+        </button>
+      `).join('')
+    : '<div class="rounded border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No local alerts right now.</div>';
+
+  popover.innerHTML = `
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold text-on-surface">Local alerts</h2>
+      <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn"><span class="material-symbols-outlined text-[16px]">close</span></button>
+    </div>
+    <div class="space-y-2">${alertsHTML}</div>
+  `;
+  document.body.appendChild(popover);
+
+  const closeBtn = document.getElementById('local-alerts-close-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      localAlertsOpen = false;
+      renderLocalAlertsPopover();
+    });
+  }
+  popover.querySelectorAll('.local-alert-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const cardId = Number.parseInt(row.getAttribute('data-card-id'), 10);
+      const card = Object.values(store.boardCards).flat().find(item => item.id === cardId);
+      if (card) {
+        store.setInspectedIssue(card);
+        openInspector();
+      }
+    });
+  });
 }
 
 function updateSidebarActiveState(activeScreen) {
@@ -253,6 +345,9 @@ function renderActiveScreen() {
     case 'settings':
       renderSettings(container);
       break;
+    case 'profile':
+      renderProfile(container);
+      break;
     default:
       renderDashboard(container);
   }
@@ -332,12 +427,13 @@ function renderDashboard(container) {
   const activeCards = boardCards.filter(card => !isClosedIssue(card));
   const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
   const totalSavedCount = boardCards.length;
-  const activeReviewCount = countBoardEntries(boardEntries, entry => ACTIVE_REVIEW_COLUMNS.includes(entry.column));
+  const activeReviewCount = countBoardEntries(boardEntries, entry => ACTIVE_REVIEW_COLUMNS.includes(entry.column) && !isClosedIssue(entry.card));
   const resolvedOrPassedCount = countBoardEntries(boardEntries, entry => RESOLVED_BOARD_COLUMNS.includes(entry.column) || isClosedIssue(entry.card));
   const hiddenItems = listHiddenItems(localStorage);
   const hiddenIssueCount = hiddenItems.issues.length;
   const hiddenRepoCount = hiddenItems.repos.length;
   const hiddenTotalCount = hiddenIssueCount + hiddenRepoCount;
+  const proofEntries = listProofEntries(localStorage);
   const activeReviewProgress = progressPercent(activeReviewCount, totalSavedCount);
   const resolvedProgress = progressPercent(resolvedOrPassedCount, totalSavedCount);
   const hiddenRepoHelper = `${hiddenIssueCount.toLocaleString()} issues / ${hiddenRepoCount.toLocaleString()} repos`;
@@ -470,6 +566,21 @@ function renderDashboard(container) {
       <p class="text-xs text-on-surface-variant max-w-xs">Saved GitHub issues appear on the board after you save them from search.</p>
     </div>
   `;
+  const recentProofHTML = proofEntries.length ? proofEntries.slice(0, 3).map(entry => `
+    <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+      <div class="mb-1 flex items-center justify-between gap-3">
+        <span class="min-w-0 truncate text-sm font-medium text-on-surface">${escapeHTML(entry.snapshot.title || entry.key)}</span>
+        <span class="rounded border border-tertiary/25 bg-tertiary/10 px-2 py-0.5 text-[11px] text-tertiary">Proof</span>
+      </div>
+      <p class="text-xs text-on-surface-variant">${escapeHTML(entry.snapshot.display_key || entry.key)} - ${escapeHTML(formatDate(entry.completed_at))}</p>
+    </div>
+  `).join('') : `
+    <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
+      <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
+      <h4 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h4>
+      <p class="mt-1 text-xs text-on-surface-variant">Move a card to Merged or add an exact Lookup result to preserve completed work.</p>
+    </div>
+  `;
 
   container.innerHTML = `
     <section class="p-6 md:p-8">
@@ -576,6 +687,23 @@ function renderDashboard(container) {
               View Board
             </button>
           </div>
+
+          <!-- Proof Log -->
+          <div class="bento-item interactive-card p-6 flex flex-col gap-6">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
+                <span class="material-symbols-outlined text-tertiary">workspace_premium</span>
+                Proof Log
+              </h3>
+              <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
+            </div>
+            <div class="flex flex-col gap-3">
+              ${recentProofHTML}
+            </div>
+            <button class="interactive-button interactive-button-secondary mt-auto w-full py-2" id="dash-view-profile-btn">
+              View Profile
+            </button>
+          </div>
         </div>
         
       </div>
@@ -628,6 +756,13 @@ function renderDashboard(container) {
   if (localReviewBtn) {
     localReviewBtn.addEventListener('click', () => {
       store.setScreen('board');
+    });
+  }
+
+  const profileBtn = document.getElementById('dash-view-profile-btn');
+  if (profileBtn) {
+    profileBtn.addEventListener('click', () => {
+      store.setScreen('profile');
     });
   }
 
@@ -766,8 +901,9 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
-  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
-  const hiddenResultsCount = Array.isArray(results) && Array.isArray(visibleResults)
+  const applyHiddenFilter = store.lastSearchMode !== 'lookup';
+  const visibleResults = Array.isArray(results) && applyHiddenFilter ? filterHiddenIssues(results) : results;
+  const hiddenResultsCount = Array.isArray(results) && Array.isArray(visibleResults) && applyHiddenFilter
     ? results.length - visibleResults.length
     : 0;
   const hiddenCountText = hiddenResultsCount > 0 ? ` (${hiddenResultsCount} hidden)` : '';
@@ -853,7 +989,7 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults, { applyHiddenFilter }) : ''}
       </div>
     `;
     countText = visibleResults ? `Showing ${visibleResults.length} issues${hiddenCountText}` : 'Request failed';
@@ -862,7 +998,7 @@ function renderFindIssues(container) {
     if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(visibleResults);
+      resultsHTML = renderIssueCardsList(visibleResults, { applyHiddenFilter });
     }
   } else {
     // Initial screen state - explain Token details
@@ -1195,9 +1331,10 @@ function renderFindIssues(container) {
 /**
  * Render lists of cards
  */
-function renderIssueCardsList(issuesList) {
+function renderIssueCardsList(issuesList, options = {}) {
   // Sort list if local sorting is needed
-  let sorted = filterHiddenIssues(issuesList);
+  const applyHiddenFilter = options.applyHiddenFilter !== false;
+  let sorted = applyHiddenFilter ? filterHiddenIssues(issuesList) : [...(issuesList || [])];
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
@@ -1235,10 +1372,18 @@ function renderIssueCardsList(issuesList) {
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
+    const hiddenLocally = !applyHiddenFilter && (isIssueHidden(issue) || isRepoHidden(issue));
+    const inProofLog = isIssueInProofLog(issue);
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
         <span class="material-symbols-outlined text-[15px]">warning</span>
         Not a contribution candidate
+      </div>
+    ` : '';
+    const hiddenBadgeHTML = hiddenLocally ? `
+      <div class="rounded border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-primary flex items-center gap-2">
+        <span class="material-symbols-outlined text-[15px]">visibility_off</span>
+        Hidden locally
       </div>
     ` : '';
     const repoUnavailableHTML = repoMetadataUnavailable ? `
@@ -1273,6 +1418,7 @@ function renderIssueCardsList(issuesList) {
         
         <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issueBody}</p>
         ${lookupWarningHTML}
+        ${hiddenBadgeHTML}
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
@@ -1297,8 +1443,16 @@ function renderIssueCardsList(issuesList) {
             </button>
             <button class="action-button px-3 py-1.5 text-xs save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
-              ${saved ? 'Saved' : 'Save'}
+              ${saved ? 'View on board' : 'Save'}
             </button>
+            <button class="action-button px-3 py-1.5 text-xs proof-log-add-btn ${inProofLog ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
+              <span class="material-symbols-outlined text-[14px]">${inProofLog ? 'verified' : 'workspace_premium'}</span>
+              ${inProofLog ? 'In Proof Log' : 'Add to Proof Log'}
+            </button>
+            ${hiddenLocally ? `<button class="action-button interactive-button-secondary px-3 py-1.5 text-xs unhide-card-btn" data-id="${issueId}">
+              <span class="material-symbols-outlined text-[14px]">visibility</span>
+              Unhide
+            </button>` : ''}
             <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
               Hide
@@ -1322,7 +1476,7 @@ function bindIssueCardListEvents() {
     title.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(title.getAttribute('data-id'), 10);
-      const items = filterHiddenIssues(store.searchResults || []);
+      const items = getSearchItemsForActions();
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1337,7 +1491,7 @@ function bindIssueCardListEvents() {
       // Avoid firing if they click an active button inside the card
       if (e.target.closest('button') || e.target.closest('a')) return;
       const issueId = parseInt(card.getAttribute('data-id'), 10);
-      const items = filterHiddenIssues(store.searchResults || []);
+      const items = getSearchItemsForActions();
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1351,7 +1505,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = filterHiddenIssues(store.searchResults || []);
+      const items = getSearchItemsForActions();
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1365,12 +1519,12 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = filterHiddenIssues(store.searchResults || []);
+      const items = getSearchItemsForActions();
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         const fitObj = calculateFitScore(issue);
         if (isIssueSavedToBoard(issue)) {
-          store.removeBoardCard(issue.id);
+          store.setScreen('board');
           return;
         }
         if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
@@ -1393,10 +1547,37 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = filterHiddenIssues(store.searchResults || []);
+      const items = getSearchItemsForActions();
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.hideIssue(issue);
+      }
+    });
+  });
+
+  document.querySelectorAll('.proof-log-add-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const issueId = parseInt(btn.getAttribute('data-id'), 10);
+      const issue = getSearchItemsForActions().find(i => i.id === issueId);
+      if (issue) {
+        store.addIssueToProofLog(issue, { source: 'manual_lookup' });
+        btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">verified</span> In Proof Log`;
+        btn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
+      }
+    });
+  });
+
+  document.querySelectorAll('.unhide-card-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const issueId = parseInt(btn.getAttribute('data-id'), 10);
+      const issue = getSearchItemsForActions().find(i => i.id === issueId);
+      if (issue) {
+        const issueKey = getCanonicalIssueKey(issue);
+        const repoKey = getCanonicalRepoKey(issue);
+        if (issueKey) store.unhideHiddenItem('issue', issueKey);
+        if (repoKey) store.unhideHiddenItem('repo', repoKey);
       }
     });
   });
@@ -1610,8 +1791,8 @@ function renderBoard(container) {
       </div>
       
       <!-- Scrollable Kanban Area -->
-      <div class="flex-1 overflow-x-auto overflow-y-hidden p-6 md:p-8">
-        <div class="flex h-full gap-4 items-start pb-4 min-w-max">
+      <div class="flex-1 p-6 md:p-8">
+        <div class="kanban-board-grid">
           ${columnsHTML}
         </div>
       </div>
@@ -1698,6 +1879,160 @@ function renderBoard(container) {
 /**
  * 4. SETTINGS VIEW
  */
+function handleExportLocalData() {
+  const payload = exportLocalData(localStorage);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `pr-dashboard-local-data-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function bindLocalDataImport(inputId, statusId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    const status = document.getElementById(statusId);
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      const result = importLocalData(localStorage, payload);
+      store.boardCards = result.boardCards || store.boardCards;
+      store.profile = payload.profile || store.profile;
+      store.notify();
+      if (status) {
+        status.textContent = result.imported ? 'Local data imported.' : 'Import failed: unsupported file.';
+        status.className = result.imported
+          ? 'text-xs text-tertiary'
+          : 'text-xs text-error';
+      }
+    } catch (error) {
+      if (status) {
+        status.textContent = `Import failed: ${error.message}`;
+        status.className = 'text-xs text-error';
+      }
+    } finally {
+      input.value = '';
+    }
+  });
+}
+
+function renderProofLogRows(entries) {
+  if (!entries.length) {
+    return `
+      <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
+        <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
+        <h3 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h3>
+        <p class="mt-1 text-xs text-on-surface-variant">Use exact Lookup or move a board card to Merged to preserve completed work.</p>
+      </div>
+    `;
+  }
+
+  return entries.map(entry => `
+    <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div class="min-w-0">
+          <div class="mb-1 flex flex-wrap items-center gap-2">
+            <span class="rounded border border-tertiary/25 bg-tertiary/10 px-2 py-0.5 text-[11px] text-tertiary">${escapeHTML(entry.status)}</span>
+            <span class="font-mono text-xs text-on-surface-variant">${escapeHTML(entry.snapshot.display_key || entry.key)}</span>
+          </div>
+          <h3 class="truncate text-sm font-medium text-on-surface">${escapeHTML(entry.snapshot.title || entry.key)}</h3>
+          <p class="mt-1 text-xs text-on-surface-variant">Completed ${escapeHTML(formatDate(entry.completed_at))} - Source: ${escapeHTML(entry.source)}</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          ${entry.proof_url ? `<a class="action-button interactive-button-secondary px-3 py-1.5 text-xs" href="${escapeHTML(entry.proof_url)}" target="_blank" rel="noopener noreferrer">Open proof</a>` : ''}
+          <button class="action-button interactive-button-danger px-3 py-1.5 text-xs proof-remove-btn" data-key="${escapeHTML(entry.key)}">Remove</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderProfile(container) {
+  const proofEntries = listProofEntries(localStorage);
+  const alerts = buildLocalAlerts(store.boardCards);
+  const profile = store.profile;
+  const initials = getProfileInitials(profile);
+  const displayName = profile?.name || profile?.login || 'Local contributor';
+  const loginLine = profile?.login ? `GitHub: ${profile.login}` : 'No GitHub identity saved yet';
+
+  container.innerHTML = `
+    <section class="p-6 md:p-12">
+      <div class="mx-auto max-w-5xl space-y-8">
+        <header class="interactive-card rounded-xl p-6">
+          <div class="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div class="flex items-center gap-4">
+              <div class="flex h-14 w-14 items-center justify-center rounded-full border border-outline-variant bg-primary-container text-lg font-bold text-on-primary-container">${escapeHTML(initials)}</div>
+              <div>
+                <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Profile</h1>
+                <p class="text-sm text-on-surface-variant">${escapeHTML(displayName)} - ${escapeHTML(loginLine)}</p>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-export-btn">Export Local Data</button>
+              <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
+                Import Local Data
+                <input class="hidden" id="profile-import-input" type="file" accept="application/json" />
+              </label>
+            </div>
+          </div>
+          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include board, hidden keys, profile, and Proof Log. Tokens and repo metadata cache are excluded.</p>
+        </header>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Proof Log</span>
+            <div class="mt-4 metric-card-value">${proofEntries.length}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Saved Board Cards</span>
+            <div class="mt-4 metric-card-value">${Object.values(store.boardCards).flat().length}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Local alerts</span>
+            <div class="mt-4 metric-card-value">${alerts.length}</div>
+          </div>
+        </div>
+
+        <section class="interactive-card rounded-xl p-6">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-headline font-bold text-on-surface">Proof Log</h2>
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
+          </div>
+          <div class="space-y-3">${renderProofLogRows(proofEntries)}</div>
+        </section>
+
+        <section class="interactive-card rounded-xl p-6">
+          <h2 class="mb-4 text-lg font-headline font-bold text-on-surface">Local alerts</h2>
+          <div class="space-y-3">
+            ${alerts.length ? alerts.map(alert => `
+              <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+                <div class="mb-1 flex items-center justify-between gap-3">
+                  <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
+                  <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
+                </div>
+                <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
+              </div>
+            `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No local alerts right now.</p>'}
+          </div>
+        </section>
+      </div>
+    </section>
+  `;
+
+  const exportBtn = document.getElementById('profile-export-btn');
+  if (exportBtn) exportBtn.addEventListener('click', handleExportLocalData);
+  bindLocalDataImport('profile-import-input', 'profile-import-status');
+  document.querySelectorAll('.proof-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      store.removeProofLogEntry(btn.getAttribute('data-key'));
+    });
+  });
+}
+
 function hiddenItemMatchesFilter(item, filterText) {
   const query = String(filterText || '').trim().toLowerCase();
   if (!query) return true;
@@ -1936,6 +2271,26 @@ function renderSettings(container) {
         
         ${renderHiddenResultsManager()}
 
+        <div class="interactive-card rounded-xl overflow-hidden">
+          <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">sync_alt</span>
+              Local Data Portability
+            </h2>
+          </div>
+          <div class="p-6 space-y-4">
+            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move board cards, hidden keys, profile metadata, and Proof Log entries between browsers. Tokens and repo metadata cache are excluded.</p>
+            <div class="flex flex-wrap gap-3">
+              <button class="interactive-button interactive-button-secondary px-4 py-2" id="settings-export-local-data-btn">Export Local Data</button>
+              <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
+                Import Local Data
+                <input class="hidden" id="settings-import-local-data-input" type="file" accept="application/json" />
+              </label>
+            </div>
+            <p class="text-xs text-on-surface-variant" id="settings-import-local-data-status"></p>
+          </div>
+        </div>
+
         <!-- Danger Zone -->
         <div class="pt-8 border-t border-outline-variant space-y-4">
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
@@ -2053,13 +2408,10 @@ function renderSettings(container) {
 
         if (res.ok) {
           const userObj = await res.json();
+          store.updateProfileFromGitHubUser(userObj, { notify: false });
+          updateHeaderProfile();
           statusDiv.className = 'p-3.5 rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-xs flex items-center gap-2';
           statusDiv.textContent = `Connection active! Welcome, ${userObj.login || 'GitHub user'} (Rate limits verified).`;
-          
-          // Update avatar initial initials dynamically based on username
-          const initials = String(userObj.login || 'GH').slice(0, 2).toUpperCase();
-          const avatarInitial = document.getElementById('user-avatar-initials');
-          if (avatarInitial) avatarInitial.textContent = initials;
           
         } else {
           throw new Error(`Auth test rejected: ${res.statusText} (${res.status})`);
@@ -2087,8 +2439,7 @@ function renderSettings(container) {
         statusDiv.textContent = "Token wiped permanently from browser store. Rate limits set back to public thresholds.";
       }
       
-      const avatarInitial = document.getElementById('user-avatar-initials');
-      if (avatarInitial) avatarInitial.textContent = 'JD';
+      updateHeaderProfile();
     });
   }
 
@@ -2135,6 +2486,12 @@ function renderSettings(container) {
       }
     });
   }
+
+  const settingsExportBtn = document.getElementById('settings-export-local-data-btn');
+  if (settingsExportBtn) {
+    settingsExportBtn.addEventListener('click', handleExportLocalData);
+  }
+  bindLocalDataImport('settings-import-local-data-input', 'settings-import-local-data-status');
 }
 
 /**
@@ -2154,6 +2511,8 @@ function openInspector() {
   const inspectorBestFitLabel = getInspectorBestFitLabel(contributionBrief.bestFor);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = isIssueSavedToBoard(issue);
+  const hiddenLocally = isIssueHidden(issue) || isRepoHidden(issue);
+  const inProofLog = isIssueInProofLog(issue);
   const safeIssueTitle = escapeHTML(issue.title);
   const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
   const safeIssueNumber = safeInteger(issue.number);
@@ -2181,6 +2540,15 @@ function openInspector() {
         <h3 class="text-sm font-semibold text-error mb-1">Not a contribution candidate</h3>
         <p class="text-sm text-on-surface-variant">This can still be saved for tracking, but the score flags it as a likely pass.</p>
       </div>
+    </div>
+  ` : '';
+  const hiddenInspectorHTML = hiddenLocally ? `
+    <div class="rounded-lg border border-primary/25 bg-primary/10 p-4 flex items-start justify-between gap-4">
+      <div>
+        <h3 class="text-sm font-semibold text-primary mb-1">Hidden locally</h3>
+        <p class="text-sm text-on-surface-variant">Hidden state suppresses discovery search suggestions only. Exact Lookup can still recover this item.</p>
+      </div>
+      <button class="action-button interactive-button-secondary px-3 py-2 text-xs" id="inspector-unhide-btn">Unhide</button>
     </div>
   ` : '';
 
@@ -2281,6 +2649,10 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
+          <button class="action-button min-w-fit px-4 py-2 text-xs ${inProofLog ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-proof-log-btn">
+            <span class="material-symbols-outlined text-[16px]">${inProofLog ? 'verified' : 'workspace_premium'}</span>
+            ${inProofLog ? 'In Proof Log' : 'Add to Proof Log'}
+          </button>
           <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
             <span class="material-symbols-outlined text-[16px]">visibility_off</span>
             Hide issue
@@ -2300,6 +2672,7 @@ function openInspector() {
       <!-- Description Block -->
       ${closedInspectorHTML}
       ${riskyLookupHTML}
+      ${hiddenInspectorHTML}
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -2401,8 +2774,7 @@ function openInspector() {
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
       if (isIssueSavedToBoard(issue)) {
-        store.removeBoardCard(issue.id);
-        openInspector();
+        store.setScreen('board');
         return;
       }
       if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
@@ -2417,6 +2789,26 @@ function openInspector() {
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();
+    });
+  }
+
+  const proofBtn = document.getElementById('inspector-proof-log-btn');
+  if (proofBtn) {
+    proofBtn.addEventListener('click', () => {
+      store.addIssueToProofLog(issue, { source: 'manual_lookup' });
+      proofBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">verified</span> In Proof Log`;
+      proofBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');
+    });
+  }
+
+  const unhideBtn = document.getElementById('inspector-unhide-btn');
+  if (unhideBtn) {
+    unhideBtn.addEventListener('click', () => {
+      const issueKey = getCanonicalIssueKey(issue);
+      const repoKey = getCanonicalRepoKey(issue);
+      if (issueKey) store.unhideHiddenItem('issue', issueKey);
+      if (repoKey) store.unhideHiddenItem('repo', repoKey);
+      openInspector();
     });
   }
 

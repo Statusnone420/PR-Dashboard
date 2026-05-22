@@ -25,3 +25,13 @@ test('reusable interaction and metric classes are defined in CSS', async () => {
     assert.match(css, new RegExp(`\\.${className}\\b`));
   }
 });
+
+test('board uses responsive grid contract instead of fixed horizontal row', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const mainJs = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(css, /\.kanban-board-grid\b/);
+  assert.match(css, /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(260px,\s*1fr\)\)/);
+  assert.doesNotMatch(mainJs, /min-w-max/);
+  assert.doesNotMatch(css, /w-\[280px\]|shrink-0/);
+});

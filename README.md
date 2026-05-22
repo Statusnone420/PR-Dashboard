@@ -29,6 +29,9 @@ The app runs entirely in the browser. There is no backend, no AI API dependency,
 - **Contribution Brief** explains who an issue is best for, why it may be worth trying, and what to do first.
 - **Hidden Results** lets you hide noisy issues or repos locally, then review or unhide them in Settings.
 - **Board flow** saves candidates into a local contribution board for follow-up.
+- **Proof Log** preserves completed local contribution history after active board work is done.
+- **Profile and local alerts** summarize local proof history, board health, and follow-up reminders without a backend.
+- **Export/Import Local Data** moves board, hidden, profile, and Proof Log data between browsers without exporting tokens.
 - **Optional GitHub PAT** increases rate limits while staying browser-local unless you choose remember mode.
 
 ## Quick Start
@@ -55,6 +58,8 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 - Tokens are optional and only used for GitHub API requests.
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
+- Proof Log entries, profile metadata, hidden keys, and local alert inputs stay local to your browser.
+- Exported local data excludes tokens and repo metadata cache.
 - Hidden results are stored as compact issue/repo keys and timestamps only.
 - No issue titles, bodies, labels, repo metadata, or tokens are stored in the hidden-results list.
 
@@ -68,6 +73,10 @@ src/
   state/               Local app store
   contributionBrief.js Rules-based contribution guidance
   hiddenItems.js       Local hidden issue/repo storage
+  proofLog.js          Local completed-contribution history
+  profile.js           Local non-secret profile metadata
+  localData.js         Local export/import helpers
+  localAlerts.js       Local workflow alert summaries
   lookup.js            Exact Lookup parsing
   main.js              SPA rendering and UI bindings
   matchScore.js        Match/Fit Score logic
