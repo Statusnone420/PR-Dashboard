@@ -212,6 +212,17 @@ function retryAfterFromResponse(response) {
   return Number.isFinite(number) ? number : null;
 }
 
+function isRefreshRateLimitResponse(response, errorData, rateLimit) {
+  if (response.status === 429) return true;
+  if (response.status !== 403) return false;
+
+  const message = String(errorData?.message || '').toLowerCase();
+  return rateLimit.remaining === 0
+    || Boolean(response.headers.get('retry-after'))
+    || message.includes('rate limit')
+    || message.includes('abuse detection');
+}
+
 export async function fetchIssueMetadataForRefresh(issue, options = {}) {
   const url = getIssueApiUrl(issue);
   if (!url) {
@@ -240,7 +251,7 @@ export async function fetchIssueMetadataForRefresh(issue, options = {}) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    if (response.status === 403 || response.status === 429) {
+    if (isRefreshRateLimitResponse(response, errorData, rateLimit)) {
       throw new GitHubRefreshRateLimitError(errorData.message || 'GitHub API rate limit reached.', {
         status: response.status,
         rateLimit,

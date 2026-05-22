@@ -125,3 +125,28 @@ test('refresh issue metadata throws a structured rate-limit error for 403 and 42
     }
   );
 });
+
+test('refresh issue metadata treats non-rate-limit 403 as an ordinary refresh error', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { fetchIssueMetadataForRefresh, GitHubRefreshRateLimitError } = await import('../src/api/github.js');
+
+  await assert.rejects(
+    () => fetchIssueMetadataForRefresh(savedCard(), {
+      fetchImpl: async () => response({ message: 'Resource not accessible by integration' }, {
+        ok: false,
+        status: 403,
+        headers: {
+          'x-ratelimit-remaining': '4999',
+          'x-ratelimit-limit': '5000',
+          'x-ratelimit-reset': '1770000000'
+        }
+      })
+    }),
+    (error) => {
+      assert.equal(error instanceof GitHubRefreshRateLimitError, false);
+      assert.equal(error.isRateLimit, undefined);
+      assert.match(error.message, /Resource not accessible by integration/);
+      return true;
+    }
+  );
+});
