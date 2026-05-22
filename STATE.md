@@ -184,3 +184,8 @@
 - Browser smoke at `http://127.0.0.1:5173/` saved a Lookup result, confirmed the inspector had no Proof Log chip/status/action, moved the card to `Merged`, confirmed Dashboard/Profile Proof Log visibility, removed the Profile entry, re-opened the inspector with no Proof Log state, verified the bell popover says `Review reminders`, and found no console warnings/errors.
 - Verification on 2026-05-22: `npm test` passed 102/102, `npm run build` passed, and `git diff --check` passed.
 - Remaining risk: live GitHub Lookup data and public API rate limits can vary over time. This pass intentionally added no OAuth, backend sync, encrypted sync, issue-card avatars, new storage keys, or new product surfaces.
+
+## 2026-05-22 README Badge Polish
+
+- Added Tailwind CSS and Live on Vercel badges to the README badge row, keeping the existing compact Shields style.
+- Verification: badge image URLs and the live Vercel URL returned `200`, and `git diff --check` passed.

@@ -6,6 +6,8 @@ Find GitHub issues worth contributing to, not just more issues.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF.svg)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38BDF8.svg?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Live on Vercel](https://img.shields.io/badge/live-Vercel-000000.svg?logo=vercel&logoColor=white)](https://pr-dashboard-xi.vercel.app/)
 [![Local first](https://img.shields.io/badge/local--first-no_backend-2ea043.svg)](docs/SECURITY.md)
 [![Security notes](https://img.shields.io/badge/security-notes_available-8b949e.svg)](docs/SECURITY.md)
 
