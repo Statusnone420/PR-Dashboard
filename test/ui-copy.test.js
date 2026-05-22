@@ -2,9 +2,59 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('primary navigation labels contribution finding, not generic issue search', () => {
+function readCopySources() {
   const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  return { indexHtml, mainJs };
+}
+
+function normalizeCopy(value) {
+  return String(value).replace(/\s+/g, ' ').trim();
+}
+
+function htmlVisibleCopy(source) {
+  const attributeCopy = [];
+  source.replace(/\b(?:aria-label|alt|placeholder|title)=["']([^"']*)["']/g, (_, value) => {
+    attributeCopy.push(value);
+    return '';
+  });
+
+  const textCopy = source
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+
+  return normalizeCopy([textCopy, ...attributeCopy].join(' '));
+}
+
+function jsStringLiterals(source) {
+  const literals = [];
+  const pattern = /`([\s\S]*?)`|'([^'\\]*(?:\\.[^'\\]*)*)'|"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+  let match;
+  while ((match = pattern.exec(source)) !== null) {
+    literals.push(match[1] ?? match[2] ?? match[3] ?? '');
+  }
+  return literals;
+}
+
+function visibleAppCopy({ indexHtml, mainJs }) {
+  const jsCopy = jsStringLiterals(mainJs)
+    .map(literal => htmlVisibleCopy(literal))
+    .join(' ');
+  return normalizeCopy(`${htmlVisibleCopy(indexHtml)} ${jsCopy}`);
+}
+
+function sliceBetween(source, start, end) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.notEqual(startIndex, -1, `Missing start marker: ${start}`);
+  assert.notEqual(endIndex, -1, `Missing end marker: ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
+test('primary navigation labels contribution finding, not generic issue search', () => {
+  const { indexHtml, mainJs } = readCopySources();
 
   assert.match(indexHtml, />\s*Find Contributions\s*</);
   assert.doesNotMatch(indexHtml, />\s*Find Issues\s*</);
@@ -27,25 +77,28 @@ test('settings exposes hidden results management copy', () => {
   assert.match(mainJs, /Clear Hidden/);
 });
 
-test('profile, proof log, export import, and local alerts are visible product surfaces', () => {
-  const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+test('profile, proof log, export import, and review reminders are visible product surfaces', () => {
+  const { indexHtml, mainJs } = readCopySources();
 
   assert.match(mainJs, /Proof Log/);
   assert.match(mainJs, /Export Local Data/);
   assert.match(mainJs, /Import Local Data/);
-  assert.match(mainJs, /Local alerts/);
+  assert.match(mainJs, /Review reminders/);
+  assert.match(mainJs, /No review reminders right now\./);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
 });
 
-test('lookup hidden recovery and board-only proof status are represented in UI copy', () => {
+test('lookup hidden recovery is represented without inspector proof status', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
   assert.match(mainJs, /Hidden locally/);
-  assert.match(mainJs, /In Proof Log/);
-  assert.match(mainJs, /Not in Proof Log/);
+  assert.match(mainJs, /Lookup can still recover this item/);
   assert.match(mainJs, /applyHiddenFilter/);
+  assert.doesNotMatch(mainJs, /proof-status-chip/);
+  assert.doesNotMatch(mainJs, /Proof Log status/);
+  assert.doesNotMatch(mainJs, /Not in Proof Log/);
+  assert.doesNotMatch(mainJs, /inspector-proof-log/);
   assert.doesNotMatch(mainJs, /proof-log-add-btn/);
   assert.doesNotMatch(mainJs, /inspector-proof-log-btn/);
   assert.doesNotMatch(mainJs, /source:\s*['"]manual_lookup['"]/);
@@ -71,8 +124,44 @@ test('empty results recovery uses broaden search copy', () => {
 test('dashboard exposes richer local metric cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
-  assert.match(mainJs, /Active Review/);
-  assert.match(mainJs, /Local contribution candidates/);
+  assert.match(mainJs, /Active board work/);
+  assert.match(mainJs, /Contribution candidates/);
   assert.match(mainJs, /Filtered from future searches/);
-  assert.match(mainJs, /Board Momentum/);
+  assert.match(mainJs, /Board flow/);
+});
+
+test('visible app copy rejects banned product wording', () => {
+  const sources = readCopySources();
+  const copy = visibleAppCopy(sources);
+
+  for (const banned of [
+    /Local alerts/,
+    /Local notifications/,
+    /Proof Board/,
+    /proof board/,
+    /beautiful thing/,
+    /magic/
+  ]) {
+    assert.doesNotMatch(copy, banned);
+  }
+
+  assert.doesNotMatch(copy, /\bwins\b/i);
+  assert.doesNotMatch(copy, /\bmomentum\b/i);
+  assert.match(copy, /Review reminders/);
+  assert.match(copy, /No review reminders right now\./);
+});
+
+test('result cards and inspector action center do not expose proof log controls', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const actionCenter = sliceBetween(mainJs, '<!-- Actions buttons inside details -->', '<!-- Description Block -->');
+
+  assert.doesNotMatch(resultCards, /Proof Log|proof-log|proof-status|proofStatus/);
+  assert.match(actionCenter, /Save issue/);
+  assert.match(actionCenter, /Saved to board/);
+  assert.match(actionCenter, /Hide issue/);
+  assert.match(actionCenter, /Hide repo/);
+  assert.match(actionCenter, /Unhide/);
+  assert.match(actionCenter, /Open on GitHub/);
+  assert.doesNotMatch(actionCenter, /Proof Log|proof-status-chip|proofStatus|workspace_premium/);
 });

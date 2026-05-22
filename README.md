@@ -17,9 +17,9 @@ Find GitHub issues worth contributing to, not just more issues.
 
 ## What It Does
 
-PR Dashboard is a local-first GitHub issue finder for people who want to make better contribution decisions. It keeps the familiar search flow, then adds deterministic scoring, contribution guidance, and a lightweight board so promising issues do not get lost.
+PR Dashboard is a local-first GitHub issue finder for people who want to make better contribution decisions. It keeps the familiar search flow, then adds deterministic scoring, contribution guidance, and a lightweight Board so promising candidates do not get lost.
 
-The app runs entirely in the browser. There is no backend sync in v1, no AI API dependency, and no app-owned server receiving your token or board data. Export/Import Local Data is the current phone/desktop bridge.
+The app runs entirely in the browser. There is no backend sync in v1, no model API dependency, and no app-owned server receiving your GitHub token or Board data. Export/Import Local Data is the current phone/desktop bridge.
 
 ## Highlights
 
@@ -28,11 +28,11 @@ The app runs entirely in the browser. There is no backend sync in v1, no AI API 
 - **Match/Fit Score** ranks issues with transparent scoring rows and pass reasons.
 - **Contribution Brief** explains who an issue is best for, why it may be worth trying, and what to do first.
 - **Hidden Results** lets you hide noisy issues or repos locally, then review or unhide them in Settings.
-- **Board flow** saves candidates into a local contribution board for follow-up.
+- **Board flow** saves candidates into a local Board for follow-up.
 - **Proof Log** preserves completed local contribution history when board cards move to Merged.
-- **Profile and local alerts** summarize local proof history, board health, profile avatar, and follow-up reminders without a backend.
+- **Profile and Review reminders** summarize Proof Log records, Board health, profile avatar, and follow-up reminders without a backend.
 - **Export/Import Local Data** moves board, hidden, profile, and Proof Log data between browsers without exporting tokens.
-- **Optional GitHub PAT** increases rate limits while staying browser-local unless you choose remember mode.
+- **Optional GitHub token** increases rate limits while staying browser-local unless you choose remember mode.
 
 ## v1 Local-First Scope
 
@@ -62,7 +62,7 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 - Tokens are optional and only used for GitHub API requests.
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
-- Proof Log entries, profile metadata, hidden keys, and local alert inputs stay local to your browser.
+- Proof Log entries, profile metadata, Hidden Results keys, and board-derived reminder data stay local to your browser.
 - GitHub avatar images load directly from safe GitHub avatar URLs. Tokens are never placed in avatar URLs or sent with image requests.
 - Export/Import Local Data is the current cross-device bridge.
 - GitHub tokens are never exported, and repo metadata cache is excluded from exports.

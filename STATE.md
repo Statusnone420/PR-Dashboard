@@ -171,3 +171,16 @@
 - Added strict avatar URL validation for `https://avatars.githubusercontent.com/...` with digit-only `v` and `s` query params. Header/Profile render safe avatars with no-referrer/lazy/async attributes and initials fallback.
 - Docs now state that Exact Lookup does not directly create Proof Log entries and that GitHub avatar images are loaded without tokens in image URLs or image requests.
 - Verification on 2026-05-22: `npm test` passed 100/100, `npm run build` passed, `git diff --check` passed, and a built-preview Playwright smoke verified mocked Test Connection avatar storage/rendering, export token exclusion, inspector status-only proof chip, board-to-`Merged` Proof Log creation, Profile removal, and no console warnings/errors.
+
+## 2026-05-22 Product Copy + Inspector Cleanup Sweep
+
+- Used `$impeccable` product-register guidance for the copy sweep because this repo still has no `PRODUCT.md` or `DESIGN.md`.
+- Removed the inspector Proof Log status chip/state entirely. The inspector Action center now renders only Save/Saved to board, Hide issue, Hide repo, Unhide when hidden, and Open on GitHub.
+- Kept Proof Log creation on the Board Merged path and Proof Log display/removal on Dashboard/Profile. Legacy `manual_lookup` entries remain loadable/importable, but no manual lookup Proof Log UI path was added.
+- Renamed visible local alert copy to `Review reminders` in the header bell, popover, Profile metric/card, empty state, and helper text.
+- Tightened visible product copy across Dashboard, Board, Profile, Settings, export/import, danger-zone, Lookup recovery, and Find Contributions surfaces with the preferred vocabulary from the plan.
+- Aligned current README and data-model docs with `Review reminders`, `Proof Log`, `Board`, and `GitHub token` vocabulary where they describe user-facing product behavior.
+- Added copy contract coverage for banned visible phrases in `index.html` and `src/main.js`, inspector/result-card Proof Log control exclusions, `Review reminders` copy, and the extra banned terms `beautiful thing`, `magic`, standalone `wins`, and standalone `momentum`.
+- Browser smoke at `http://127.0.0.1:5173/` saved a Lookup result, confirmed the inspector had no Proof Log chip/status/action, moved the card to `Merged`, confirmed Dashboard/Profile Proof Log visibility, removed the Profile entry, re-opened the inspector with no Proof Log state, verified the bell popover says `Review reminders`, and found no console warnings/errors.
+- Verification on 2026-05-22: `npm test` passed 102/102, `npm run build` passed, and `git diff --check` passed.
+- Remaining risk: live GitHub Lookup data and public API rate limits can vary over time. This pass intentionally added no OAuth, backend sync, encrypted sync, issue-card avatars, new storage keys, or new product surfaces.

@@ -82,11 +82,6 @@ function isIssueSavedToBoard(issue) {
   });
 }
 
-function isIssueInProofLog(issue) {
-  const key = getCanonicalIssueKey(issue);
-  return Boolean(key && listProofEntries(localStorage).some(entry => entry.key === key));
-}
-
 function getSearchItemsForActions() {
   const items = store.searchResults || [];
   return store.lastSearchMode === 'lookup' ? items : filterHiddenIssues(items);
@@ -237,7 +232,7 @@ function renderLocalAlertsPopover() {
 
   const alerts = buildLocalAlerts(store.boardCards);
   button.classList.toggle('text-primary', alerts.length > 0);
-  button.title = alerts.length ? `${alerts.length} local alerts` : 'Local alerts';
+  button.title = alerts.length ? `${alerts.length} Review reminders` : 'Review reminders';
   if (!localAlertsOpen) return;
 
   const popover = document.createElement('div');
@@ -253,13 +248,14 @@ function renderLocalAlertsPopover() {
           <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
         </button>
       `).join('')
-    : '<div class="rounded border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No local alerts right now.</div>';
+    : '<div class="rounded border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</div>';
 
   popover.innerHTML = `
     <div class="mb-3 flex items-center justify-between gap-3">
-      <h2 class="text-sm font-semibold text-on-surface">Local alerts</h2>
+      <h2 class="text-sm font-semibold text-on-surface">Review reminders</h2>
       <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn"><span class="material-symbols-outlined text-[16px]">close</span></button>
     </div>
+    <p class="mb-3 text-xs text-on-surface-variant">Review reminders are generated from your local board state. No push notifications or backend sync.</p>
     <div class="space-y-2">${alertsHTML}</div>
   `;
   document.body.appendChild(popover);
@@ -430,9 +426,9 @@ function renderMetricProgress(percent, label = '') {
   `;
 }
 
-function renderBoardMomentum(reviewFlow) {
+function renderBoardFlow(reviewFlow) {
   if (!reviewFlow.total) {
-    return '<p class="text-xs text-on-surface-variant">Save issues to start tracking board momentum.</p>';
+    return '<p class="text-xs text-on-surface-variant">Save candidates to start tracking board flow.</p>';
   }
 
   const segmentsHTML = reviewFlow.lanes.map(lane => {
@@ -459,7 +455,7 @@ function renderBoardMomentum(reviewFlow) {
       <div class="text-sm font-semibold text-on-surface">${escapeHTML(reviewFlow.headline)}</div>
       <div class="metric-progress-track flex">${segmentsHTML}</div>
       <div class="flex flex-wrap gap-2">${lanesHTML}</div>
-      <p class="text-xs text-on-surface-variant" id="board-momentum-next-move">${escapeHTML(reviewFlow.nextMove)}</p>
+      <p class="text-xs text-on-surface-variant" id="board-flow-next-move">${escapeHTML(reviewFlow.nextMove)}</p>
     </div>
   `;
 }
@@ -506,7 +502,7 @@ function renderDashboard(container) {
               <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
             </div>
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Continue Review: ${resumeTitle}</h2>
-            <p class="text-on-surface-variant max-w-xl">${resumeRepo} #${resumeNumber} - Saved in ${resumeColumn}. Open it to continue your local review.</p>
+            <p class="text-on-surface-variant max-w-xl">${resumeRepo} #${resumeNumber} - Saved in ${resumeColumn}. Open it to continue board work.</p>
           </div>
           <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-resume-btn" data-id="${resumeId}">
             Resume Review
@@ -524,8 +520,8 @@ function renderDashboard(container) {
               <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
               <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
             </div>
-            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure Personal Access Token</h2>
-            <p class="text-on-surface-variant max-w-xl">Configure a Personal Access Token in Settings to increase GitHub API rate limits for searches and lookups.</p>
+            <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure GitHub token</h2>
+            <p class="text-on-surface-variant max-w-xl">Add a GitHub token in Settings to increase API rate limits for searches and lookups.</p>
           </div>
           <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-action-btn">
             Go to Settings
@@ -555,15 +551,15 @@ function renderDashboard(container) {
     `;
   }
 
-  // Saved Issues lists the Board Considering lane (or mocks if empty)
+  // Saved candidates lists the Board Considering lane (or mocks if empty)
   let savedIssuesHTML = '';
   if (dashboardSavedCards.length === 0) {
     savedIssuesHTML = `
       <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
         <span class="material-symbols-outlined text-on-surface-variant text-3xl">bookmarks</span>
-        <h4 class="text-on-surface font-medium">No saved issues</h4>
-        <p class="text-xs text-on-surface-variant max-w-xs">Save issues from Find Contributions results to see them listed in your Dashboard panel.</p>
-        <button class="interactive-button interactive-button-primary mt-2 px-4 py-1.5 text-xs" id="dash-go-find-btn">Browse Issues</button>
+        <h4 class="text-on-surface font-medium">No saved candidates</h4>
+        <p class="text-xs text-on-surface-variant max-w-xs">Save candidates from Find Contributions to see them on your Dashboard.</p>
+        <button class="interactive-button interactive-button-primary mt-2 px-4 py-1.5 text-xs" id="dash-go-find-btn">Find Contributions</button>
       </div>
     `;
   } else {
@@ -607,8 +603,8 @@ function renderDashboard(container) {
   const localReviewHTML = `
     <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
       <span class="material-symbols-outlined text-on-surface-variant text-3xl">commit</span>
-      <h4 class="text-on-surface font-medium">No local review in progress</h4>
-      <p class="text-xs text-on-surface-variant max-w-xs">Saved GitHub issues appear on the board after you save them from search.</p>
+      <h4 class="text-on-surface font-medium">No active board work</h4>
+      <p class="text-xs text-on-surface-variant max-w-xs">Saved candidates appear on the Board after you save them from Find Contributions.</p>
     </div>
   `;
   const recentProofHTML = proofEntries.length ? proofEntries.slice(0, 3).map(entry => `
@@ -639,8 +635,8 @@ function renderDashboard(container) {
           <div class="metric-card flex flex-col gap-4">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <span class="text-sm font-medium text-on-surface-variant">Saved Issues</span>
-                <p class="mt-1 text-xs text-on-surface-variant">Local contribution candidates</p>
+                <span class="text-sm font-medium text-on-surface-variant">Saved candidates</span>
+                <p class="mt-1 text-xs text-on-surface-variant">Contribution candidates</p>
               </div>
               <span class="material-symbols-outlined text-primary">bookmarks</span>
             </div>
@@ -650,7 +646,7 @@ function renderDashboard(container) {
           <div class="metric-card flex flex-col gap-4">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <span class="text-sm font-medium text-on-surface-variant">Active Review</span>
+                <span class="text-sm font-medium text-on-surface-variant">Active board work</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Considering through PR open</p>
               </div>
               <span class="material-symbols-outlined text-tertiary filled-icon">radio_button_checked</span>
@@ -659,7 +655,7 @@ function renderDashboard(container) {
               <span class="metric-card-value">${activeReviewCount}</span>
               <span class="mb-1 text-xs text-on-surface-variant">${activeReviewProgress}% of board</span>
             </div>
-            ${renderMetricProgress(activeReviewProgress, 'Active review progress')}
+            ${renderMetricProgress(activeReviewProgress, 'Active board work progress')}
           </div>
 
           <div class="metric-card flex flex-col gap-4">
@@ -692,23 +688,23 @@ function renderDashboard(container) {
           <div class="metric-card flex flex-col gap-4 md:col-span-2 xl:col-span-1">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <span class="text-sm font-medium text-on-surface-variant">Board Momentum</span>
+                <span class="text-sm font-medium text-on-surface-variant">Board flow</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Distribution across lanes</p>
               </div>
               <span class="material-symbols-outlined text-primary">stacked_bar_chart</span>
             </div>
-            ${renderBoardMomentum(reviewFlow)}
+            ${renderBoardFlow(reviewFlow)}
           </div>
         </div>
         
         <!-- Bento Grid Contents -->
         <div class="bento-grid">
-          <!-- Saved Issues (Bento Large) -->
+          <!-- Saved candidates (Bento Large) -->
           <div class="bento-item bento-large interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
                 <span class="material-symbols-outlined text-on-surface-variant">bookmarks</span>
-                Saved Issues
+                Saved candidates
               </h3>
               <button class="interactive-button interactive-button-secondary px-3 py-1.5 text-xs" id="dash-view-board-btn">View Kanban Board</button>
             </div>
@@ -717,12 +713,12 @@ function renderDashboard(container) {
             </div>
           </div>
           
-          <!-- Local Review -->
+          <!-- Active board work -->
           <div class="bento-item interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
                 <span class="material-symbols-outlined text-on-surface-variant">commit</span>
-                Local Review
+                Active board work
               </h3>
             </div>
             <div class="flex flex-col gap-4">
@@ -824,11 +820,11 @@ function renderDashboard(container) {
     });
   });
 
-  bindBoardMomentumInteractions();
+  bindBoardFlowInteractions();
 }
 
-function bindBoardMomentumInteractions() {
-  const helper = document.getElementById('board-momentum-next-move');
+function bindBoardFlowInteractions() {
+  const helper = document.getElementById('board-flow-next-move');
   const defaultHelper = helper?.textContent || '';
   const items = document.querySelectorAll('[data-review-flow-lane]');
   const chips = document.querySelectorAll('.review-flow-chip');
@@ -1064,8 +1060,8 @@ function renderFindIssues(container) {
         <div class="w-full callout p-4 rounded-lg flex items-start gap-3 bg-surface-container text-left border-outline-variant">
           <span class="material-symbols-outlined text-primary mt-0.5">info</span>
           <div class="text-xs text-on-surface-variant leading-relaxed">
-            <strong>GitHub API Rate Limits</strong>: Public searches without a Personal Access Token are rate-limited to 10 requests per minute by GitHub. 
-            ${token ? '<span class="text-tertiary">You currently have a Token active!</span>' : 'You can paste an optional fine-grained token in the <strong>Settings</strong> screen to increase these limits.'}
+            <strong>GitHub API rate limits</strong>: Public searches without a GitHub token are rate-limited to 10 requests per minute by GitHub.
+            ${token ? '<span class="text-tertiary">A GitHub token is active.</span>' : 'You can paste an optional fine-grained token in <strong>Settings</strong> to increase these limits.'}
           </div>
         </div>
         
@@ -1111,7 +1107,7 @@ function renderFindIssues(container) {
           <!-- Presets -->
           <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
             <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
-              <span class="material-symbols-outlined text-[16px]">bolt</span> Quick Wins
+              <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
             </button>
             <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
               <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
@@ -1638,8 +1634,8 @@ async function refreshSavedIssuesFromGitHub(statusEl) {
 
   store.setBoardCards(nextBoard);
   const statusMessage = failed
-    ? `Refreshed ${refreshed} saved issues. ${failed} could not be refreshed.`
-    : `Refreshed ${refreshed} saved issues.`;
+    ? `Refreshed ${refreshed} saved candidates. ${failed} could not be refreshed.`
+    : `Refreshed ${refreshed} saved candidates.`;
   store.setBoardRefreshStatus(statusMessage);
   if (statusEl) statusEl.textContent = statusMessage;
 }
@@ -1803,13 +1799,13 @@ function renderBoard(container) {
       <div class="px-6 md:px-8 py-5 border-b border-outline-variant flex-shrink-0 flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-surface-container-lowest">
         <div class="min-w-0">
           <h1 class="text-2xl font-headline font-bold text-on-surface mb-1">Contribution Board</h1>
-          <p class="text-sm text-on-surface-variant">Track saved issues and local contribution decisions across repositories.</p>
+          <p class="text-sm text-on-surface-variant">Track saved candidates and local contribution decisions across repositories.</p>
         </div>
         
         <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
           <span class="text-xs text-on-surface-variant" id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</span>
           <button class="interactive-button interactive-button-secondary py-1.5 px-3" id="board-refresh-btn" ${totalCards === 0 ? 'disabled' : ''}>
-            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh saved issues
+            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh saved candidates
           </button>
           <button class="interactive-button interactive-button-danger py-1.5 px-3" id="board-clear-btn" ${totalCards === 0 ? 'disabled' : ''}>
             <span class="material-symbols-outlined text-[16px]">delete</span> Clear Board
@@ -1889,8 +1885,8 @@ function renderBoard(container) {
     refreshBtn.addEventListener('click', async () => {
       const statusEl = document.getElementById('board-refresh-status');
       refreshBtn.disabled = true;
-      store.setBoardRefreshStatus('Refreshing saved issues...');
-      if (statusEl) statusEl.textContent = 'Refreshing saved issues...';
+      store.setBoardRefreshStatus('Refreshing saved candidates...');
+      if (statusEl) statusEl.textContent = 'Refreshing saved candidates...';
       await refreshSavedIssuesFromGitHub(statusEl);
     });
   }
@@ -1947,6 +1943,17 @@ function bindLocalDataImport(inputId, statusId) {
   });
 }
 
+function formatProofLogStatus(status) {
+  return status === 'marked_complete' ? 'Marked complete locally' : String(status || 'Marked complete locally');
+}
+
+function formatProofLogSource(source) {
+  if (source === 'board_merged') return 'Board Merged';
+  if (source === 'startup_backfill') return 'Board backfill';
+  if (source === 'manual_lookup') return 'Legacy Lookup';
+  return source ? String(source).replace(/_/g, ' ') : 'Local';
+}
+
 function renderProofLogRows(entries) {
   if (!entries.length) {
     return `
@@ -1963,11 +1970,11 @@ function renderProofLogRows(entries) {
       <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div class="min-w-0">
           <div class="mb-1 flex flex-wrap items-center gap-2">
-            <span class="rounded border border-tertiary/25 bg-tertiary/10 px-2 py-0.5 text-[11px] text-tertiary">${escapeHTML(entry.status)}</span>
+            <span class="rounded border border-tertiary/25 bg-tertiary/10 px-2 py-0.5 text-[11px] text-tertiary">${escapeHTML(formatProofLogStatus(entry.status))}</span>
             <span class="font-mono text-xs text-on-surface-variant">${escapeHTML(entry.snapshot.display_key || entry.key)}</span>
           </div>
           <h3 class="truncate text-sm font-medium text-on-surface">${escapeHTML(entry.snapshot.title || entry.key)}</h3>
-          <p class="mt-1 text-xs text-on-surface-variant">Completed ${escapeHTML(formatDate(entry.completed_at))} - Source: ${escapeHTML(entry.source)}</p>
+          <p class="mt-1 text-xs text-on-surface-variant">Completed ${escapeHTML(formatDate(entry.completed_at))}. Source: ${escapeHTML(formatProofLogSource(entry.source))}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           ${entry.proof_url ? `<a class="action-button interactive-button-secondary px-3 py-1.5 text-xs" href="${escapeHTML(entry.proof_url)}" target="_blank" rel="noopener noreferrer">Open proof</a>` : ''}
@@ -2009,7 +2016,7 @@ function renderProfile(container) {
               </label>
             </div>
           </div>
-          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include board, hidden keys, profile, and Proof Log. Tokens and repo metadata cache are excluded.</p>
+          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include Board cards, Hidden Results, profile, and Proof Log. GitHub tokens and repo metadata cache are excluded.</p>
         </header>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -2018,11 +2025,11 @@ function renderProfile(container) {
             <div class="mt-4 metric-card-value">${proofEntries.length}</div>
           </div>
           <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Saved Board Cards</span>
+            <span class="text-sm text-on-surface-variant">Saved candidates</span>
             <div class="mt-4 metric-card-value">${Object.values(store.boardCards).flat().length}</div>
           </div>
           <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Local alerts</span>
+            <span class="text-sm text-on-surface-variant">Review reminders</span>
             <div class="mt-4 metric-card-value">${alerts.length}</div>
           </div>
         </div>
@@ -2036,7 +2043,8 @@ function renderProfile(container) {
         </section>
 
         <section class="interactive-card rounded-xl p-6">
-          <h2 class="mb-4 text-lg font-headline font-bold text-on-surface">Local alerts</h2>
+          <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
+          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state. No push notifications or backend sync.</p>
           <div class="space-y-3">
             ${alerts.length ? alerts.map(alert => `
               <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
@@ -2046,7 +2054,7 @@ function renderProfile(container) {
                 </div>
                 <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
               </div>
-            `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No local alerts right now.</p>'}
+            `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</p>'}
           </div>
         </section>
       </div>
@@ -2198,8 +2206,8 @@ function renderSettings(container) {
       <div class="max-w-4xl mx-auto space-y-8">
         
         <header class="space-y-2">
-          <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Authentication Details</h1>
-          <p class="text-on-surface-variant">Configure your access tokens for GitHub integration.</p>
+          <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">GitHub token</h1>
+          <p class="text-on-surface-variant">Add an optional token for higher GitHub API limits.</p>
         </header>
         
         <!-- Local Storage Warning Indicator (Only shown when Remember checked) -->
@@ -2229,14 +2237,14 @@ function renderSettings(container) {
           <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
             <h2 class="text-lg font-semibold flex items-center gap-2">
               <span class="material-symbols-outlined text-primary">key</span>
-              GitHub Personal Access Token (PAT)
+              GitHub token
             </h2>
           </div>
           
           <div class="p-6 space-y-8">
             <!-- Input string -->
             <div class="space-y-3">
-              <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">Token Value</label>
+              <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">GitHub token</label>
               <div class="relative group">
                 <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password"/>
                 <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" style="background:none; border:none;">
@@ -2245,7 +2253,7 @@ function renderSettings(container) {
               </div>
               
               <div class="flex justify-between items-center text-xs text-on-surface-variant">
-                <span>Supports fine-grained or classic developer tokens. No private repository scopes required.</span>
+                <span>Supports fine-grained or classic tokens. No private repository scopes required.</span>
                 <a class="text-primary hover:underline flex items-center gap-1" href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">Generate on GitHub <span class="material-symbols-outlined text-[14px]">open_in_new</span></a>
               </div>
             </div>
@@ -2306,11 +2314,11 @@ function renderSettings(container) {
           <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
             <h2 class="text-lg font-semibold flex items-center gap-2">
               <span class="material-symbols-outlined text-primary">sync_alt</span>
-              Local Data Portability
+              Export and Import Local Data
             </h2>
           </div>
           <div class="p-6 space-y-4">
-            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move board cards, hidden keys, profile metadata, and Proof Log entries between browsers. Tokens and repo metadata cache are excluded.</p>
+            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
             <div class="flex flex-wrap gap-3">
               <button class="interactive-button interactive-button-secondary px-4 py-2" id="settings-export-local-data-btn">Export Local Data</button>
               <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
@@ -2327,17 +2335,17 @@ function renderSettings(container) {
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
           <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
-              <div class="font-medium text-on-surface mb-1">Clear token and settings</div>
-              <div class="text-sm text-on-surface-variant">Remove the token, remember-token setting, and connection state. Board cards are kept.</div>
+              <div class="font-medium text-on-surface mb-1">Clear GitHub token and settings</div>
+              <div class="text-sm text-on-surface-variant">Remove the GitHub token, remember-token setting, and connection state. Board cards are kept.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-token-settings-btn">
-              Clear Token/Settings
+              Clear GitHub Token
             </button>
           </div>
           <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear board data</div>
-              <div class="text-sm text-on-surface-variant">Remove saved issue cards and local board progress. Token settings are kept.</div>
+              <div class="text-sm text-on-surface-variant">Remove saved candidate cards and local board progress. GitHub token settings are kept.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-board-settings-btn">
               Clear Board
@@ -2355,7 +2363,7 @@ function renderSettings(container) {
           <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear all app data</div>
-              <div class="text-sm text-on-surface-variant">Remove token/settings and saved board data from this browser.</div>
+              <div class="text-sm text-on-surface-variant">Remove GitHub token settings and saved board data from this browser.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-all-settings-btn">
               Clear All
@@ -2482,7 +2490,7 @@ function renderSettings(container) {
       if (statusDiv) {
         statusDiv.style.display = 'block';
         statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
-        statusDiv.textContent = "Board data removed. Token settings were kept.";
+        statusDiv.textContent = "Board data removed. GitHub token settings were kept.";
       }
     });
   }
@@ -2543,12 +2551,6 @@ function openInspector() {
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = isIssueSavedToBoard(issue);
   const hiddenLocally = isIssueHidden(issue) || isRepoHidden(issue);
-  const inProofLog = isIssueInProofLog(issue);
-  const proofStatusText = inProofLog ? 'In Proof Log' : 'Not in Proof Log';
-  const proofStatusTone = inProofLog
-    ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
-    : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
-  const proofStatusIcon = inProofLog ? 'verified' : 'workspace_premium';
   const safeIssueTitle = escapeHTML(issue.title);
   const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
   const safeIssueNumber = safeInteger(issue.number);
@@ -2579,12 +2581,11 @@ function openInspector() {
     </div>
   ` : '';
   const hiddenInspectorHTML = hiddenLocally ? `
-    <div class="rounded-lg border border-primary/25 bg-primary/10 p-4 flex items-start justify-between gap-4">
+    <div class="rounded-lg border border-primary/25 bg-primary/10 p-4">
       <div>
         <h3 class="text-sm font-semibold text-primary mb-1">Hidden locally</h3>
-        <p class="text-sm text-on-surface-variant">Hidden state suppresses discovery search suggestions only. Exact Lookup can still recover this item.</p>
+        <p class="text-sm text-on-surface-variant">Hidden Results suppress Find Contributions suggestions only. Lookup can still recover this item.</p>
       </div>
-      <button class="action-button interactive-button-secondary px-3 py-2 text-xs" id="inspector-unhide-btn">Unhide</button>
     </div>
   ` : '';
 
@@ -2685,10 +2686,6 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
-          <span class="proof-status-chip inline-flex min-w-fit items-center gap-2 rounded border px-4 py-2 text-xs ${proofStatusTone}" aria-label="Proof Log status">
-            <span class="material-symbols-outlined text-[16px]">${proofStatusIcon}</span>
-            ${proofStatusText}
-          </span>
           <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
             <span class="material-symbols-outlined text-[16px]">visibility_off</span>
             Hide issue
@@ -2697,6 +2694,10 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">folder_off</span>
             Hide repo
           </button>
+          ${hiddenLocally ? `<button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-unhide-btn">
+            <span class="material-symbols-outlined text-[16px]">visibility</span>
+            Unhide
+          </button>` : ''}
           
           ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
             Open on GitHub
