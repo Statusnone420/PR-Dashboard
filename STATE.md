@@ -243,3 +243,13 @@
 - Browser smoke at `http://127.0.0.1:5173/#board` seeded six stale active cards, opened `Refresh stale cards`, verified the app modal copy/actions, cancelled it, and saved `qa_screenshots/refresh-confirm-dialog.png`.
 - Verification on 2026-05-22: full final gates were rerun after this modal change. `npm test` passed 133/133, `npm run build` passed, `npm run test:layout` passed 7/7, and `git diff --check` passed.
 - Remaining risk: the modal was validated in Chromium with mocked local board data. Live GitHub request failures still depend on GitHub response headers and current rate-limit state.
+
+## 2026-05-22 Emergency Blank-Screen Hotfix
+
+- Cause: `renderDashboard()` called `summarizeDashboardMetrics(store.boardCards)` without importing `summarizeDashboardMetrics`, which raised `ReferenceError: summarizeDashboardMetrics is not defined` during the initial built-preview render and left `#app-content` empty. The same block also referenced undefined local metric helpers for board counts/progress, so the dashboard now uses the fields returned by `summarizeDashboardMetrics()`.
+- Files fixed: `src/main.js`, `test/board-layout-a1.spec.cjs`, and `STATE.md`.
+- Built-preview route smoke before the fix: `/`, `/#dashboard`, `/#find-issues`, `/#board`, `/#settings`, and `/#profile` loaded the shell but rendered empty route content; console showed `ReferenceError: summarizeDashboardMetrics is not defined` from the built JS bundle.
+- Built-preview route smoke after the fix at `http://127.0.0.1:4173`: `/`, `/#dashboard`, `/#find-issues`, `/#board`, `/#settings`, and `/#profile` all rendered non-empty `#app-content` with expected route text and no fresh console or page errors.
+- Added Playwright route smoke coverage to `npm run test:layout` so blank valid routes and dashboard runtime errors fail the layout gate.
+- Verification on 2026-05-22: `npm test` passed 148/148, `npm run build` passed, `npm run test:layout` passed 8/8, and a targeted built-preview route smoke passed for all requested routes.
+- Remaining risk: this hotfix only covers local route rendering and did not exercise live GitHub API responses or real PAT behavior.

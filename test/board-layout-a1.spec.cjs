@@ -70,6 +70,45 @@ function seededCrowdedBoard() {
 }
 
 test.describe('A1 board layout', () => {
+  test('valid routes render content without runtime errors', async ({ context }) => {
+    const routes = [
+      { path: '/', expectedText: 'Saved candidates' },
+      { path: '/#dashboard', expectedText: 'Saved candidates' },
+      { path: '/#find-issues', expectedText: 'Find your next contribution' },
+      { path: '/#board', expectedText: 'Active workflow' },
+      { path: '/#settings', expectedText: 'GitHub token' },
+      { path: '/#profile', expectedText: 'Profile' }
+    ];
+
+    for (const route of routes) {
+      const page = await context.newPage();
+      const runtimeErrors = [];
+      page.on('console', message => {
+        if (['error', 'warning'].includes(message.type())) {
+          runtimeErrors.push(`console ${message.type()}: ${message.text()}`);
+        }
+      });
+      page.on('pageerror', error => {
+        runtimeErrors.push(`pageerror: ${error.message}`);
+      });
+
+      await page.goto(`${baseURL}${route.path}`);
+      const content = page.locator('#app-content');
+      await expect(content).toContainText(route.expectedText);
+
+      const contentMetrics = await content.evaluate(element => ({
+        childCount: element.children.length,
+        textLength: element.innerText.trim().length
+      }));
+      await page.waitForTimeout(100);
+      expect(contentMetrics.childCount, `${route.path} should render route children`).toBeGreaterThan(0);
+      expect(contentMetrics.textLength, `${route.path} should render meaningful route text`).toBeGreaterThan(50);
+      expect(runtimeErrors, `${route.path} should not emit console or page errors`).toEqual([]);
+
+      await page.close();
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((board) => {
       localStorage.clear();
