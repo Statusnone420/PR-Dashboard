@@ -2,7 +2,7 @@
 
 # PR Dashboard
 
-Find GitHub issues worth contributing to, not just more issues.
+Find GitHub issues worth contributing to, not just random noise.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF.svg)](https://vitejs.dev/)
