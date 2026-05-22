@@ -65,3 +65,37 @@
 - When a PAT exists and there is no active saved issue, the hero recommends `Find Contributions` instead of token setup.
 - Adjusted PAT setup copy to mention increased GitHub API rate limits for searches/lookups, without implying private repository search.
 - Verification: `test/dashboard-hero.test.js` failed before `src/dashboardHero.js` existed, then passed after implementation. `npm test` passed 48/48 and `npm run build` passed.
+
+## 2026-05-21 Contribution Coach Layer
+
+- Added deterministic contribution brief logic in `src/contributionBrief.js` using issue labels, body/title terms, comments, assignees, updated dates, hydrated repo metadata, and existing Match Score rows/pass reasons.
+- Find Contributions and Lookup result cards now show a restrained `Best For` chip beside the existing Match chip. Dashboard saved issue cards also show the same chip where the Match chip already appears.
+- Issue inspector now includes a `Contribution Brief` section near `Why this score?` with verdict, best-for label, why bullets, risk bullets, first move, and optional maintainer question for vague-but-not-hard-pass issues.
+- Bad candidates now get plain-English deterministic risk copy for assigned issues, crowded discussions, stale issues/repos, vague bodies, large/refactor scope, blocked/duplicate/wontfix labels, and roadmap/meta issues.
+- Files touched: `src/contributionBrief.js`, `src/main.js`, `test/contribution-brief.test.js`, `test/ui-copy.test.js`, `STATE.md`, and generated HMR log lines in `qa_screenshots/vite-dev.log` from the already-running Vite server.
+- Verification: contribution brief tests were written first and failed before the helper existed; `npm test` passed 55/55, `npm run build` passed, and a local browser smoke at `http://127.0.0.1:3000/#find-issues` found 30 rendered result cards with `Best For` chips and one inspector `Contribution Brief`.
+- Known limitations: the coach is intentionally rules-only and depends on the metadata already available in GitHub issue/search responses plus hydrated repo fields. It does not add AI, backend services, or any new network dependency beyond the existing GitHub API calls.
+
+## 2026-05-21 Contribution Coach Cleanup + Hide
+
+- Tightened `src/contributionBrief.js` so Match/Fit Score remains the base signal: `Likely pass` now requires a low score or a true hard-pass condition such as closed issue, archived/disabled repo, hard-pass label, assigned plus stale/noisy thread, or very vague plus large/unclear scope.
+- Replaced broad `meta` substring detection with whole-term/phrase checks so normal `metadata` issues are not treated as roadmap/meta work.
+- Renamed fit labels from `Comfortable` to `Standard` and `Likely Pass` to `Skip`; cards now show `Fit: First PR`, `Fit: Standard`, `Fit: Deep Dive`, or `Fit: Skip`, while the inspector shows `Best fit` copy.
+- Added local hide support in `src/hiddenItems.js` using `pr_dashboard_hidden_v1` compact JSON with issue/repo keys and timestamps only. Search rendering filters hidden issues/repos, card and inspector actions hide immediately, and Settings includes `Clear Hidden`.
+- Files touched: `src/contributionBrief.js`, `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/contribution-brief.test.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: new tests were written first and failed for the old labels, metadata false positive, bad high-score likely-pass copy, and missing hidden-items module. After implementation, `npm test` passed 61/61 and `npm run build` passed.
+- Known limitations: hidden items are local to the current browser storage and intentionally do not sync across devices. Clearing hidden items restores visibility on the next render/search, but it does not alter saved board cards.
+
+## 2026-05-21 Line Ending Rules
+
+- Updated `.gitattributes` so the attributes file plus JavaScript, JSON, HTML, CSS, and Markdown files keep LF line endings across platforms while retaining automatic text normalization for other files.
+- Verification: `git check-attr eol -- .gitattributes src/main.js STATE.md package.json index.html` reports `lf` for those representative files, and `git diff --check` passes.
+
+## 2026-05-21 Hidden Results Manager
+
+- Extended `src/hiddenItems.js` with compact-listing and per-key unhide helpers. Hidden issue/repo rows are derived only from existing keys and timestamps, with GitHub URLs generated from those keys.
+- Added a Settings `Hidden Results` card above Danger Zone with issue/repo counts, a local filter input, Issues and Repositories sections, capped rendering at the first 100 matching rows per section, Open links, and per-row Unhide buttons.
+- Existing `Clear Hidden` and `Clear All App Data` still clear hidden storage; no hidden item titles, bodies, labels, repo metadata, tokens, backend calls, or network fetches were added.
+- Files touched: `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: hidden manager tests were written first and failed for the missing list/unhide helpers and Settings copy. After implementation, `npm test` passed 65/65 and `npm run build` passed.
+- Known limitation: hidden rows show compact keys rather than issue titles by design, because the hidden storage intentionally avoids storing or fetching full issue data.

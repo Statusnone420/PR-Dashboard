@@ -7,6 +7,11 @@ import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.j
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation } from './dashboardHero.js';
+import { buildContributionBrief } from './contributionBrief.js';
+import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
+
+const HIDDEN_RESULTS_RENDER_LIMIT = 100;
+let hiddenSettingsFilter = '';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -49,6 +54,12 @@ function getFitScoreRating(score) {
   if (score >= 70) return { rating, colorClass: 'glow-violet', bgClass: 'bg-primary/10 border-primary/20 text-primary' };
   if (score >= 50) return { rating, colorClass: 'text-on-surface-variant', bgClass: 'bg-surface-container-high text-on-surface-variant border-outline-variant' };
   return { rating, colorClass: 'text-error', bgClass: 'bg-error-container/20 border-error/20 text-error' };
+}
+
+function getInspectorBestFitLabel(bestFor) {
+  if (bestFor === 'Standard') return 'Standard contributor';
+  if (bestFor === 'Deep Dive') return 'Deep dive';
+  return bestFor;
 }
 
 /**
@@ -340,8 +351,10 @@ function renderDashboard(container) {
     `;
   } else {
     savedIssuesHTML = dashboardSavedCards.slice(0, 3).map(issue => {
-      const { score } = calculateFitScore(issue);
+      const fitObj = calculateFitScore(issue);
+      const { score } = fitObj;
       const rating = getFitScoreRating(score);
+      const contributionBrief = buildContributionBrief(issue, fitObj);
       const labelsSlice = (issue.labels || []).slice(0, 2);
       const labelsHTML = labelsSlice.map(l => {
         const name = String(typeof l === 'object' ? l.name : l || '');
@@ -356,9 +369,12 @@ function renderDashboard(container) {
         <div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group dashboard-issue-card" data-id="${issueId}">
           <div class="flex justify-between items-start mb-1">
             <span class="text-xs font-mono text-on-surface-variant">${repoName}</span>
-            <div class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border ${rating.bgClass}">
-              <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
-              ${score}% Match
+            <div class="flex flex-wrap justify-end gap-1">
+              <div class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border ${rating.bgClass}">
+                <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
+                ${score}% Match
+              </div>
+              <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
             </div>
           </div>
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
@@ -607,6 +623,11 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
+  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
+  const hiddenResultsCount = Array.isArray(results) && Array.isArray(visibleResults)
+    ? results.length - visibleResults.length
+    : 0;
+  const hiddenCountText = hiddenResultsCount > 0 ? ` (${hiddenResultsCount} hidden)` : '';
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.draftFilters;
@@ -689,16 +710,16 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${results ? renderIssueCardsList(results) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
       </div>
     `;
-    countText = results ? `Showing ${results.length} issues` : 'Request failed';
-  } else if (results !== null) {
-    countText = `Showing ${results.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}`;
-    if (results.length === 0) {
+    countText = visibleResults ? `Showing ${visibleResults.length} issues${hiddenCountText}` : 'Request failed';
+  } else if (visibleResults !== null) {
+    countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}${hiddenCountText}`;
+    if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(results);
+      resultsHTML = renderIssueCardsList(visibleResults);
     }
   } else {
     // Initial screen state - explain Token details
@@ -1032,7 +1053,7 @@ function renderFindIssues(container) {
  */
 function renderIssueCardsList(issuesList) {
   // Sort list if local sorting is needed
-  let sorted = [...issuesList];
+  let sorted = filterHiddenIssues(issuesList);
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
@@ -1054,6 +1075,7 @@ function renderIssueCardsList(issuesList) {
   const cardsHTML = sorted.map((issue, index) => {
     const fitObj = issue.fitRating;
     const rating = getFitScoreRating(fitObj.score);
+    const contributionBrief = buildContributionBrief(issue, fitObj);
     const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
     const isFeatured = index === 0 && sorted.length > 1;
     const updatedText = escapeHTML(formatDate(issue.updated_at));
@@ -1111,6 +1133,7 @@ function renderIssueCardsList(issuesList) {
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
           <span class="rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
           ${repoUnavailableHTML}
         </div>
         
@@ -1132,6 +1155,10 @@ function renderIssueCardsList(issuesList) {
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'Saved' : 'Save'}
             </button>
+            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 hide-issue-btn bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant" data-id="${issueId}">
+              <span class="material-symbols-outlined text-[14px]">visibility_off</span>
+              Hide
+            </button>
             ${issueUrl ? `<a class="px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors flex items-center justify-center gap-1" href="${escapeHTML(issueUrl)}" target="_blank" rel="noopener noreferrer">
               GitHub
               <span class="material-symbols-outlined text-[12px]">open_in_new</span>
@@ -1151,7 +1178,7 @@ function bindIssueCardListEvents() {
     title.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(title.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1166,7 +1193,7 @@ function bindIssueCardListEvents() {
       // Avoid firing if they click an active button inside the card
       if (e.target.closest('button') || e.target.closest('a')) return;
       const issueId = parseInt(card.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1180,7 +1207,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         store.setInspectedIssue(issue);
@@ -1194,7 +1221,7 @@ function bindIssueCardListEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const items = store.searchResults || [];
+      const items = filterHiddenIssues(store.searchResults || []);
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         const fitObj = calculateFitScore(issue);
@@ -1209,6 +1236,19 @@ function bindIssueCardListEvents() {
         btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">check</span> Saved`;
         btn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
         btn.classList.remove('bg-transparent', 'text-on-surface-variant', 'border-outline-variant');
+      }
+    });
+  });
+
+  // Hide button click
+  document.querySelectorAll('.hide-issue-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const issueId = parseInt(btn.getAttribute('data-id'), 10);
+      const items = filterHiddenIssues(store.searchResults || []);
+      const issue = items.find(i => i.id === issueId);
+      if (issue) {
+        store.hideIssue(issue);
       }
     });
   });
@@ -1510,6 +1550,130 @@ function renderBoard(container) {
 /**
  * 4. SETTINGS VIEW
  */
+function hiddenItemMatchesFilter(item, filterText) {
+  const query = String(filterText || '').trim().toLowerCase();
+  if (!query) return true;
+  return item.key.toLowerCase().includes(query);
+}
+
+function renderHiddenRows(items, type) {
+  if (items.length === 0) {
+    return `
+      <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
+        No matching hidden ${type === 'issue' ? 'issues' : 'repositories'}.
+      </div>
+    `;
+  }
+
+  return `
+    <div class="divide-y divide-outline-variant/50 overflow-hidden rounded-lg border border-outline-variant">
+      ${items.map(item => {
+        const typeLabel = type === 'issue' ? 'Issue' : 'Repo';
+        const safeKey = escapeHTML(item.key);
+        const safeDate = escapeHTML(formatDate(item.hiddenAt));
+        const openLinkHTML = item.url
+          ? `<a class="text-primary hover:underline text-xs font-medium" href="${escapeHTML(item.url)}" target="_blank" rel="noopener noreferrer">Open link</a>`
+          : '<span class="text-xs text-on-surface-variant">Open unavailable</span>';
+        return `
+          <div class="grid grid-cols-1 md:grid-cols-[72px_minmax(0,1fr)_120px_auto_auto] items-center gap-3 bg-surface-container-lowest px-4 py-3">
+            <span class="w-fit rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-[11px] text-on-surface-variant">${typeLabel}</span>
+            <span class="min-w-0 truncate font-mono text-sm text-on-surface">${safeKey}</span>
+            <span class="text-xs text-on-surface-variant">${safeDate}</span>
+            ${openLinkHTML}
+            <button class="hidden-result-unhide-btn rounded border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:border-on-surface-variant hover:text-on-surface" data-type="${type}" data-key="${safeKey}">
+              Unhide
+            </button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderHiddenSection(title, type, items, totalMatching) {
+  const shown = items.slice(0, HIDDEN_RESULTS_RENDER_LIMIT);
+  const overflowHTML = totalMatching > HIDDEN_RESULTS_RENDER_LIMIT
+    ? `<p class="mt-2 text-xs text-on-surface-variant">Showing first ${HIDDEN_RESULTS_RENDER_LIMIT} of ${totalMatching.toLocaleString()}. Use search to narrow results.</p>`
+    : '';
+
+  return `
+    <section class="space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-on-surface">${title}</h3>
+        <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${totalMatching.toLocaleString()}</span>
+      </div>
+      ${renderHiddenRows(shown, type)}
+      ${overflowHTML}
+    </section>
+  `;
+}
+
+function renderHiddenResultsBody(filterText = hiddenSettingsFilter) {
+  const hidden = listHiddenItems(localStorage);
+  const issues = hidden.issues.filter(item => hiddenItemMatchesFilter(item, filterText));
+  const repos = hidden.repos.filter(item => hiddenItemMatchesFilter(item, filterText));
+  return `
+    ${renderHiddenSection('Issues', 'issue', issues, issues.length)}
+    ${renderHiddenSection('Repositories', 'repo', repos, repos.length)}
+  `;
+}
+
+function renderHiddenResultsManager() {
+  const hidden = listHiddenItems(localStorage);
+  const issueCount = hidden.issues.length;
+  const repoCount = hidden.repos.length;
+  return `
+    <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+      <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">visibility_off</span>
+              Hidden Results
+            </h2>
+            <p class="mt-1 text-sm text-on-surface-variant">Review issues and repositories you hid from search results.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-1 text-xs text-on-surface-variant">${issueCount.toLocaleString()} hidden issues</span>
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-1 text-xs text-on-surface-variant">${repoCount.toLocaleString()} hidden repos</span>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 space-y-5">
+        <input class="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-background placeholder:text-on-surface-variant/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary" id="hidden-results-filter-input" placeholder="Filter hidden items..." type="search" value="${escapeHTML(hiddenSettingsFilter)}" />
+        <div class="space-y-6" id="hidden-results-body">
+          ${renderHiddenResultsBody(hiddenSettingsFilter)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bindHiddenResultActions() {
+  document.querySelectorAll('.hidden-result-unhide-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-type');
+      const key = btn.getAttribute('data-key');
+      if (type && key) {
+        store.unhideHiddenItem(type, key);
+      }
+    });
+  });
+}
+
+function bindHiddenResultsManager() {
+  const filterInput = document.getElementById('hidden-results-filter-input');
+  const body = document.getElementById('hidden-results-body');
+  if (filterInput && body) {
+    filterInput.addEventListener('input', () => {
+      hiddenSettingsFilter = filterInput.value;
+      body.innerHTML = renderHiddenResultsBody(hiddenSettingsFilter);
+      bindHiddenResultActions();
+    });
+  }
+  bindHiddenResultActions();
+}
+
 function renderSettings(container) {
   const token = store.githubToken;
   const remember = store.rememberToken;
@@ -1622,6 +1786,8 @@ function renderSettings(container) {
           </div>
         </div>
         
+        ${renderHiddenResultsManager()}
+
         <!-- Danger Zone -->
         <div class="pt-8 border-t border-outline-variant space-y-4">
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
@@ -1641,6 +1807,15 @@ function renderSettings(container) {
             </div>
             <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-board-settings-btn">
               Clear Board
+            </button>
+          </div>
+          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+            <div>
+              <div class="font-medium text-on-surface mb-1">Clear hidden items</div>
+              <div class="text-sm text-on-surface-variant">Show previously hidden issues and repositories in future results.</div>
+            </div>
+            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-hidden-settings-btn">
+              Clear Hidden
             </button>
           </div>
           <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
@@ -1665,6 +1840,7 @@ function renderSettings(container) {
   if (patInput) {
     patInput.value = token;
   }
+  bindHiddenResultsManager();
 
   // Interactive toggle check box warning display
   if (rememberCheckbox && warningBanner) {
@@ -1781,9 +1957,24 @@ function renderSettings(container) {
     });
   }
 
+  const clearHiddenBtn = document.getElementById('clear-hidden-settings-btn');
+  if (clearHiddenBtn) {
+    clearHiddenBtn.addEventListener('click', () => {
+      hiddenSettingsFilter = '';
+      store.clearHiddenItems();
+      const statusDiv = document.getElementById('settings-connection-status');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+        statusDiv.textContent = "Hidden issues and repositories cleared. New renders will show normal results.";
+      }
+    });
+  }
+
   const clearAllBtn = document.getElementById('clear-all-settings-btn');
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
+      hiddenSettingsFilter = '';
       store.clearAllLocalData();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;
@@ -1811,6 +2002,8 @@ function openInspector() {
   const fitObj = calculateFitScore(issue);
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
+  const contributionBrief = buildContributionBrief(issue, fitObj);
+  const inspectorBestFitLabel = getInspectorBestFitLabel(contributionBrief.bestFor);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
   const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
   const safeIssueTitle = escapeHTML(issue.title);
@@ -1857,6 +2050,32 @@ function openInspector() {
   const passChipsHTML = fitObj.passReasons.length ? `
     <div class="mt-4 flex flex-wrap gap-2">
       ${fitObj.passReasons.map(reason => `<span class="rounded-full border border-error/25 bg-error-container/10 px-2 py-0.5 text-[11px] text-error">${escapeHTML(reason)}</span>`).join('')}
+    </div>
+  ` : '';
+  const briefVerdictTone = contributionBrief.verdict === 'Good candidate'
+    ? 'border-tertiary/25 bg-tertiary/10 text-tertiary'
+    : contributionBrief.verdict === 'Likely pass'
+      ? 'border-error/25 bg-error-container/10 text-error'
+      : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
+  const briefBestForTone = contributionBrief.bestFor === 'Skip'
+    ? 'border-error/25 bg-error-container/10 text-error'
+    : 'border-primary/20 bg-primary/10 text-primary';
+  const contributionBriefWhyHTML = contributionBrief.why.map(reason => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-tertiary text-[14px] mt-0.5">check_circle</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const contributionBriefRisksHTML = contributionBrief.risks.map(risk => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-error text-[14px] mt-0.5">error</span>
+      <span>${escapeHTML(risk)}</span>
+    </li>
+  `).join('');
+  const maintainerQuestionHTML = contributionBrief.maintainerQuestion ? `
+    <div class="mt-4 rounded border border-primary/20 bg-primary/5 p-3">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-primary mb-1">Suggested maintainer question</div>
+      <p class="text-sm text-on-surface-variant">${escapeHTML(contributionBrief.maintainerQuestion)}</p>
     </div>
   ` : '';
 
@@ -1914,6 +2133,14 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
+          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-issue-btn">
+            <span class="material-symbols-outlined text-[16px]">visibility_off</span>
+            Hide issue
+          </button>
+          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-repo-btn">
+            <span class="material-symbols-outlined text-[16px]">folder_off</span>
+            Hide repo
+          </button>
           
           ${safeIssueUrl ? `<a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
             Open on GitHub
@@ -1935,6 +2162,37 @@ function openInspector() {
       
       <!-- Fit Details & Analytics Bento -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
+
+        <!-- Contribution Coach Brief -->
+        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
+          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[18px]">assistant_direction</span>
+            Contribution Brief
+          </h4>
+          <div class="mb-4 flex flex-wrap gap-2">
+            <span class="rounded border ${briefVerdictTone} px-2 py-0.5 text-xs">Verdict: ${escapeHTML(contributionBrief.verdict)}</span>
+            <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best fit: ${escapeHTML(inspectorBestFitLabel)}</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Why</div>
+              <ul class="space-y-2">
+                ${contributionBriefWhyHTML}
+              </ul>
+            </div>
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Risks</div>
+              <ul class="space-y-2">
+                ${contributionBriefRisksHTML}
+              </ul>
+            </div>
+          </div>
+          <div class="mt-4 border-t border-outline-variant/40 pt-3">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-1">First move</div>
+            <p class="text-sm text-on-surface">${escapeHTML(contributionBrief.firstMove)}</p>
+          </div>
+          ${maintainerQuestionHTML}
+        </div>
         
         <!-- Score Fit Analysis -->
         <div class="bg-surface-container rounded-lg border border-outline-variant p-4 relative overflow-hidden group">
@@ -2006,6 +2264,22 @@ function openInspector() {
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();
+    });
+  }
+
+  const hideIssueBtn = document.getElementById('inspector-hide-issue-btn');
+  if (hideIssueBtn) {
+    hideIssueBtn.addEventListener('click', () => {
+      closeInspector();
+      store.hideIssue(issue);
+    });
+  }
+
+  const hideRepoBtn = document.getElementById('inspector-hide-repo-btn');
+  if (hideRepoBtn) {
+    hideRepoBtn.addEventListener('click', () => {
+      closeInspector();
+      store.hideRepo(issue);
     });
   }
 

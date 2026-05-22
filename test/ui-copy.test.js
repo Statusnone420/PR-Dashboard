@@ -10,3 +10,19 @@ test('primary navigation labels contribution finding, not generic issue search',
   assert.doesNotMatch(indexHtml, />\s*Find Issues\s*</);
   assert.doesNotMatch(mainJs, /"Find Issues" search results/);
 });
+
+test('contribution coach UI exposes a best-for chip and inspector brief', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Fit:/);
+  assert.match(mainJs, /Best fit/);
+  assert.match(mainJs, /Contribution Brief/);
+});
+
+test('settings exposes hidden results management copy', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Hidden Results/);
+  assert.match(mainJs, /Unhide/);
+  assert.match(mainJs, /Clear Hidden/);
+});
