@@ -261,6 +261,43 @@ test('marking GitHub activity reviewed stamps acknowledgement without clearing s
   assert.match(globalThis.localStorage.getItem('pr_dashboard_board_cards'), /2 new comments since last refresh/);
 });
 
+test('inspector checklist toggles persist for saved cards outside Working', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.boardCards = {
+    Considering: [{
+      id: 13997,
+      number: 13997,
+      title: 'Checklist outside working',
+      repository: { full_name: 'TEAMMATES/teammates' },
+      checklist: [
+        { text: 'Confirm scope', completed: false },
+        { text: 'Run tests', completed: false }
+      ],
+      progress: 0
+    }],
+    'Read Docs': [],
+    'Asked Maintainer': [],
+    Working: [],
+    'PR Open': [],
+    Merged: [],
+    Passed: []
+  };
+  appStore.setInspectedIssue(appStore.boardCards.Considering[0]);
+
+  appStore.toggleTaskChecklist(13997, 'Confirm scope', true);
+
+  const storedBoard = JSON.parse(globalThis.localStorage.getItem('pr_dashboard_board_cards'));
+  assert.equal(storedBoard.Considering[0].checklist[0].completed, true);
+  assert.equal(storedBoard.Considering[0].progress, 50);
+  assert.equal(appStore.boardCards.Considering[0].checklist[0].completed, true);
+  assert.equal(appStore.boardCards.Considering[0].progress, 50);
+  assert.equal(appStore.inspectedIssue.checklist[0].completed, true);
+  assert.equal(appStore.inspectedIssue.progress, 50);
+});
+
 test('clearing board data keeps proof log history', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');

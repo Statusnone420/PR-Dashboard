@@ -209,3 +209,12 @@
 - README, Security notes, and Settings copy now clarify that Find Contributions uses GitHub Search limits while Lookup and saved-card refresh use REST/core limits.
 - Verification on 2026-05-22: `npm test` passed 127/127, `npm run build` passed, `git diff --check` passed, and `npm run test:layout` passed 5/5 across `390x844`, `375x667`, `1366x768`, `1920x1080`, and `3440x1440`, with screenshots written to `qa_screenshots/board-layout-a1/`. The in-app browser also opened `http://127.0.0.1:5173/#board` and confirmed Active workflow, Completed, both refresh labels, and no document horizontal overflow.
 - Remaining risk: browser smoke uses mocked local board data and a built preview, not live GitHub responses or a real PAT. Live API limits and issue metadata can still vary.
+
+## 2026-05-22 Pre-Merge Cleanup
+
+- Fixed inspector checklist persistence so `toggleTaskChecklist()` searches every board column, not only `Working`, then updates the matching board card, saves board storage, and keeps the inspected issue in sync.
+- Changed local data import to merge durable collections instead of overwriting them: hidden items now union by key with newest timestamp winning, Proof Log entries merge by key while preserving earliest completion/creation dates and keeping newest updated content, and profile import keeps the newer `saved_at`.
+- Import now returns the retained merged profile/hidden/proof data, and the import UI uses the merged profile result instead of assigning from the raw imported payload.
+- Board-card import behavior, GitHub activity acknowledgement collision handling, Refresh Throttle, Mark Reviewed, and A1 Board layout behavior were left unchanged.
+- Verification on 2026-05-22: regression tests were written first and failed for the old behavior; after the fix, `npm test` passed 131/131, `npm run build` passed, and `npm run test:layout` passed 5/5 across the required A1 viewports.
+- Remaining risk: export/import is still a local manual bridge. Conflict resolution is timestamp-based and does not attempt remote sync, OAuth identity reconciliation, or cross-device locking.

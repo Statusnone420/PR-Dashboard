@@ -2,7 +2,7 @@ import { BOARD_COLUMNS, BOARD_STORAGE_KEY, createEmptyBoard, normalizeBoardCards
 import { HIDDEN_STORAGE_KEY, loadHiddenItems, saveHiddenItems } from './hiddenItems.js';
 import { getCanonicalIssueKey } from './issueKeys.js';
 import { loadProfile, PROFILE_STORAGE_KEY, saveProfile } from './profile.js';
-import { loadProofLog, PROOF_LOG_STORAGE_KEY, saveProofLog } from './proofLog.js';
+import { loadProofLog, mergeProofLogs, PROOF_LOG_STORAGE_KEY, saveProofLog } from './proofLog.js';
 import { REPO_METADATA_CACHE_KEY } from './api/repoMetadata.js';
 
 function getStorage(storage) {
@@ -30,6 +30,42 @@ function validAcknowledgedAt(activity) {
   const acknowledged = Date.parse(activity?.acknowledged_at || '');
   const checked = Date.parse(activity?.last_checked_at || '');
   return Number.isFinite(acknowledged) && Number.isFinite(checked) && acknowledged >= checked;
+}
+
+function timestampValue(value) {
+  const time = Date.parse(value || '');
+  return Number.isFinite(time) ? time : 0;
+}
+
+function compactHiddenRecord(record) {
+  if (!record || typeof record !== 'object') return {};
+  return Object.fromEntries(Object.entries(record)
+    .filter(([key, value]) => typeof key === 'string' && key && Number.isFinite(Number(value)))
+    .map(([key, value]) => [key, Number(value)]));
+}
+
+function mergeHiddenRecord(currentRecord, importedRecord) {
+  const merged = { ...compactHiddenRecord(currentRecord) };
+  for (const [key, timestamp] of Object.entries(compactHiddenRecord(importedRecord))) {
+    merged[key] = Math.max(merged[key] || 0, timestamp);
+  }
+  return merged;
+}
+
+function mergeHiddenItems(currentHidden, importedHidden) {
+  return {
+    version: 1,
+    issues: mergeHiddenRecord(currentHidden?.issues, importedHidden?.issues),
+    repos: mergeHiddenRecord(currentHidden?.repos, importedHidden?.repos)
+  };
+}
+
+function mergeProfile(currentProfile, importedProfile) {
+  if (!currentProfile) return importedProfile || null;
+  if (!importedProfile) return currentProfile;
+  return timestampValue(importedProfile.saved_at) > timestampValue(currentProfile.saved_at)
+    ? importedProfile
+    : currentProfile;
 }
 
 function mergeGitHubActivity(leftCard, rightCard) {
@@ -135,17 +171,18 @@ export function importLocalData(storage = getStorage(), payload = {}) {
   const boardCards = mergeBoardCards(parseBoard(targetStorage), payload.boardCards || {});
   targetStorage.setItem(BOARD_STORAGE_KEY, JSON.stringify(boardCards));
 
-  if (payload.hiddenItems) {
-    saveHiddenItems(targetStorage, payload.hiddenItems);
-  }
-  if (payload.proofLog) {
-    saveProofLog(payload.proofLog, targetStorage);
-  }
-  if (payload.profile) {
-    saveProfile(payload.profile, targetStorage);
-  }
+  const hiddenItems = payload.hiddenItems
+    ? saveHiddenItems(targetStorage, mergeHiddenItems(loadHiddenItems(targetStorage), payload.hiddenItems))
+    : loadHiddenItems(targetStorage);
+  const proofLog = payload.proofLog
+    ? saveProofLog(mergeProofLogs(loadProofLog(targetStorage), payload.proofLog), targetStorage)
+    : loadProofLog(targetStorage);
+  const retainedProfile = mergeProfile(loadProfile(targetStorage), payload.profile);
+  const profile = retainedProfile
+    ? saveProfile(retainedProfile, targetStorage)
+    : loadProfile(targetStorage);
 
-  return { imported: true, boardCards };
+  return { imported: true, boardCards, hiddenItems, proofLog, profile };
 }
 
 export function clearAllAppDataKeys(storage = getStorage()) {

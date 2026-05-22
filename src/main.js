@@ -2061,7 +2061,7 @@ function bindLocalDataImport(inputId, statusId) {
       const payload = JSON.parse(await file.text());
       const result = importLocalData(localStorage, payload);
       store.boardCards = result.boardCards || store.boardCards;
-      store.profile = payload.profile || store.profile;
+      store.profile = result.profile || store.profile;
       store.notify();
       if (status) {
         status.textContent = result.imported ? 'Local data imported.' : 'Import failed: unsupported file.';

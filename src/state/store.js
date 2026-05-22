@@ -1,4 +1,5 @@
 import {
+  BOARD_COLUMNS,
   BOARD_MIGRATION_KEY,
   BOARD_STORAGE_KEY,
   createDefaultActionPlan,
@@ -204,15 +205,17 @@ export class AppStore {
 
   // Inspector Panel Action Plan Tasks Persistence
   toggleTaskChecklist(issueId, taskText, completed) {
-    // Check if the issue is in Working column
-    const workingCards = this.boardCards["Working"] || [];
-    const card = workingCards.find(c => c.id === issueId);
+    let card = null;
+    for (const column of BOARD_COLUMNS) {
+      card = (this.boardCards[column] || []).find(c => c.id === issueId);
+      if (card) break;
+    }
+
     if (card) {
       if (!card.checklist) card.checklist = [];
       const task = card.checklist.find(t => t.text === taskText);
       if (task) {
         task.completed = completed;
-        // Calculate progress
         const total = card.checklist.length;
         const done = card.checklist.filter(t => t.completed).length;
         card.progress = Math.round((done / total) * 100);

@@ -56,6 +56,48 @@ function compactProofLog(raw) {
   return log;
 }
 
+function timestampValue(value) {
+  const time = Date.parse(value || '');
+  return Number.isFinite(time) ? time : 0;
+}
+
+function earliestTimestamp(left, right) {
+  return timestampValue(left) <= timestampValue(right) ? left : right;
+}
+
+function latestTimestamp(left, right) {
+  return timestampValue(left) >= timestampValue(right) ? left : right;
+}
+
+export function mergeProofLogs(currentLog, importedLog) {
+  const merged = compactProofLog(currentLog);
+  const incoming = compactProofLog(importedLog);
+
+  for (const [key, importedEntry] of Object.entries(incoming.entries)) {
+    const existing = merged.entries[key];
+    if (!existing) {
+      merged.entries[key] = importedEntry;
+      continue;
+    }
+
+    const importedIsNewer = timestampValue(importedEntry.updated_at) >= timestampValue(existing.updated_at);
+    const content = importedIsNewer ? importedEntry : existing;
+    merged.entries[key] = {
+      ...existing,
+      ...content,
+      completed_at: earliestTimestamp(existing.completed_at, importedEntry.completed_at),
+      created_at: earliestTimestamp(existing.created_at, importedEntry.created_at),
+      updated_at: latestTimestamp(existing.updated_at, importedEntry.updated_at),
+      last_seen_at: latestTimestamp(existing.last_seen_at, importedEntry.last_seen_at),
+      note: content.note,
+      status: content.status,
+      snapshot: content.snapshot
+    };
+  }
+
+  return merged;
+}
+
 export function loadProofLog(storage = getStorage()) {
   const targetStorage = getStorage(storage);
   if (!targetStorage) return emptyProofLog();
