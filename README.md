@@ -19,7 +19,7 @@ Find GitHub issues worth contributing to, not just more issues.
 
 PR Dashboard is a local-first GitHub issue finder for people who want to make better contribution decisions. It keeps the familiar search flow, then adds deterministic scoring, contribution guidance, and a lightweight board so promising issues do not get lost.
 
-The app runs entirely in the browser. There is no backend, no AI API dependency, and no app-owned server receiving your token or board data.
+The app runs entirely in the browser. There is no backend sync in v1, no AI API dependency, and no app-owned server receiving your token or board data. Export/Import Local Data is the current phone/desktop bridge.
 
 ## Highlights
 
@@ -33,6 +33,10 @@ The app runs entirely in the browser. There is no backend, no AI API dependency,
 - **Profile and local alerts** summarize local proof history, board health, and follow-up reminders without a backend.
 - **Export/Import Local Data** moves board, hidden, profile, and Proof Log data between browsers without exporting tokens.
 - **Optional GitHub PAT** increases rate limits while staying browser-local unless you choose remember mode.
+
+## v1 Local-First Scope
+
+v1 deliberately ships without GitHub OAuth, GitHub App auth, backend sync, encrypted sync, a database, or remote avatar rendering. GitHub auth and encrypted sync are future backend-sync work, not part of this local durability pass.
 
 ## Quick Start
 
@@ -59,7 +63,8 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
 - Proof Log entries, profile metadata, hidden keys, and local alert inputs stay local to your browser.
-- Exported local data excludes tokens and repo metadata cache.
+- Export/Import Local Data is the current cross-device bridge.
+- GitHub tokens are never exported, and repo metadata cache is excluded from exports.
 - Hidden results are stored as compact issue/repo keys and timestamps only.
 - No issue titles, bodies, labels, repo metadata, or tokens are stored in the hidden-results list.
 

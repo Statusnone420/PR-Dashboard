@@ -32,6 +32,30 @@ test('exported local data excludes token and repo metadata cache', async () => {
   assert.doesNotMatch(JSON.stringify(exported), /secret-token|repo_metadata_cache/i);
 });
 
+test('imported local data ignores token and repo metadata cache fields', async () => {
+  const storage = createLocalStorage();
+  const { importLocalData } = await import('../src/localData.js');
+
+  importLocalData(storage, {
+    version: 1,
+    token: 'imported-secret-token',
+    rememberToken: true,
+    repoMetadata: { 'owner/repo': { stargazers_count: 999 } },
+    boardCards: {
+      Considering: [{
+        id: 1,
+        number: 1,
+        title: 'Portable card',
+        repository: { full_name: 'Owner/Repo' }
+      }]
+    }
+  });
+
+  assert.equal(storage.getItem('pr_dashboard_token'), null);
+  assert.equal(storage.getItem('pr_dashboard_remember_token'), null);
+  assert.equal(storage.getItem('pr_dashboard_repo_metadata_cache_v1'), null);
+});
+
 test('import merges board cards by canonical issue before numeric id and keeps one lane', async () => {
   const storage = createLocalStorage();
   const { importLocalData } = await import('../src/localData.js');

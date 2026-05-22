@@ -1,5 +1,12 @@
 # PR Dashboard Security Notes
 
+## v1 Local-First Boundary
+
+- PR Dashboard v1 is local-first and browser-only. There is no app backend, backend sync, encrypted sync, database, or app-owned remote storage.
+- Export/Import Local Data is the current cross-device bridge for moving board cards, hidden keys, profile metadata, and Proof Log entries between phone/desktop browsers.
+- GitHub tokens are never exported. Import ignores token and repository metadata cache fields even if they are present in a hand-edited file.
+- GitHub OAuth, GitHub App auth, and encrypted backend sync are deferred future work for a dedicated backend-sync project.
+
 ## GitHub Access
 
 - Public issue search works without a GitHub Personal Access Token.

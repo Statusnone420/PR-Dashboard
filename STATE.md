@@ -152,3 +152,12 @@
 - Files touched include `src/issueKeys.js`, `src/proofLog.js`, `src/profile.js`, `src/localAlerts.js`, `src/localData.js`, `src/state/store.js`, `src/main.js`, `src/styles.css`, `src/lookup.js`, docs, and focused tests.
 - Verification: new tests were written first and failed before implementation. Final `npm test` passed 108/108, `npm run build` passed, and Browser smoke at `http://127.0.0.1:4173/` verified dashboard load, profile route, local alerts popover, responsive board grid without horizontal overflow, exact Lookup for `TEAMMATES/teammates#13998`, hide recovery, Proof Log add, profile proof visibility, and mobile `390x844` profile/board overflow checks with no console warnings/errors.
 - Known limitations: Proof Log entries are local completion records, not remote merge verification. Export/import is the v1 multi-device bridge; automatic sync still requires a backend or user-managed sync layer later.
+
+## 2026-05-22 v1 Local-First Hardening
+
+- Direction confirmed: do not implement GitHub OAuth, backend sync, encrypted sync, GitHub App auth, database storage, or remote avatar rendering in this pass.
+- v1 remains local-first. Export/Import Local Data is the current phone/desktop bridge; GitHub auth and encrypted sync are deferred to a later backend-sync project.
+- Hardened regression coverage so Clear Board preserves Proof Log history, Clear All removes token, remember-token, board, migration, proof, profile, hidden, and repository metadata cache keys, and Import ignores token/repo metadata cache fields in hand-edited payloads.
+- Documentation now states that GitHub tokens are never exported and repository metadata cache is excluded from exported local data.
+- Verification on 2026-05-22: `npm test` passed 98/98 after the hardening coverage was added, and `npm run build` passed. A built-preview Playwright smoke verified dashboard and profile Proof Log history, exact Lookup recovery for a hidden item, and no horizontal board overflow at `1366x768` or `390x844`, with no console warnings/errors.
+- Remaining risk: v1 cross-device movement is manual export/import only. Live GitHub data and public API rate limits can still vary over time, and no real PAT was used during this pass.

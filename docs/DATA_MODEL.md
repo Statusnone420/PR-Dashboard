@@ -1,5 +1,11 @@
 # PR Dashboard Data Model
 
+## v1 Local-First Boundary
+
+PR Dashboard v1 stores app durability data in the current browser. There is no backend sync, encrypted sync, database, GitHub OAuth, GitHub App auth, or app-owned remote storage in v1.
+
+Export/Import Local Data is the current phone/desktop bridge. Exports include portable local app data only; GitHub tokens are never exported, and repository metadata cache is excluded. GitHub auth and encrypted sync are future backend-sync work.
+
 ## Real GitHub Issue Data
 
 Search results come from `GET https://api.github.com/search/issues`. By default the query includes `is:issue state:open`, so closed issues are excluded unless the user explicitly checks "Include closed issues".
@@ -53,4 +59,4 @@ Profile metadata is stored under `pr_dashboard_profile_v1` and contains only non
 
 Local alerts are computed from board state and local workflow timestamps such as `column_entered_at`, `last_moved_at`, and `last_refreshed_at`.
 
-Export Local Data includes board cards, hidden keys, Proof Log entries, and profile metadata. It excludes GitHub tokens and the repository metadata cache.
+Export Local Data includes board cards, hidden keys, Proof Log entries, and profile metadata. It excludes GitHub tokens and the repository metadata cache. Import accepts the same local-first payload shape and ignores token/cache fields if they appear in a hand-edited file.
