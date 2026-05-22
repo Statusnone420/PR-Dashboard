@@ -9,8 +9,11 @@ import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation } from './dashboardHero.js';
 import { buildContributionBrief } from './contributionBrief.js';
 import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
+import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
 
 const HIDDEN_RESULTS_RENDER_LIMIT = 100;
+const ACTIVE_REVIEW_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open'];
+const RESOLVED_BOARD_COLUMNS = ['Merged', 'Passed'];
 let hiddenSettingsFilter = '';
 
 // Initialize SPA
@@ -260,13 +263,81 @@ function renderActiveScreen() {
 /**
  * 1. DASHBOARD VIEW
  */
+function getBoardEntriesByColumn(boardCardsByColumn) {
+  return BOARD_COLUMNS.flatMap(column => (boardCardsByColumn[column] || []).map(card => ({ column, card })));
+}
+
+function countBoardEntries(entries, predicate) {
+  return entries.filter(predicate).length;
+}
+
+function progressPercent(part, total) {
+  if (!total) return 0;
+  return safePercent(Math.round((part / total) * 100));
+}
+
+function renderMetricProgress(percent, label = '') {
+  const safeWidth = safePercent(percent);
+  const labelAttribute = label ? ` aria-label="${escapeHTML(label)}"` : '';
+  return `
+    <div class="metric-progress-track"${labelAttribute}>
+      <span class="metric-progress-fill" style="width: ${safeWidth}%"></span>
+    </div>
+  `;
+}
+
+function renderBoardMomentum(reviewFlow) {
+  if (!reviewFlow.total) {
+    return '<p class="text-xs text-on-surface-variant">Save issues to start tracking board momentum.</p>';
+  }
+
+  const segmentsHTML = reviewFlow.lanes.map(lane => {
+    const width = safePercent(lane.percent);
+    const safeColumn = escapeHTML(lane.column);
+    const color = REVIEW_FLOW_COLORS[lane.column] || 'rgba(167, 139, 250, 0.9)';
+    return `<span class="review-flow-segment metric-progress-fill" data-review-flow-lane="${safeColumn}" style="width: ${width}%; background: ${color};" title="${safeColumn}: ${lane.count}"></span>`;
+  }).join('');
+
+  const lanesHTML = reviewFlow.lanes.map(lane => {
+    const safeColumn = escapeHTML(lane.column);
+    const safeNextMove = escapeHTML(lane.nextMove);
+    const color = REVIEW_FLOW_COLORS[lane.column] || 'rgba(167, 139, 250, 0.9)';
+    return `
+      <button class="review-flow-chip interactive-chip rounded px-2 py-1 text-[11px] text-on-surface-variant" type="button" data-review-flow-lane="${safeColumn}" data-review-flow-next="${safeNextMove}">
+        <span class="h-1.5 w-1.5 rounded-full" style="background: ${color}"></span>
+        ${safeColumn} ${lane.count}
+      </button>
+    `;
+  }).join('');
+
+  return `
+    <div class="review-flow-group space-y-3">
+      <div class="text-sm font-semibold text-on-surface">${escapeHTML(reviewFlow.headline)}</div>
+      <div class="metric-progress-track flex">${segmentsHTML}</div>
+      <div class="flex flex-wrap gap-2">${lanesHTML}</div>
+      <p class="text-xs text-on-surface-variant" id="board-momentum-next-move">${escapeHTML(reviewFlow.nextMove)}</p>
+    </div>
+  `;
+}
+
 function renderDashboard(container) {
   // Grab dynamic data
-  const boardCards = Object.values(store.boardCards).flat();
+  const boardEntries = getBoardEntriesByColumn(store.boardCards);
+  const boardCards = boardEntries.map(entry => entry.card);
   const closedCards = boardCards.filter(isClosedIssue);
   const activeCards = boardCards.filter(card => !isClosedIssue(card));
   const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
-  const mergedOrPassedCount = (store.boardCards["Merged"] || []).length + (store.boardCards["Passed"] || []).length + closedCards.length;
+  const totalSavedCount = boardCards.length;
+  const activeReviewCount = countBoardEntries(boardEntries, entry => ACTIVE_REVIEW_COLUMNS.includes(entry.column));
+  const resolvedOrPassedCount = countBoardEntries(boardEntries, entry => RESOLVED_BOARD_COLUMNS.includes(entry.column) || isClosedIssue(entry.card));
+  const hiddenItems = listHiddenItems(localStorage);
+  const hiddenIssueCount = hiddenItems.issues.length;
+  const hiddenRepoCount = hiddenItems.repos.length;
+  const hiddenTotalCount = hiddenIssueCount + hiddenRepoCount;
+  const activeReviewProgress = progressPercent(activeReviewCount, totalSavedCount);
+  const resolvedProgress = progressPercent(resolvedOrPassedCount, totalSavedCount);
+  const hiddenRepoHelper = `${hiddenIssueCount.toLocaleString()} issues / ${hiddenRepoCount.toLocaleString()} repos`;
+  const reviewFlow = summarizeReviewFlow(store.boardCards);
   const heroRecommendation = getDashboardHeroRecommendation({
     boardCards: store.boardCards,
     githubToken: store.githubToken
@@ -281,7 +352,7 @@ function renderDashboard(container) {
     const resumeId = safeInteger(resumeReviewCard.id);
     const resumeColumn = escapeHTML(heroRecommendation.column);
     heroHTML = `
-      <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
+      <div class="glass-card interactive-card rounded-xl p-8 relative overflow-hidden group mb-8">
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
@@ -291,7 +362,7 @@ function renderDashboard(container) {
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Continue Review: ${resumeTitle}</h2>
             <p class="text-on-surface-variant max-w-xl">${resumeRepo} #${resumeNumber} - Saved in ${resumeColumn}. Open it to continue your local review.</p>
           </div>
-          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-resume-btn" data-id="${resumeId}">
+          <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-resume-btn" data-id="${resumeId}">
             Resume Review
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
@@ -300,7 +371,7 @@ function renderDashboard(container) {
     `;
   } else if (heroRecommendation.kind === 'configure-token') {
     heroHTML = `
-      <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
+      <div class="glass-card interactive-card rounded-xl p-8 relative overflow-hidden group mb-8">
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
@@ -310,7 +381,7 @@ function renderDashboard(container) {
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure Personal Access Token</h2>
             <p class="text-on-surface-variant max-w-xl">Configure a Personal Access Token in Settings to increase GitHub API rate limits for searches and lookups.</p>
           </div>
-          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-action-btn">
+          <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-action-btn">
             Go to Settings
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
@@ -319,7 +390,7 @@ function renderDashboard(container) {
     `;
   } else {
     heroHTML = `
-      <div class="glass-card rounded-xl p-8 relative overflow-hidden group mb-8">
+      <div class="glass-card interactive-card rounded-xl p-8 relative overflow-hidden group mb-8">
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
@@ -329,7 +400,7 @@ function renderDashboard(container) {
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Find Contributions</h2>
             <p class="text-on-surface-variant max-w-xl">Your token is configured. Search for contribution-worthy GitHub issues and save the best candidates to your board.</p>
           </div>
-          <button class="shrink-0 bg-primary text-on-primary font-medium px-6 py-3 rounded-lg hover:bg-primary-container transition-colors active:scale-95 flex items-center gap-2" id="hero-find-btn">
+          <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-find-btn">
             Find Contributions
             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
           </button>
@@ -346,7 +417,7 @@ function renderDashboard(container) {
         <span class="material-symbols-outlined text-on-surface-variant text-3xl">bookmarks</span>
         <h4 class="text-on-surface font-medium">No saved issues</h4>
         <p class="text-xs text-on-surface-variant max-w-xs">Save issues from Find Contributions results to see them listed in your Dashboard panel.</p>
-        <button class="mt-2 px-4 py-1.5 bg-primary text-on-primary rounded text-xs font-semibold hover:bg-primary-container" id="dash-go-find-btn">Browse Issues</button>
+        <button class="interactive-button interactive-button-primary mt-2 px-4 py-1.5 text-xs" id="dash-go-find-btn">Browse Issues</button>
       </div>
     `;
   } else {
@@ -366,7 +437,7 @@ function renderDashboard(container) {
       const issueDate = escapeHTML(formatDate(issue.updated_at));
 
       return `
-        <div class="p-4 rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary/50 transition-colors cursor-pointer group dashboard-issue-card" data-id="${issueId}">
+        <div class="interactive-row p-4 rounded-lg bg-surface-container-lowest border border-outline-variant cursor-pointer group dashboard-issue-card" data-id="${issueId}">
           <div class="flex justify-between items-start mb-1">
             <span class="text-xs font-mono text-on-surface-variant">${repoName}</span>
             <div class="flex flex-wrap justify-end gap-1">
@@ -403,51 +474,82 @@ function renderDashboard(container) {
         ${heroHTML}
         
         <!-- Stats Row -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
-            <div class="flex justify-between items-start">
-              <span class="text-on-surface-variant text-sm font-medium">Resolved / Passed</span>
-              <span class="material-symbols-outlined text-tertiary">merge</span>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5 mb-8">
+          <div class="metric-card flex flex-col gap-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm font-medium text-on-surface-variant">Saved Issues</span>
+                <p class="mt-1 text-xs text-on-surface-variant">Local contribution candidates</p>
+              </div>
+              <span class="material-symbols-outlined text-primary">bookmarks</span>
             </div>
-            <div class="flex items-end gap-3 mt-2">
-              <span class="text-4xl font-headline font-bold text-on-surface">${mergedOrPassedCount}</span>
-              <span class="text-on-surface-variant text-sm mb-1">From saved board</span>
-            </div>
+            <span class="metric-card-value">${totalSavedCount}</span>
           </div>
-          
-          <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
-            <div class="flex justify-between items-start">
-              <span class="text-on-surface-variant text-sm font-medium">Saved Issues</span>
-              <span class="material-symbols-outlined text-primary">bug_report</span>
-            </div>
-            <div class="flex items-end gap-3 mt-2">
-              <span class="text-4xl font-headline font-bold text-on-surface">${boardCards.length}</span>
-              <span class="text-on-surface-variant text-sm mb-1">Local board total</span>
-            </div>
-          </div>
-          
-          <div class="bg-surface-container rounded-lg border border-outline-variant p-6 flex flex-col gap-2 hover:bg-surface-container-high transition-colors">
-            <div class="flex justify-between items-start">
-              <span class="text-on-surface-variant text-sm font-medium">Active Candidates</span>
+
+          <div class="metric-card flex flex-col gap-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm font-medium text-on-surface-variant">Active Review</span>
+                <p class="mt-1 text-xs text-on-surface-variant">Considering through PR open</p>
+              </div>
               <span class="material-symbols-outlined text-tertiary filled-icon">radio_button_checked</span>
             </div>
-            <div class="flex items-end gap-3 mt-2">
-              <span class="text-4xl font-headline font-bold text-on-surface">${activeCards.length}</span>
-              <span class="text-on-surface-variant text-sm mb-1">Open saved issues</span>
+            <div class="flex items-end gap-2">
+              <span class="metric-card-value">${activeReviewCount}</span>
+              <span class="mb-1 text-xs text-on-surface-variant">${activeReviewProgress}% of board</span>
             </div>
+            ${renderMetricProgress(activeReviewProgress, 'Active review progress')}
+          </div>
+
+          <div class="metric-card flex flex-col gap-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm font-medium text-on-surface-variant">Resolved / Passed</span>
+                <p class="mt-1 text-xs text-on-surface-variant">Done, passed, or closed</p>
+              </div>
+              <span class="material-symbols-outlined text-tertiary">merge</span>
+            </div>
+            <div class="flex items-end gap-2">
+              <span class="metric-card-value">${resolvedOrPassedCount}</span>
+              <span class="mb-1 text-xs text-on-surface-variant">${resolvedProgress}% complete</span>
+            </div>
+            ${renderMetricProgress(resolvedProgress, 'Resolved and passed progress')}
+          </div>
+
+          <div class="metric-card flex flex-col gap-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm font-medium text-on-surface-variant">Hidden Results</span>
+                <p class="mt-1 text-xs text-on-surface-variant">Filtered from future searches</p>
+              </div>
+              <span class="material-symbols-outlined text-primary">visibility_off</span>
+            </div>
+            <span class="metric-card-value">${hiddenTotalCount}</span>
+            <p class="text-xs text-on-surface-variant">${hiddenRepoHelper}</p>
+          </div>
+
+          <div class="metric-card flex flex-col gap-4 md:col-span-2 xl:col-span-1">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm font-medium text-on-surface-variant">Board Momentum</span>
+                <p class="mt-1 text-xs text-on-surface-variant">Distribution across lanes</p>
+              </div>
+              <span class="material-symbols-outlined text-primary">stacked_bar_chart</span>
+            </div>
+            ${renderBoardMomentum(reviewFlow)}
           </div>
         </div>
         
         <!-- Bento Grid Contents -->
         <div class="bento-grid">
           <!-- Saved Issues (Bento Large) -->
-          <div class="bento-item bento-large bg-surface-container border border-outline-variant p-6 flex flex-col gap-6">
+          <div class="bento-item bento-large interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
                 <span class="material-symbols-outlined text-on-surface-variant">bookmarks</span>
                 Saved Issues
               </h3>
-              <button class="text-primary text-sm font-medium hover:underline" id="dash-view-board-btn" style="background:none; border:none;">View Kanban Board</button>
+              <button class="interactive-button interactive-button-secondary px-3 py-1.5 text-xs" id="dash-view-board-btn">View Kanban Board</button>
             </div>
             <div class="flex flex-col gap-3">
               ${savedIssuesHTML}
@@ -455,7 +557,7 @@ function renderDashboard(container) {
           </div>
           
           <!-- Local Review -->
-          <div class="bento-item bg-surface-container border border-outline-variant p-6 flex flex-col gap-6">
+          <div class="bento-item interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
                 <span class="material-symbols-outlined text-on-surface-variant">commit</span>
@@ -465,7 +567,7 @@ function renderDashboard(container) {
             <div class="flex flex-col gap-4">
               ${localReviewHTML}
             </div>
-            <button class="mt-auto w-full py-2 border border-outline-variant rounded bg-surface-container-lowest text-on-surface-variant text-sm hover:bg-surface-container-high hover:text-on-surface transition-colors font-medium" id="dash-view-local-review-btn">
+            <button class="interactive-button interactive-button-secondary mt-auto w-full py-2" id="dash-view-local-review-btn">
               View Board
             </button>
           </div>
@@ -536,6 +638,42 @@ function renderDashboard(container) {
       }
     });
   });
+
+  bindBoardMomentumInteractions();
+}
+
+function bindBoardMomentumInteractions() {
+  const helper = document.getElementById('board-momentum-next-move');
+  const defaultHelper = helper?.textContent || '';
+  const items = document.querySelectorAll('[data-review-flow-lane]');
+  const chips = document.querySelectorAll('.review-flow-chip');
+
+  if (!items.length || !chips.length) return;
+
+  const setActiveLane = (lane, nextMove) => {
+    items.forEach(item => {
+      item.classList.toggle('is-active', item.getAttribute('data-review-flow-lane') === lane);
+    });
+    if (helper && nextMove) {
+      helper.textContent = nextMove;
+    }
+  };
+
+  const clearActiveLane = () => {
+    items.forEach(item => item.classList.remove('is-active'));
+    if (helper) {
+      helper.textContent = defaultHelper;
+    }
+  };
+
+  chips.forEach(chip => {
+    const lane = chip.getAttribute('data-review-flow-lane');
+    const nextMove = chip.getAttribute('data-review-flow-next');
+    chip.addEventListener('mouseenter', () => setActiveLane(lane, nextMove));
+    chip.addEventListener('focus', () => setActiveLane(lane, nextMove));
+    chip.addEventListener('mouseleave', clearActiveLane);
+    chip.addEventListener('blur', clearActiveLane);
+  });
 }
 
 /**
@@ -553,12 +691,12 @@ function describeActiveFilters(filters) {
 }
 
 function getFirstRelaxationHint(filters) {
-  if (filters.labels?.length > 1) return 'Relax labels first: try only help wanted.';
+  if (filters.labels?.length) return 'Broaden search first: remove label filters.';
   if (filters.stars && filters.stars !== 'Any') return 'Relax stars first: switch stars to Any.';
   if (filters.comments && filters.comments !== 'Any') return 'Relax comments first: switch comments to Any.';
   if (filters.languages?.length) return 'Relax language first: clear selected languages.';
   if (filters.updatedDate && filters.updatedDate !== 'Any') return 'Relax updated date first: switch updated date to Any.';
-  return 'Try a broader keyword or remove repository-specific terms.';
+  return 'PR Dashboard searches GitHub issues, not users or profiles. Try an issue topic, repo name, or owner/repo.';
 }
 
 function renderNoResults(queryPreview, filters) {
@@ -571,8 +709,8 @@ function renderNoResults(queryPreview, filters) {
       <div class="flex items-start gap-4">
         <span class="material-symbols-outlined text-on-surface-variant text-4xl">search_off</span>
         <div>
-          <h3 class="text-on-surface font-medium text-lg mb-1">No matching open issues found</h3>
-          <p class="text-sm text-on-surface-variant">GitHub returned zero issues for the current query and filters.</p>
+          <h3 class="text-on-surface font-medium text-lg mb-1">No matching GitHub issues found</h3>
+          <p class="text-sm text-on-surface-variant">PR Dashboard searches GitHub issues only. It does not search users, profiles, or every repository.</p>
         </div>
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
@@ -586,8 +724,8 @@ function renderNoResults(queryPreview, filters) {
         </div>
       </div>
       <div class="flex flex-wrap items-center justify-between gap-3 rounded border border-primary/20 bg-primary/10 p-4">
-        <span class="text-sm text-on-surface">${escapeHTML(getFirstRelaxationHint(filters))}</span>
-        <button class="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary-container" id="relax-filters-btn">Relax Filters</button>
+        <span class="text-sm text-on-surface">${escapeHTML(getFirstRelaxationHint(filters))} Broaden Search keeps your search text and removes contribution filters.</span>
+        <button class="interactive-button interactive-button-primary px-4 py-2" id="broaden-search-btn">Broaden Search</button>
       </div>
     </div>
   `;
@@ -670,7 +808,7 @@ function renderFindIssues(container) {
       : 'border-outline-variant bg-surface-container hover:border-primary text-on-surface-variant hover:text-on-surface';
     const safeLabel = escapeHTML(label);
     return `
-      <button class="px-2.5 py-1 text-xs rounded border preset-badge label-filter-btn ${btnClass}" data-label="${safeLabel}">${safeLabel}</button>
+      <button class="interactive-chip px-2.5 py-1 text-xs rounded label-filter-btn ${btnClass}" data-label="${safeLabel}">${safeLabel}</button>
     `;
   }).join('');
 
@@ -745,7 +883,7 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        <button class="px-6 py-2.5 bg-primary text-on-primary rounded-lg font-medium hover:bg-primary-container transition-colors" id="start-search-btn">
+            <button class="interactive-button interactive-button-primary px-6 py-2.5" id="start-search-btn">
           Perform Initial Query
         </button>
       </div>
@@ -762,8 +900,8 @@ function renderFindIssues(container) {
           <h1 class="text-3xl font-headline font-bold text-on-surface mb-6 tracking-tight text-center">Find your next contribution</h1>
           <div class="mb-4 flex justify-center">
             <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" role="group" aria-label="Finder mode">
-              <button class="finder-mode-btn rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${findModeClass}" data-mode="find" type="button">Find Contributions</button>
-              <button class="finder-mode-btn rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${lookupModeClass}" data-mode="lookup" type="button">Lookup</button>
+              <button class="finder-mode-btn interactive-button rounded-md px-3 py-1.5 text-sm ${findModeClass}" data-mode="find" type="button">Find Contributions</button>
+              <button class="finder-mode-btn interactive-button rounded-md px-3 py-1.5 text-sm ${lookupModeClass}" data-mode="lookup" type="button">Lookup</button>
             </div>
           </div>
           
@@ -775,7 +913,7 @@ function renderFindIssues(container) {
               </div>
               <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="${isLookupMode ? 'Paste an issue URL, owner/repo#123, or search literally...' : 'Search issues, labels, or repositories...'}" type="text" value="${escapeHTML(store.searchQuery)}"/>
             </div>
-            <button class="px-6 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary-container transition-colors active:scale-95 shrink-0" id="search-trigger-btn">
+            <button class="interactive-button interactive-button-primary px-6 py-3.5 rounded-xl shrink-0" id="search-trigger-btn">
               Search
             </button>
           </div>
@@ -786,16 +924,16 @@ function renderFindIssues(container) {
           
           <!-- Presets -->
           <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
-            <button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2 preset-search-btn" data-preset="quick-wins">
+            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
               <span class="material-symbols-outlined text-[16px]">bolt</span> Quick Wins
             </button>
-            <button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2 preset-search-btn" data-preset="deep-dives">
+            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
               <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
             </button>
-            <button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2 preset-search-btn" data-preset="docs-only">
+            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
               <span class="material-symbols-outlined text-[16px]">description</span> Documentation Only
             </button>
-            <button class="px-4 py-1.5 rounded-full bg-surface-container border border-outline-variant text-sm font-medium hover:bg-surface-container-high hover:border-primary/50 text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-2 preset-search-btn" data-preset="low-noise">
+            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
               <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
             </button>
           </div>
@@ -812,7 +950,7 @@ function renderFindIssues(container) {
               <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Filters</h3>
               ${filtersChanged ? '<span class="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Changed</span>' : '<span class="rounded-full border border-outline-variant px-2 py-0.5 text-[10px] text-on-surface-variant">Applied</span>'}
             </div>
-            <button class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-container transition-colors" id="apply-filters-btn">
+            <button class="interactive-button interactive-button-primary w-full px-4 py-2" id="apply-filters-btn">
               Apply Filters
             </button>
             ${isLookupMode ? `
@@ -960,10 +1098,11 @@ function renderFindIssues(container) {
     });
   }
 
-  const relaxBtn = document.getElementById('relax-filters-btn');
-  if (relaxBtn) {
-    relaxBtn.addEventListener('click', () => {
+  const broadenBtn = document.getElementById('broaden-search-btn');
+  if (broadenBtn) {
+    broadenBtn.addEventListener('click', () => {
       applyFilterPatch(store, getRelaxedFilters());
+      runFinderSearch(store.searchQuery);
     });
   }
 
@@ -1114,7 +1253,7 @@ function renderIssueCardsList(issuesList) {
     const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
 
     return `
-      <article class="issue-card group rounded-xl border border-outline-variant bg-surface-container p-5 cursor-pointer flex flex-col gap-3 transition-colors ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issueId}">
+      <article class="issue-card interactive-card group rounded-xl p-5 cursor-pointer flex flex-col gap-3 ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issueId}">
         <div class="flex items-start justify-between gap-4">
           <div class="flex min-w-0 items-center gap-2">
             <span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
@@ -1132,8 +1271,8 @@ function renderIssueCardsList(issuesList) {
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           ${labelsHTML}
-          <span class="rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+          <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          <span class="interactive-chip rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
           ${repoUnavailableHTML}
         </div>
         
@@ -1147,19 +1286,19 @@ function renderIssueCardsList(issuesList) {
               ${fitObj.isAssigned ? 'Assigned' : 'Unassigned'}
             </span>
           </div>
-          <div class="flex items-center gap-2">
-            <button class="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded text-xs font-medium transition-colors inspect-issue-btn" data-id="${issueId}">
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="action-button border-primary/20 bg-primary/10 px-3 py-1.5 text-xs text-primary inspect-issue-btn" data-id="${issueId}">
             Inspect
             </button>
-            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/20' : 'bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant'}" data-id="${issueId}">
+            <button class="action-button px-3 py-1.5 text-xs save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'Saved' : 'Save'}
             </button>
-            <button class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 hide-issue-btn bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant" data-id="${issueId}">
+            <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
               Hide
             </button>
-            ${issueUrl ? `<a class="px-3 py-1.5 bg-transparent text-on-surface-variant hover:text-on-surface border border-outline-variant hover:border-on-surface-variant rounded text-xs font-medium transition-colors flex items-center justify-center gap-1" href="${escapeHTML(issueUrl)}" target="_blank" rel="noopener noreferrer">
+            ${issueUrl ? `<a class="action-button interactive-button-secondary px-3 py-1.5 text-xs" href="${escapeHTML(issueUrl)}" target="_blank" rel="noopener noreferrer">
               GitHub
               <span class="material-symbols-outlined text-[12px]">open_in_new</span>
             </a>` : '<span class="px-3 py-1.5 text-on-surface-variant border border-outline-variant rounded text-xs">GitHub link unavailable</span>'}
@@ -1314,7 +1453,7 @@ function renderBoard(container) {
       const closedWarningHTML = closed ? `
         <div class="mb-3 rounded border border-error/25 bg-error-container/10 p-2 text-[11px] text-error">
           Closed${card.state_reason ? `: ${escapeHTML(card.state_reason)}` : ''}${card.closed_at ? ` on ${escapeHTML(formatDate(card.closed_at))}` : ''}
-          ${col !== 'Passed' ? `<button class="ml-2 underline move-passed-btn" data-id="${cardId}">Move to Passed</button>` : ''}
+          ${col !== 'Passed' ? `<button class="ml-2 underline whitespace-nowrap move-passed-btn" data-id="${cardId}">Move to Passed</button>` : ''}
         </div>
       ` : '';
       const refreshErrorHTML = card.refresh_error ? `
@@ -1383,8 +1522,8 @@ function renderBoard(container) {
 
       return `
         <!-- Card -->
-        <div class="kanban-card bg-surface-container border border-outline-variant rounded-lg p-3 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
-          <button class="absolute top-2 right-2 text-on-surface-variant hover:text-error bg-transparent border-none delete-card-btn" data-id="${cardId}" style="padding:2px;"><span class="material-symbols-outlined text-[14px]">close</span></button>
+        <div class="kanban-card interactive-card rounded-lg p-3 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
+          <button class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-on-surface-variant transition-colors hover:border-error/30 hover:text-error delete-card-btn" data-id="${cardId}"><span class="material-symbols-outlined text-[14px]">close</span></button>
           
           <div class="flex justify-between items-start mb-2 pr-4">
             <span class="text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
@@ -1408,10 +1547,10 @@ function renderBoard(container) {
             <span class="text-[10px] text-on-surface-variant">${cardDate}</span>
             
             <div class="flex items-center gap-1">
-              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-left-btn" data-id="${cardId}" ${leftArrowDisabled}>
+              <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-left-btn" data-id="${cardId}" ${leftArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_left</span>
               </button>
-              <button class="w-6 h-6 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center text-xs hover:border-primary move-right-btn" data-id="${cardId}" ${rightArrowDisabled}>
+              <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-right-btn" data-id="${cardId}" ${rightArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_right</span>
               </button>
             </div>
@@ -1452,10 +1591,10 @@ function renderBoard(container) {
         
         <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
           <span class="text-xs text-on-surface-variant" id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</span>
-          <button class="flex items-center gap-2 bg-surface-container border border-outline-variant hover:border-outline text-on-surface text-sm font-medium py-1.5 px-3 rounded transition-all" id="board-refresh-btn" ${totalCards === 0 ? 'disabled style="opacity:0.45;"' : ''}>
+          <button class="interactive-button interactive-button-secondary py-1.5 px-3" id="board-refresh-btn" ${totalCards === 0 ? 'disabled' : ''}>
             <span class="material-symbols-outlined text-[16px]">sync</span> Refresh saved issues
           </button>
-          <button class="flex items-center gap-2 bg-surface-container border border-error/30 hover:border-error text-error text-sm font-medium py-1.5 px-3 rounded transition-all" id="board-clear-btn" ${totalCards === 0 ? 'disabled style="opacity:0.45;"' : ''}>
+          <button class="interactive-button interactive-button-danger py-1.5 px-3" id="board-clear-btn" ${totalCards === 0 ? 'disabled' : ''}>
             <span class="material-symbols-outlined text-[16px]">delete</span> Clear Board
           </button>
         </div>
@@ -1572,15 +1711,15 @@ function renderHiddenRows(items, type) {
         const safeKey = escapeHTML(item.key);
         const safeDate = escapeHTML(formatDate(item.hiddenAt));
         const openLinkHTML = item.url
-          ? `<a class="text-primary hover:underline text-xs font-medium" href="${escapeHTML(item.url)}" target="_blank" rel="noopener noreferrer">Open link</a>`
+          ? `<a class="action-button border-primary/20 bg-primary/10 px-3 py-1.5 text-xs text-primary" href="${escapeHTML(item.url)}" target="_blank" rel="noopener noreferrer">Open link</a>`
           : '<span class="text-xs text-on-surface-variant">Open unavailable</span>';
         return `
-          <div class="grid grid-cols-1 md:grid-cols-[72px_minmax(0,1fr)_120px_auto_auto] items-center gap-3 bg-surface-container-lowest px-4 py-3">
+          <div class="interactive-row grid grid-cols-1 md:grid-cols-[72px_minmax(0,1fr)_120px_auto_auto] items-center gap-3 bg-surface-container-lowest px-4 py-3">
             <span class="w-fit rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-[11px] text-on-surface-variant">${typeLabel}</span>
             <span class="min-w-0 truncate font-mono text-sm text-on-surface">${safeKey}</span>
             <span class="text-xs text-on-surface-variant">${safeDate}</span>
             ${openLinkHTML}
-            <button class="hidden-result-unhide-btn rounded border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:border-on-surface-variant hover:text-on-surface" data-type="${type}" data-key="${safeKey}">
+            <button class="action-button interactive-button-secondary hidden-result-unhide-btn px-3 py-1.5 text-xs" data-type="${type}" data-key="${safeKey}">
               Unhide
             </button>
           </div>
@@ -1623,7 +1762,7 @@ function renderHiddenResultsManager() {
   const issueCount = hidden.issues.length;
   const repoCount = hidden.repos.length;
   return `
-    <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+    <div class="interactive-card rounded-xl overflow-hidden">
       <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
         <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -1689,7 +1828,7 @@ function renderSettings(container) {
         </header>
         
         <!-- Local Storage Warning Indicator (Only shown when Remember checked) -->
-        <div id="settings-storage-warning" class="bg-error-container/10 border border-error/30 rounded-lg p-5 flex items-start gap-4" style="display: ${remember ? 'flex' : 'none'};">
+        <div id="settings-storage-warning" class="interactive-card bg-error-container/10 border-error/30 rounded-lg p-5 flex items-start gap-4" style="display: ${remember ? 'flex' : 'none'};">
           <span class="material-symbols-outlined text-error mt-0.5">warning</span>
           <div>
             <h3 class="text-sm font-semibold text-error mb-1">Local Browser Security Warning</h3>
@@ -1700,7 +1839,7 @@ function renderSettings(container) {
         </div>
         
         <!-- Default callout explaining limits -->
-        <div class="bg-surface-container border border-tertiary/30 rounded-lg p-5 flex items-start gap-4">
+        <div class="interactive-card border-tertiary/30 rounded-lg p-5 flex items-start gap-4">
           <span class="material-symbols-outlined text-tertiary mt-0.5">lock</span>
           <div>
             <h3 class="text-sm font-semibold text-tertiary mb-1">Local Session Storage by Default</h3>
@@ -1711,7 +1850,7 @@ function renderSettings(container) {
         </div>
         
         <!-- Configuration Card -->
-        <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+        <div class="interactive-card rounded-xl overflow-hidden">
           <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
             <h2 class="text-lg font-semibold flex items-center gap-2">
               <span class="material-symbols-outlined text-primary">key</span>
@@ -1740,7 +1879,7 @@ function renderSettings(container) {
             <div class="space-y-4">
               <h3 class="text-sm font-medium text-on-surface">Recommended scopes</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div class="flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
+                <div class="interactive-row flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
                   <div class="w-5 h-5 rounded bg-tertiary/10 border border-tertiary/30 flex items-center justify-center text-tertiary">
                     <span class="material-symbols-outlined text-[14px] filled-icon">check</span>
                   </div>
@@ -1749,7 +1888,7 @@ function renderSettings(container) {
                     <div class="text-xs text-on-surface-variant">Read public repositories to search active issues.</div>
                   </div>
                 </div>
-                <div class="flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
+                <div class="interactive-row flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
                   <div class="w-5 h-5 rounded bg-tertiary/10 border border-tertiary/30 flex items-center justify-center text-tertiary">
                     <span class="material-symbols-outlined text-[14px] filled-icon">check</span>
                   </div>
@@ -1762,7 +1901,7 @@ function renderSettings(container) {
             </div>
             
             <!-- Remember token option -->
-            <label class="flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest cursor-pointer hover:border-primary/30 transition-colors">
+            <label class="interactive-row flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest cursor-pointer">
               <input class="mt-0.5" id="settings-remember-checkbox" type="checkbox" ${remember ? 'checked' : ''} />
               <div>
                 <span class="text-sm font-semibold text-on-surface block">Remember token locally</span>
@@ -1774,11 +1913,11 @@ function renderSettings(container) {
             <div id="settings-connection-status" style="display:none;"></div>
             
             <!-- Actions -->
-            <div class="pt-4 flex justify-end gap-4">
-              <button class="px-6 py-2.5 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-container transition-colors font-medium text-sm" id="test-connection-btn">
+            <div class="pt-4 flex flex-wrap justify-end gap-4">
+              <button class="interactive-button interactive-button-secondary px-6 py-2.5" id="test-connection-btn">
                 Test Connection
               </button>
-              <button class="px-6 py-2.5 rounded-lg bg-primary text-on-primary hover:bg-primary-container transition-colors font-medium text-sm" id="save-settings-btn">
+              <button class="interactive-button interactive-button-primary px-6 py-2.5" id="save-settings-btn">
                 Save Configuration
               </button>
             </div>
@@ -1791,39 +1930,39 @@ function renderSettings(container) {
         <!-- Danger Zone -->
         <div class="pt-8 border-t border-outline-variant space-y-4">
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
-          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear token and settings</div>
               <div class="text-sm text-on-surface-variant">Remove the token, remember-token setting, and connection state. Board cards are kept.</div>
             </div>
-            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-token-settings-btn">
+            <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-token-settings-btn">
               Clear Token/Settings
             </button>
           </div>
-          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear board data</div>
               <div class="text-sm text-on-surface-variant">Remove saved issue cards and local board progress. Token settings are kept.</div>
             </div>
-            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-board-settings-btn">
+            <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-board-settings-btn">
               Clear Board
             </button>
           </div>
-          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear hidden items</div>
               <div class="text-sm text-on-surface-variant">Show previously hidden issues and repositories in future results.</div>
             </div>
-            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-hidden-settings-btn">
+            <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-hidden-settings-btn">
               Clear Hidden
             </button>
           </div>
-          <div class="flex items-center justify-between p-5 rounded-lg border border-error/20 bg-error-container/10">
+          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear all app data</div>
               <div class="text-sm text-on-surface-variant">Remove token/settings and saved board data from this browser.</div>
             </div>
-            <button class="px-4 py-2 rounded-lg border border-error text-error hover:bg-error-container/50 transition-colors font-medium text-sm whitespace-nowrap" id="clear-all-settings-btn">
+            <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-all-settings-btn">
               Clear All
             </button>
           </div>
@@ -2023,7 +2162,7 @@ function openInspector() {
         <h3 class="text-sm font-semibold text-error mb-1">This issue is closed</h3>
         <p class="text-sm text-on-surface-variant">GitHub reports this issue as closed${issue.state_reason ? ` (${escapeHTML(issue.state_reason)})` : ''}${issue.closed_at ? ` since ${escapeHTML(formatDate(issue.closed_at))}` : ''}. Treat it as inactive, not an active candidate.</p>
       </div>
-      <button class="px-3 py-2 rounded border border-error text-error text-xs font-medium hover:bg-error-container/30" id="inspector-move-passed-btn">Move to Passed</button>
+      <button class="action-button interactive-button-danger px-3 py-2 text-xs" id="inspector-move-passed-btn">Move to Passed</button>
     </div>
   ` : '';
   const riskyLookupHTML = !closed && riskyContribution ? `
@@ -2117,7 +2256,7 @@ function openInspector() {
         </div>
       </div>
       
-      <button class="text-on-surface-variant hover:text-primary border border-outline-variant rounded p-1 flex items-center justify-center bg-surface" id="inspector-close-btn" style="background:none;">
+      <button class="action-button interactive-button-secondary h-8 w-8 p-0" id="inspector-close-btn">
         <span class="material-symbols-outlined">close</span>
       </button>
     </div>
@@ -2126,23 +2265,23 @@ function openInspector() {
     <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
       
       <!-- Actions buttons inside details -->
-      <div class="flex gap-3 bg-surface-container/50 p-4 border border-outline-variant rounded-lg shrink-0 justify-between items-center">
+      <div class="action-toolbar shrink-0">
         <span class="text-xs text-on-surface-variant">Action center</span>
-        <div class="flex gap-2">
-          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 ${saved ? 'bg-tertiary/10 text-tertiary border border-tertiary/30' : 'bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-container-high'}" id="inspector-save-issue-btn">
+        <div class="flex flex-wrap gap-2">
+          <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn">
             <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
             ${saved ? 'Saved to board' : 'Save issue'}
           </button>
-          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-issue-btn">
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
             <span class="material-symbols-outlined text-[16px]">visibility_off</span>
             Hide issue
           </button>
-          <button class="px-4 py-2 rounded text-xs font-medium flex items-center gap-1.5 bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high" id="inspector-hide-repo-btn">
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-repo-btn">
             <span class="material-symbols-outlined text-[16px]">folder_off</span>
             Hide repo
           </button>
           
-          ${safeIssueUrl ? `<a class="px-4 py-2 bg-primary text-on-primary rounded text-xs font-medium hover:bg-primary-container transition-colors flex items-center gap-1.5" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
+          ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
             Open on GitHub
             <span class="material-symbols-outlined text-[16px]">open_in_new</span>
           </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}

@@ -50,7 +50,7 @@ export function getPresetFilterPatch(preset) {
 export function getRelaxedFilters() {
   return {
     languages: [],
-    labels: ['help wanted'],
+    labels: [],
     labelMode: 'OR',
     stars: 'Any',
     comments: 'Any',

@@ -26,3 +26,20 @@ test('settings exposes hidden results management copy', () => {
   assert.match(mainJs, /Unhide/);
   assert.match(mainJs, /Clear Hidden/);
 });
+
+test('empty results recovery uses broaden search copy', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Broaden Search/);
+  assert.match(mainJs, /keeps your search text/i);
+  assert.doesNotMatch(mainJs, />Relax Filters</);
+});
+
+test('dashboard exposes richer local metric cards', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Active Review/);
+  assert.match(mainJs, /Local contribution candidates/);
+  assert.match(mainJs, /Filtered from future searches/);
+  assert.match(mainJs, /Board Momentum/);
+});

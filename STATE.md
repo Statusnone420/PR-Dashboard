@@ -99,3 +99,24 @@
 - Files touched: `src/hiddenItems.js`, `src/state/store.js`, `src/main.js`, `test/hidden-items.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
 - Verification: hidden manager tests were written first and failed for the missing list/unhide helpers and Settings copy. After implementation, `npm test` passed 65/65 and `npm run build` passed.
 - Known limitation: hidden rows show compact keys rather than issue titles by design, because the hidden storage intentionally avoids storing or fetching full issue data.
+
+## 2026-05-21 Interaction Polish + Dashboard Metrics
+
+- Added reusable Tailwind component-layer interaction classes in `src/styles.css` for interactive cards, rows, buttons, chips, action toolbars, and metric/progress components.
+- Replaced the confusing no-results `Relax Filters` action with `Broaden Search`. It now clears contribution filters, keeps the typed query text, and immediately reruns the current search.
+- Polished Find Contributions cards, Dashboard saved rows, Board cards, Hidden Results rows, Settings cards, filter chips, presets, mode tabs, inspector actions, and danger-zone buttons with restrained hover/focus/active states.
+- Fixed inspector/card action button wrapping with `action-button` and no-wrap behavior so labels such as `Save anyway?`, `Saved to board`, `Hide issue`, `Hide repo`, and `Open on GitHub` stay on one line while toolbars can wrap.
+- Upgraded Dashboard metric cards using only local app data: Saved Issues, Active Review, Resolved / Passed, Hidden Results, and Board Momentum with lightweight CSS progress bars.
+- Files touched: `src/styles.css`, `src/searchInteractions.js`, `src/main.js`, `test/css-contract.test.js`, `test/search-interactions.test.js`, `test/ui-copy.test.js`, and `STATE.md`.
+- Verification: tests were written first and failed for missing CSS classes, old Relax Filters behavior/copy, and missing dashboard metric copy. After implementation, `npm test` passed 69/69 and `npm run build` passed.
+- Known limitation: dashboard metrics are local board/storage summaries only; they do not infer team velocity, PR activity, or remote GitHub state beyond data already saved/hydrated in the app.
+
+## 2026-05-21 Board Momentum Purpose Follow-up
+
+- Kept all five Dashboard metric cards visible when the board is empty; no metric cards are removed or hidden in the empty state.
+- Kept the `Board Momentum` card label and visual shell, but changed its populated-state content to show only non-zero board lanes, a dominant-lane headline such as `1 in Considering`, and a short next-move line.
+- Added hover/focus feedback inside Board Momentum so lane chips highlight their matching progress segment and update the next-move line without changing board data.
+- Added `src/dashboardReviewFlow.js` for deterministic local board-lane summaries and tests for empty, single-lane, and dominant-lane cases.
+- Files touched: `src/dashboardReviewFlow.js`, `src/main.js`, `src/styles.css`, `test/dashboard-review-flow.test.js`, `test/css-contract.test.js`, and `STATE.md`.
+- Verification: `npm test` passed 72/72, `npm run build` passed, and `git diff --check` passed.
+- Known limitation: Board Momentum is still a local board summary only; it does not fetch remote PR status or infer team velocity.
