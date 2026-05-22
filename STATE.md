@@ -120,3 +120,12 @@
 - Files touched: `src/dashboardReviewFlow.js`, `src/main.js`, `src/styles.css`, `test/dashboard-review-flow.test.js`, `test/css-contract.test.js`, and `STATE.md`.
 - Verification: `npm test` passed 72/72, `npm run build` passed, and `git diff --check` passed.
 - Known limitation: Board Momentum is still a local board summary only; it does not fetch remote PR status or infer team velocity.
+
+## 2026-05-21 Dashboard Active Review Count Fix
+
+- Fixed the Dashboard `Active Review` metric so closed saved issues sitting in active lanes no longer count as active review work.
+- Added `src/dashboardMetrics.js` to centralize local Dashboard metric summaries. `Active Review` now requires an active lane and an open issue; `Resolved / Passed` still counts `Merged`, `Passed`, and closed issues.
+- Added regression coverage for a closed issue in `Considering` so it is excluded from `Active Review` and included in `Resolved / Passed`.
+- Files touched: `src/dashboardMetrics.js`, `src/main.js`, `test/dashboard-metrics.test.js`, and `STATE.md`.
+- Verification: focused metric test failed before the helper existed, then passed after implementation. Final `npm test`, `npm run build`, and `git diff --check` passed.
+- Visual check: ran isolated Playwright screenshots against a temporary Vite server on `127.0.0.1:4173` for empty board, one open saved issue, and one closed issue in `Considering`. All three states kept the five metric cards visible; the closed issue case showed `Active Review` as 0 and `Resolved / Passed` as 1. The temporary server was stopped after verification.

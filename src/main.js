@@ -10,10 +10,9 @@ import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from '.
 import { buildContributionBrief } from './contributionBrief.js';
 import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
+import { summarizeDashboardMetrics } from './dashboardMetrics.js';
 
 const HIDDEN_RESULTS_RENDER_LIMIT = 100;
-const ACTIVE_REVIEW_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open'];
-const RESOLVED_BOARD_COLUMNS = ['Merged', 'Passed'];
 let hiddenSettingsFilter = '';
 
 // Initialize SPA
@@ -267,19 +266,6 @@ function renderActiveScreen() {
 /**
  * 1. DASHBOARD VIEW
  */
-function getBoardEntriesByColumn(boardCardsByColumn) {
-  return BOARD_COLUMNS.flatMap(column => (boardCardsByColumn[column] || []).map(card => ({ column, card })));
-}
-
-function countBoardEntries(entries, predicate) {
-  return entries.filter(predicate).length;
-}
-
-function progressPercent(part, total) {
-  if (!total) return 0;
-  return safePercent(Math.round((part / total) * 100));
-}
-
 function renderMetricProgress(percent, label = '') {
   const safeWidth = safePercent(percent);
   const labelAttribute = label ? ` aria-label="${escapeHTML(label)}"` : '';
@@ -326,20 +312,20 @@ function renderBoardMomentum(reviewFlow) {
 
 function renderDashboard(container) {
   // Grab dynamic data
-  const boardEntries = getBoardEntriesByColumn(store.boardCards);
-  const boardCards = boardEntries.map(entry => entry.card);
-  const closedCards = boardCards.filter(isClosedIssue);
+  const dashboardMetrics = summarizeDashboardMetrics(store.boardCards);
+  const boardEntries = dashboardMetrics.boardEntries;
+  const boardCards = dashboardMetrics.boardCards;
   const activeCards = boardCards.filter(card => !isClosedIssue(card));
   const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
-  const totalSavedCount = boardCards.length;
-  const activeReviewCount = countBoardEntries(boardEntries, entry => ACTIVE_REVIEW_COLUMNS.includes(entry.column));
-  const resolvedOrPassedCount = countBoardEntries(boardEntries, entry => RESOLVED_BOARD_COLUMNS.includes(entry.column) || isClosedIssue(entry.card));
+  const totalSavedCount = dashboardMetrics.totalSavedCount;
+  const activeReviewCount = dashboardMetrics.activeReviewCount;
+  const resolvedOrPassedCount = dashboardMetrics.resolvedOrPassedCount;
   const hiddenItems = listHiddenItems(localStorage);
   const hiddenIssueCount = hiddenItems.issues.length;
   const hiddenRepoCount = hiddenItems.repos.length;
   const hiddenTotalCount = hiddenIssueCount + hiddenRepoCount;
-  const activeReviewProgress = progressPercent(activeReviewCount, totalSavedCount);
-  const resolvedProgress = progressPercent(resolvedOrPassedCount, totalSavedCount);
+  const activeReviewProgress = dashboardMetrics.activeReviewProgress;
+  const resolvedProgress = dashboardMetrics.resolvedProgress;
   const hiddenRepoHelper = `${hiddenIssueCount.toLocaleString()} issues / ${hiddenRepoCount.toLocaleString()} repos`;
   const reviewFlow = summarizeReviewFlow(store.boardCards);
   const heroRecommendation = getDashboardHeroRecommendation({
