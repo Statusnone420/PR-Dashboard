@@ -191,3 +191,11 @@ test('refresh batch confirmation uses app modal instead of native browser confir
   assert.match(mainJs, /Refresh cards/);
   assert.doesNotMatch(mainJs, /window\.confirm/);
 });
+
+test('inspector action plan checkbox handler does not reopen inspector', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const handlerMatch = mainJs.match(/document\.querySelectorAll\('\.inspector-task-checkbox'\)[\s\S]*?\n  \}\);\n\}/);
+
+  assert.ok(handlerMatch);
+  assert.doesNotMatch(handlerMatch[0], /openInspector\(\)/);
+});

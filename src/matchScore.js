@@ -1,8 +1,21 @@
 import { isClosedIssue } from './boardModel.js';
 
 const BEGINNER_LABELS = ['good first issue', 'help wanted', 'beginner', 'starter'];
+const STRONG_FIT_LABELS = [
+  'good first issue',
+  'help wanted',
+  'documentation',
+  'docs',
+  'test',
+  'tests',
+  'starter',
+  'beginner',
+  'easy',
+  'low-hanging-fruit',
+  'low hanging fruit'
+];
 const STALE_LABELS = ['stale', 'blocked', 'duplicate', 'wontfix', "won't fix", 'invalid'];
-const SMALL_SCOPE_TERMS = ['docs', 'readme', 'typo', 'config', 'cleanup', 'spelling', 'copy', 'documentation'];
+const SMALL_SCOPE_TERMS = ['docs', 'readme', 'typo', 'config', 'cleanup', 'spelling', 'documentation'];
 const CLEAR_BEHAVIOR_TERMS = ['expected', 'actual', 'should', 'steps to reproduce', 'acceptance criteria', 'repro'];
 const COMPLEX_SCOPE_TERMS = ['rewrite', 'entire', 'architecture', 'large refactor', 'across everything', 'migration', 'redesign'];
 const META_GROWTH_TERMS = [
@@ -14,6 +27,78 @@ const META_GROWTH_TERMS = [
   'community onboarding',
   'project is bigger than me',
   'growth'
+];
+const TASK_SECTION_HEADINGS = [
+  'tasks',
+  'task list',
+  'todo',
+  'to do',
+  'acceptance criteria',
+  'implementation',
+  'proposed fix',
+  'checklist'
+];
+const NON_TASK_SECTION_HEADINGS = [
+  'steps to reproduce',
+  'reproduction',
+  'repro steps',
+  'how to reproduce',
+  'actual behavior',
+  'expected behavior',
+  'environment',
+  'additional information',
+  'additional notes'
+];
+const TEMPLATE_CHECKLIST_TERMS = [
+  'searched existing issues',
+  'search existing issues',
+  'read the contributing guide',
+  'read contributing',
+  'code of conduct',
+  'using the latest version',
+  'latest version',
+  'agree to follow',
+  'i agree',
+  'i have read',
+  'i searched',
+  'i am using'
+];
+const ACTION_ITEM_TERMS = [
+  'add',
+  'adjust',
+  'change',
+  'check',
+  'clarify',
+  'confirm',
+  'create',
+  'document',
+  'fix',
+  'implement',
+  'improve',
+  'migrate',
+  'parse',
+  'remove',
+  'rename',
+  'replace',
+  'reproduce',
+  'support',
+  'test',
+  'update',
+  'verify',
+  'write'
+];
+const SCOPED_COPY_PATTERNS = [
+  /\bcopywriting\b/i,
+  /\b(?:ui|error message|message|landing page|onboarding page|docs?|documentation|button label|aria label)\s+copy\b/i,
+  /\bcopy\s+(?:for|in)\s+(?:the\s+)?(?:ui|error message|message|landing page|onboarding page|docs?|documentation)\b/i,
+  /\b(?:revise|update|improve|change|clarify)\s+(?:the\s+)?(?:ui\s+)?copy\b/i,
+  /\b(?:revise|update|improve|change|clarify)\s+(?:the\s+)?(?:error message|label|microcopy|wording)\b/i
+];
+const BOUNDED_FIX_PATTERNS = [
+  /\bfix(?:es|ing)?\s+(?:the\s+)?[\w\s-]{0,80}\b(?:button|label|message|command|parser|validation|readme|docs?|setting|settings|checkbox|input|link|tooltip|test)\b/i,
+  /\b(?:update|change|improve|clarify|document|add|remove|rename|replace)\s+(?:the\s+)?[\w\s-]{0,80}\b(?:label|message|copy|docs?|readme|test|command|option|setting|settings|tooltip|validation)\b/i,
+  /\bsmall\s+(?:fix|change|cleanup)\b/i,
+  /\b(?:typo|spelling|readme|config)\b/i
 ];
 
 function clampScore(score) {
@@ -40,8 +125,76 @@ function hasAny(value, terms) {
   return terms.some(term => value.includes(term));
 }
 
+function normalizedHeading(line) {
+  return String(line || '')
+    .trim()
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/:$/, '')
+    .trim()
+    .toLowerCase();
+}
+
+function listItemText(line) {
+  const match = String(line || '').match(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s*)?|\d+[.)]\s+)(.+)$/);
+  return match ? match[1].trim() : null;
+}
+
+function isMarkdownChecklistItem(line) {
+  return /^\s*[-*+]\s+\[[ xX]\]\s+\S/.test(String(line || ''));
+}
+
+function isTemplateChecklistItem(text) {
+  const normalized = String(text || '').toLowerCase();
+  return TEMPLATE_CHECKLIST_TERMS.some(term => normalized.includes(term));
+}
+
+function isActionOrientedItem(text) {
+  const normalized = String(text || '').toLowerCase();
+  if (!normalized || isTemplateChecklistItem(normalized)) return false;
+  return ACTION_ITEM_TERMS.some(term => new RegExp(`\\b${term}\\b`, 'i').test(normalized));
+}
+
 function hasTaskList(issueText) {
-  return /(^|\n)\s*(- \[[ x]\]|\d+\.|- )\s+\S/i.test(issueText);
+  const lines = String(issueText || '').split(/\r?\n/);
+  let inTaskSection = false;
+
+  for (const line of lines) {
+    const heading = normalizedHeading(line);
+    if (TASK_SECTION_HEADINGS.includes(heading)) {
+      inTaskSection = true;
+      continue;
+    }
+    if (NON_TASK_SECTION_HEADINGS.includes(heading)) {
+      inTaskSection = false;
+      continue;
+    }
+
+    const item = listItemText(line);
+    if (!item) continue;
+
+    if (isMarkdownChecklistItem(line) && (inTaskSection || isActionOrientedItem(item))) {
+      return true;
+    }
+
+    if (inTaskSection && isActionOrientedItem(item)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasScopedCopySignal(issueText) {
+  return SCOPED_COPY_PATTERNS.some(pattern => pattern.test(issueText));
+}
+
+function hasSmallScopeSignal(issueText) {
+  return hasAny(issueText, SMALL_SCOPE_TERMS) || hasScopedCopySignal(issueText);
+}
+
+function hasBoundedFixWording(issueText) {
+  const compact = String(issueText || '').replace(/\s+/g, ' ');
+  return BOUNDED_FIX_PATTERNS.some(pattern => pattern.test(compact));
 }
 
 export function getMatchScoreRating(score) {
@@ -65,7 +218,13 @@ export function calculateMatchScore(issue, options = {}) {
 
   const isAssigned = Boolean(issue?.assignee || (Array.isArray(issue?.assignees) && issue.assignees.length > 0));
   const hasBeginnerLabel = labels.some(label => BEGINNER_LABELS.some(beginner => label.includes(beginner)));
+  const hasStrongFitLabel = labels.some(label => STRONG_FIT_LABELS.some(strong => label.includes(strong)));
   const hasStaleLabel = labels.some(label => STALE_LABELS.some(stale => label.includes(stale)));
+  const hasBugLabel = labels.some(label => label === 'bug' || label.includes('bug'));
+  const hasClearBehavior = hasAny(issueText, CLEAR_BEHAVIOR_TERMS);
+  const hasSmallScope = hasSmallScopeSignal(issueText);
+  const hasActionableTaskList = hasTaskList(`${issue?.body || ''}`);
+  const hasBoundedFix = hasBoundedFixWording(issueText);
 
   if (isClosedIssue(issue)) {
     add(-100, 'Closed issue', 'Closed issue');
@@ -85,15 +244,15 @@ export function calculateMatchScore(issue, options = {}) {
     add(14, 'Beginner-friendly label');
   }
 
-  if (hasAny(issueText, SMALL_SCOPE_TERMS)) {
+  if (hasSmallScope) {
     add(8, 'Small docs/config cleanup scope');
   }
 
-  if (hasAny(issueText, CLEAR_BEHAVIOR_TERMS)) {
+  if (hasClearBehavior) {
     add(8, 'Clear expected behavior');
   }
 
-  if (hasTaskList(`${issue?.body || ''}`)) {
+  if (hasActionableTaskList) {
     add(6, 'Clear task list');
   }
 
@@ -154,7 +313,20 @@ export function calculateMatchScore(issue, options = {}) {
     add(-30, 'Meta/growth issue', 'Meta/growth issue');
   }
 
-  const score = clampScore(rows.reduce((total, row) => total + row.points, 0));
+  const hasStrongContributionFitSignal = hasStrongFitLabel
+    || hasBoundedFix
+    || hasActionableTaskList
+    || hasSmallScope
+    || (hasBugLabel && hasClearBehavior && hasBoundedFix);
+  let score = clampScore(rows.reduce((total, row) => total + row.points, 0));
+
+  if (!hasStrongContributionFitSignal && score > 90) {
+    add(90 - score, 'Near-perfect score requires contribution-fit evidence');
+    score = 90;
+  } else if (!hasStrongFitLabel && score > 94) {
+    add(94 - score, 'Perfect score requires a strong contribution label');
+    score = 94;
+  }
 
   return {
     score,

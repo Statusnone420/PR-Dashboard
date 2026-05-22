@@ -105,6 +105,24 @@ function getSearchItemsForActions() {
   return store.lastSearchMode === 'lookup' ? items : filterHiddenIssues(items);
 }
 
+function updateInspectorTaskVisualState(checkbox) {
+  if (!checkbox) return;
+
+  const taskLabel = checkbox.closest('label');
+  const taskText = taskLabel?.querySelector('span:not(.material-symbols-outlined)');
+  if (taskText) {
+    taskText.classList.toggle('line-through', checkbox.checked);
+    taskText.classList.toggle('opacity-70', checkbox.checked);
+  }
+
+  const progress = safePercent(store.inspectedIssue?.progress || 0);
+  const panel = document.getElementById('inspector-overlay-drawer');
+  const progressValue = panel?.querySelector('[data-inspector-progress-value]');
+  const progressBar = panel?.querySelector('[data-inspector-progress-bar]');
+  if (progressValue) progressValue.textContent = `${progress}%`;
+  if (progressBar) progressBar.style.width = `${progress}%`;
+}
+
 /**
  * Global Routing Navigation Bindings
  */
@@ -435,19 +453,6 @@ function renderActiveScreen() {
 /**
  * 1. DASHBOARD VIEW
  */
-function getBoardEntriesByColumn(boardCardsByColumn) {
-  return BOARD_COLUMNS.flatMap(column => (boardCardsByColumn[column] || []).map(card => ({ column, card })));
-}
-
-function countBoardEntries(entries, predicate) {
-  return entries.filter(predicate).length;
-}
-
-function progressPercent(part, total) {
-  if (!total) return 0;
-  return safePercent(Math.round((part / total) * 100));
-}
-
 function renderMetricProgress(percent, label = '') {
   const safeWidth = safePercent(percent);
   const labelAttribute = label ? ` aria-label="${escapeHTML(label)}"` : '';
@@ -494,9 +499,9 @@ function renderBoardFlow(reviewFlow) {
 
 function renderDashboard(container) {
   // Grab dynamic data
-  const boardEntries = getBoardEntriesByColumn(store.boardCards);
-  const boardCards = boardEntries.map(entry => entry.card);
-  const closedCards = boardCards.filter(isClosedIssue);
+  const dashboardMetrics = summarizeDashboardMetrics(store.boardCards);
+  const boardEntries = dashboardMetrics.boardEntries;
+  const boardCards = dashboardMetrics.boardCards;
   const activeCards = boardCards.filter(card => !isClosedIssue(card));
   const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
   const totalSavedCount = boardCards.length;
@@ -2994,10 +2999,10 @@ function openInspector() {
             <div class="mt-4 pt-3 border-t border-outline-variant/30">
               <div class="flex justify-between items-center text-[10px] text-on-surface-variant mb-1">
                 <span>Interactive Progress</span>
-                <span>${safeProgress}%</span>
+                <span data-inspector-progress-value>${safeProgress}%</span>
               </div>
               <div class="w-full bg-surface-container-lowest rounded-full h-1 overflow-hidden">
-                <div class="bg-primary h-1 rounded-full" style="width: ${safeProgress}%"></div>
+                <div class="bg-primary h-1 rounded-full" data-inspector-progress-bar style="width: ${safeProgress}%"></div>
               </div>
             </div>
           ` : ''}
@@ -3121,8 +3126,8 @@ function openInspector() {
     cb.addEventListener('change', () => {
       const taskText = cb.getAttribute('data-task');
       store.toggleTaskChecklist(issue.id, taskText, cb.checked);
-      // Re-open inspector to refresh visual checks or update progress
-      openInspector();
+      updateInspectorTaskVisualState(cb);
+      cb.focus();
     });
   });
 }
