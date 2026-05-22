@@ -99,3 +99,63 @@ test('old seeded mock board cards are removed during board migration', async () 
   assert.equal(allCards.length, 0);
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_board_migration_v1'), 'seeded-mock-cards-removed');
 });
+
+test('hiding an issue also removes that issue from the saved board', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.saveIssueToBoard({
+    id: 1,
+    number: 10,
+    title: 'Hide me',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/10'
+  });
+  appStore.saveIssueToBoard({
+    id: 2,
+    number: 11,
+    title: 'Keep me',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/11'
+  });
+
+  appStore.hideIssue({
+    id: 1,
+    number: 10,
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/10'
+  });
+
+  const remaining = Object.values(appStore.boardCards).flat();
+  assert.deepEqual(remaining.map(card => card.id), [2]);
+});
+
+test('hiding a repo also removes saved board cards from that repo', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.saveIssueToBoard({
+    id: 1,
+    number: 10,
+    title: 'Repo hide me',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/10'
+  });
+  appStore.saveIssueToBoard({
+    id: 2,
+    number: 20,
+    title: 'Other repo',
+    repository: { full_name: 'vercel/next.js' },
+    html_url: 'https://github.com/vercel/next.js/issues/20'
+  });
+
+  appStore.hideRepo({
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/10'
+  });
+
+  const remaining = Object.values(appStore.boardCards).flat();
+  assert.deepEqual(remaining.map(card => card.id), [2]);
+});

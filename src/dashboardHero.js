@@ -11,10 +11,18 @@ export function hasConfiguredGitHubToken(githubToken) {
   return String(githubToken || '').trim().length > 0;
 }
 
-export function getActiveResumeTarget(boardCards = {}) {
+function resolveHiddenFilter(options = {}) {
+  return typeof options.hiddenFilter === 'function'
+    ? options.hiddenFilter
+    : cards => cards;
+}
+
+export function getActiveResumeTarget(boardCards = {}, options = {}) {
+  const hiddenFilter = resolveHiddenFilter(options);
   for (const column of DASHBOARD_RESUME_COLUMN_ORDER) {
     const cards = Array.isArray(boardCards[column]) ? boardCards[column] : [];
-    const card = cards.find(candidate => !isClosedIssue(candidate));
+    const visibleCards = hiddenFilter([...cards]);
+    const card = visibleCards.find(candidate => !isClosedIssue(candidate));
     if (card) {
       return { card, column };
     }
@@ -23,8 +31,8 @@ export function getActiveResumeTarget(boardCards = {}) {
   return null;
 }
 
-export function getDashboardHeroRecommendation({ boardCards, githubToken } = {}) {
-  const resumeTarget = getActiveResumeTarget(boardCards);
+export function getDashboardHeroRecommendation({ boardCards, githubToken, hiddenFilter } = {}) {
+  const resumeTarget = getActiveResumeTarget(boardCards, { hiddenFilter });
   if (resumeTarget) {
     return {
       kind: 'resume',
@@ -37,4 +45,12 @@ export function getDashboardHeroRecommendation({ boardCards, githubToken } = {})
   }
 
   return { kind: 'find-contributions' };
+}
+
+export function getDashboardSavedPreviewCards(boardCards = {}, options = {}) {
+  const hiddenFilter = resolveHiddenFilter(options);
+  const boardCardsList = Object.values(boardCards).flat();
+  const activeCards = boardCardsList.filter(card => !isClosedIssue(card));
+  const previewSource = activeCards.length ? activeCards : boardCardsList;
+  return hiddenFilter([...previewSource]);
 }

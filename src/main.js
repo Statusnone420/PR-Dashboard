@@ -6,7 +6,7 @@ import { escapeHTML, formatDate, getSafeIssueHtmlUrl, safeInteger, safePercent }
 import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
-import { getDashboardHeroRecommendation } from './dashboardHero.js';
+import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { buildContributionBrief } from './contributionBrief.js';
 import { filterHiddenIssues, listHiddenItems } from './hiddenItems.js';
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
@@ -63,6 +63,10 @@ function getInspectorBestFitLabel(bestFor) {
   if (bestFor === 'Standard') return 'Standard contributor';
   if (bestFor === 'Deep Dive') return 'Deep dive';
   return bestFor;
+}
+
+function isIssueSavedToBoard(issue) {
+  return Object.values(store.boardCards).flat().some(card => card.id === issue?.id);
 }
 
 /**
@@ -340,7 +344,8 @@ function renderDashboard(container) {
   const reviewFlow = summarizeReviewFlow(store.boardCards);
   const heroRecommendation = getDashboardHeroRecommendation({
     boardCards: store.boardCards,
-    githubToken: store.githubToken
+    githubToken: store.githubToken,
+    hiddenFilter: filterHiddenIssues
   });
 
   let heroHTML = '';
@@ -1250,7 +1255,7 @@ function renderIssueCardsList(issuesList) {
       return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${escapeHTML(name)}</span>`;
     }).join(' ');
 
-    const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
+    const saved = isIssueSavedToBoard(issue);
 
     return `
       <article class="issue-card interactive-card group rounded-xl p-5 cursor-pointer flex flex-col gap-3 ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issueId}">
@@ -1364,6 +1369,10 @@ function bindIssueCardListEvents() {
       const issue = items.find(i => i.id === issueId);
       if (issue) {
         const fitObj = calculateFitScore(issue);
+        if (isIssueSavedToBoard(issue)) {
+          store.removeBoardCard(issue.id);
+          return;
+        }
         if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
           btn.setAttribute('data-confirm-risk', 'true');
           btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">warning</span> Save anyway?`;
@@ -2144,7 +2153,7 @@ function openInspector() {
   const contributionBrief = buildContributionBrief(issue, fitObj);
   const inspectorBestFitLabel = getInspectorBestFitLabel(contributionBrief.bestFor);
   const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
-  const saved = Object.values(store.boardCards).flat().some(c => c.id === issue.id);
+  const saved = isIssueSavedToBoard(issue);
   const safeIssueTitle = escapeHTML(issue.title);
   const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
   const safeIssueNumber = safeInteger(issue.number);
@@ -2391,6 +2400,11 @@ function openInspector() {
   const saveBtn = document.getElementById('inspector-save-issue-btn');
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
+      if (isIssueSavedToBoard(issue)) {
+        store.removeBoardCard(issue.id);
+        openInspector();
+        return;
+      }
       if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
         saveBtn.setAttribute('data-confirm-risk', 'true');
         saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">warning</span> Save anyway?`;
