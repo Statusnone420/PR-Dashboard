@@ -1,9 +1,9 @@
 import { store } from './state/store.js';
-import { buildQueryPreview, createGitHubRequestOptions, fetchExactIssue, fetchIssueMetadata, searchGitHubIssues } from './api/github.js';
+import { buildQueryPreview, createGitHubRequestOptions, fetchExactIssue, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
 import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
-import { BOARD_COLUMNS, isClosedIssue, mergeIssueMetadata } from './boardModel.js';
+import { BOARD_COLUMNS, isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
@@ -15,12 +15,21 @@ import { exportLocalData, importLocalData } from './localData.js';
 import { buildLocalAlerts } from './localAlerts.js';
 import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
+import {
+  getActiveBoardRefreshRequestCount,
+  getPublicBatchRefreshWarning,
+  getSafeRefreshErrorMessage,
+  refreshActiveBoardCardsSerially,
+  shouldWarnPublicBatchRefresh
+} from './boardRefresh.js';
 
 const HIDDEN_RESULTS_RENDER_LIMIT = 100;
 const ACTIVE_REVIEW_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open'];
 const RESOLVED_BOARD_COLUMNS = ['Merged', 'Passed'];
 let hiddenSettingsFilter = '';
 let localAlertsOpen = false;
+let inspectorRefreshStatus = '';
+let inspectorRefreshStatusCardId = null;
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -75,8 +84,12 @@ function getInspectorBestFitLabel(bestFor) {
 }
 
 function isIssueSavedToBoard(issue) {
+  return Boolean(findSavedBoardCard(issue));
+}
+
+function findSavedBoardCard(issue) {
   const issueKey = getCanonicalIssueKey(issue);
-  return Object.values(store.boardCards).flat().some(card => {
+  return Object.values(store.boardCards).flat().find(card => {
     const cardKey = getCanonicalIssueKey(card);
     return (issueKey && cardKey === issueKey) || card.id === issue?.id;
   });
@@ -255,7 +268,7 @@ function renderLocalAlertsPopover() {
       <h2 class="text-sm font-semibold text-on-surface">Review reminders</h2>
       <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn"><span class="material-symbols-outlined text-[16px]">close</span></button>
     </div>
-    <p class="mb-3 text-xs text-on-surface-variant">Review reminders are generated from your local board state. No push notifications or backend sync.</p>
+    <p class="mb-3 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
     <div class="space-y-2">${alertsHTML}</div>
   `;
   document.body.appendChild(popover);
@@ -1609,40 +1622,59 @@ function bindIssueCardListEvents() {
 /**
  * 3. KANBAN BOARD VIEW
  */
-async function refreshSavedIssuesFromGitHub(statusEl) {
-  const nextBoard = {};
-  let refreshed = 0;
-  let failed = 0;
+async function refreshBoardCardFromGitHub(card) {
+  const result = await fetchIssueMetadataForRefresh(card);
+  return result.notModified
+    ? markIssueMetadataUnchanged(card, { etag: result.etag })
+    : mergeIssueMetadata(card, result.issue, { etag: result.etag });
+}
 
-  for (const column of BOARD_COLUMNS) {
-    nextBoard[column] = [];
-    for (const card of store.boardCards[column] || []) {
-      try {
-        const metadata = await fetchIssueMetadata(card);
-        nextBoard[column].push(mergeIssueMetadata(card, metadata));
-        refreshed += 1;
-      } catch {
-        nextBoard[column].push({
-          ...card,
-          refresh_error: 'GitHub refresh failed for this card.',
-          last_refreshed_at: new Date().toISOString()
-        });
-        failed += 1;
-      }
-    }
+function formatBoardRefreshStatus(result) {
+  if (result.stoppedForRateLimit) {
+    return `Refreshed ${result.refreshed} active board cards. ${result.rateLimitMessage}`;
+  }
+  if (result.failed) {
+    return `Refreshed ${result.refreshed} active board cards. ${result.failed} could not be refreshed.`;
+  }
+  return `Refreshed ${result.refreshed} active board cards.`;
+}
+
+async function refreshActiveBoardFromGitHub(statusEl) {
+  const requestCount = getActiveBoardRefreshRequestCount(store.boardCards);
+  if (requestCount === 0) {
+    const statusMessage = 'No active board cards to refresh.';
+    store.setBoardRefreshStatus(statusMessage);
+    if (statusEl) statusEl.textContent = statusMessage;
+    return;
   }
 
-  store.setBoardCards(nextBoard);
-  const statusMessage = failed
-    ? `Refreshed ${refreshed} saved candidates. ${failed} could not be refreshed.`
-    : `Refreshed ${refreshed} saved candidates.`;
+  if (
+    shouldWarnPublicBatchRefresh({ token: store.githubToken, requestCount })
+    && !window.confirm(getPublicBatchRefreshWarning(requestCount))
+  ) {
+    const statusMessage = 'Active board refresh cancelled.';
+    store.setBoardRefreshStatus(statusMessage);
+    if (statusEl) statusEl.textContent = statusMessage;
+    return;
+  }
+
+  const result = await refreshActiveBoardCardsSerially(store.boardCards, refreshBoardCardFromGitHub);
+  store.setBoardCards(result.nextBoard);
+  const statusMessage = formatBoardRefreshStatus(result);
   store.setBoardRefreshStatus(statusMessage);
   if (statusEl) statusEl.textContent = statusMessage;
+}
+
+async function refreshSingleSavedBoardCard(card) {
+  const updatedCard = await refreshBoardCardFromGitHub(card);
+  store.updateBoardCard(card.id, () => updatedCard);
+  return updatedCard;
 }
 
 function renderBoard(container) {
   const cols = BOARD_COLUMNS;
   const totalCards = Object.values(store.boardCards).flat().length;
+  const activeRefreshRequestCount = getActiveBoardRefreshRequestCount(store.boardCards);
   
   // Render Board lane columns
   const columnsHTML = cols.map((col, cIdx) => {
@@ -1671,6 +1703,12 @@ function renderBoard(container) {
       ` : '';
       const refreshErrorHTML = card.refresh_error ? `
         <div class="mb-3 rounded border border-error/25 bg-error-container/10 p-2 text-[11px] text-error">${escapeHTML(card.refresh_error)}</div>
+      ` : '';
+      const activitySummaryHTML = card.github_activity?.has_new_activity ? `
+        <div class="mb-3 rounded border border-primary/20 bg-primary/10 p-2 text-[11px] text-primary">
+          <span class="font-semibold">New GitHub activity</span>
+          <span class="text-on-surface-variant"> - ${escapeHTML(card.github_activity.summary || 'Updated on GitHub since last refresh.')}</span>
+        </div>
       ` : '';
       
       // Inline checklist for Working column
@@ -1750,6 +1788,7 @@ function renderBoard(container) {
           
           ${closedWarningHTML}
           ${refreshErrorHTML}
+          ${activitySummaryHTML}
           ${workingChecklistHTML}
           ${prOpenHTML}
           ${mergedTextHTML}
@@ -1804,8 +1843,8 @@ function renderBoard(container) {
         
         <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
           <span class="text-xs text-on-surface-variant" id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</span>
-          <button class="interactive-button interactive-button-secondary py-1.5 px-3" id="board-refresh-btn" ${totalCards === 0 ? 'disabled' : ''}>
-            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh saved candidates
+          <button class="interactive-button interactive-button-secondary py-1.5 px-3" id="board-refresh-btn" ${activeRefreshRequestCount === 0 ? 'disabled' : ''}>
+            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh active board (${activeRefreshRequestCount} requests)
           </button>
           <button class="interactive-button interactive-button-danger py-1.5 px-3" id="board-clear-btn" ${totalCards === 0 ? 'disabled' : ''}>
             <span class="material-symbols-outlined text-[16px]">delete</span> Clear Board
@@ -1885,9 +1924,9 @@ function renderBoard(container) {
     refreshBtn.addEventListener('click', async () => {
       const statusEl = document.getElementById('board-refresh-status');
       refreshBtn.disabled = true;
-      store.setBoardRefreshStatus('Refreshing saved candidates...');
-      if (statusEl) statusEl.textContent = 'Refreshing saved candidates...';
-      await refreshSavedIssuesFromGitHub(statusEl);
+      store.setBoardRefreshStatus('Refreshing active board...');
+      if (statusEl) statusEl.textContent = 'Refreshing active board...';
+      await refreshActiveBoardFromGitHub(statusEl);
     });
   }
 
@@ -2044,7 +2083,7 @@ function renderProfile(container) {
 
         <section class="interactive-card rounded-xl p-6">
           <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
-          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state. No push notifications or backend sync.</p>
+          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
           <div class="space-y-3">
             ${alerts.length ? alerts.map(alert => `
               <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
@@ -2588,6 +2627,15 @@ function openInspector() {
       </div>
     </div>
   ` : '';
+  const activityInspectorHTML = issue.github_activity?.has_new_activity ? `
+    <div class="rounded-lg border border-primary/20 bg-primary/10 p-4">
+      <h3 class="text-sm font-semibold text-primary mb-1">New GitHub activity</h3>
+      <p class="text-sm text-on-surface-variant">${escapeHTML(issue.github_activity.summary || 'Updated on GitHub since last refresh.')}</p>
+    </div>
+  ` : '';
+  const refreshStatusHTML = inspectorRefreshStatus && inspectorRefreshStatusCardId === issue.id ? `
+    <span class="text-xs text-on-surface-variant" id="inspector-refresh-status">${escapeHTML(inspectorRefreshStatus)}</span>
+  ` : '';
 
   // Render match score explanations
   const fitScoreReasonsHTML = fitObj.rows.map(row => {
@@ -2698,18 +2746,24 @@ function openInspector() {
             <span class="material-symbols-outlined text-[16px]">visibility</span>
             Unhide
           </button>` : ''}
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-refresh-card-btn" ${saved ? '' : 'disabled'}>
+            <span class="material-symbols-outlined text-[16px]">sync</span>
+            Refresh this card
+          </button>
           
           ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
             Open on GitHub
             <span class="material-symbols-outlined text-[16px]">open_in_new</span>
           </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}
         </div>
+        ${refreshStatusHTML}
       </div>
 
       <!-- Description Block -->
       ${closedInspectorHTML}
       ${riskyLookupHTML}
       ${hiddenInspectorHTML}
+      ${activityInspectorHTML}
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -2840,6 +2894,32 @@ function openInspector() {
     });
   }
 
+  const refreshCardBtn = document.getElementById('inspector-refresh-card-btn');
+  if (refreshCardBtn) {
+    refreshCardBtn.addEventListener('click', async () => {
+      const savedCard = findSavedBoardCard(issue);
+      if (!savedCard) return;
+
+      inspectorRefreshStatusCardId = issue.id;
+      inspectorRefreshStatus = 'Checking GitHub...';
+      openInspector();
+
+      try {
+        const updatedCard = await refreshSingleSavedBoardCard(savedCard);
+        inspectorRefreshStatusCardId = updatedCard.id;
+        inspectorRefreshStatus = updatedCard.github_activity?.has_new_activity
+          ? 'New GitHub activity found.'
+          : 'No changes since last refresh.';
+        store.setInspectedIssue(updatedCard);
+        openInspector();
+      } catch (error) {
+        inspectorRefreshStatusCardId = issue.id;
+        inspectorRefreshStatus = `Refresh failed: ${getSafeRefreshErrorMessage(error)}`;
+        openInspector();
+      }
+    });
+  }
+
   const hideIssueBtn = document.getElementById('inspector-hide-issue-btn');
   if (hideIssueBtn) {
     hideIssueBtn.addEventListener('click', () => {
@@ -2879,6 +2959,8 @@ function closeInspector() {
   const panel = document.getElementById('inspector-overlay-drawer');
   if (!panel) return;
 
+  inspectorRefreshStatus = '';
+  inspectorRefreshStatusCardId = null;
   panel.classList.add('translate-x-full');
   setTimeout(() => {
     panel.style.display = 'none';

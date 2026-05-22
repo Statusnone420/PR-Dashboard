@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 function readCopySources() {
   const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
-  return { indexHtml, mainJs };
+  const boardRefreshJs = readFileSync(new URL('../src/boardRefresh.js', import.meta.url), 'utf8');
+  return { indexHtml, mainJs, boardRefreshJs };
 }
 
 function normalizeCopy(value) {
@@ -38,11 +39,14 @@ function jsStringLiterals(source) {
   return literals;
 }
 
-function visibleAppCopy({ indexHtml, mainJs }) {
+function visibleAppCopy({ indexHtml, mainJs, boardRefreshJs = '' }) {
   const jsCopy = jsStringLiterals(mainJs)
     .map(literal => htmlVisibleCopy(literal))
     .join(' ');
-  return normalizeCopy(`${htmlVisibleCopy(indexHtml)} ${jsCopy}`);
+  const boardRefreshCopy = jsStringLiterals(boardRefreshJs)
+    .map(literal => htmlVisibleCopy(literal))
+    .join(' ');
+  return normalizeCopy(`${htmlVisibleCopy(indexHtml)} ${jsCopy} ${boardRefreshCopy}`);
 }
 
 function sliceBetween(source, start, end) {
@@ -78,12 +82,18 @@ test('settings exposes hidden results management copy', () => {
 });
 
 test('profile, proof log, export import, and review reminders are visible product surfaces', () => {
-  const { indexHtml, mainJs } = readCopySources();
+  const { indexHtml, mainJs, boardRefreshJs } = readCopySources();
+  const copy = visibleAppCopy({ indexHtml, mainJs, boardRefreshJs });
 
   assert.match(mainJs, /Proof Log/);
   assert.match(mainJs, /Export Local Data/);
   assert.match(mainJs, /Import Local Data/);
   assert.match(mainJs, /Review reminders/);
+  assert.match(mainJs, /Refresh this card/);
+  assert.match(mainJs, /Refresh active board/);
+  assert.match(mainJs, /New GitHub activity/);
+  assert.match(mainJs, /No changes since last refresh/);
+  assert.match(copy, /Public GitHub API limits are tight/);
   assert.match(mainJs, /No review reminders right now\./);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
@@ -139,6 +149,11 @@ test('visible app copy rejects banned product wording', () => {
     /Local notifications/,
     /Proof Board/,
     /proof board/,
+    /\bpolling\b/i,
+    /\blive sync\b/i,
+    /\breal-time\b/i,
+    /\bpush notifications\b/i,
+    /\bbackend sync\b/i,
     /beautiful thing/,
     /magic/
   ]) {

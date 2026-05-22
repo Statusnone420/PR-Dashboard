@@ -1,4 +1,5 @@
 import { getCanonicalIssueKey } from './issueKeys.js';
+import { buildGitHubActivity, buildUnchangedGitHubActivity } from './githubActivity.js';
 
 export const BOARD_COLUMNS = ['Considering', 'Read Docs', 'Asked Maintainer', 'Working', 'PR Open', 'Merged', 'Passed'];
 
@@ -137,9 +138,11 @@ export function isClosedIssue(issue) {
   return String(issue?.state || '').toLowerCase() === 'closed';
 }
 
-export function mergeIssueMetadata(savedCard, apiIssue) {
+export function mergeIssueMetadata(savedCard, apiIssue, options = {}) {
+  const { refresh_error: _refreshError, ...localCard } = savedCard;
+  const now = options.now || new Date().toISOString();
   return {
-    ...savedCard,
+    ...localCard,
     id: apiIssue.id ?? savedCard.id,
     number: apiIssue.number ?? savedCard.number,
     title: apiIssue.title ?? savedCard.title,
@@ -157,6 +160,23 @@ export function mergeIssueMetadata(savedCard, apiIssue) {
       ...(savedCard.repository || {}),
       ...(apiIssue.repository || {})
     },
-    last_refreshed_at: new Date().toISOString()
+    last_refreshed_at: now,
+    github_activity: buildGitHubActivity(savedCard, apiIssue, {
+      now,
+      etag: options.etag
+    })
+  };
+}
+
+export function markIssueMetadataUnchanged(savedCard, options = {}) {
+  const { refresh_error: _refreshError, ...localCard } = savedCard;
+  const now = options.now || new Date().toISOString();
+  return {
+    ...localCard,
+    last_refreshed_at: now,
+    github_activity: buildUnchangedGitHubActivity(savedCard, {
+      now,
+      etag: options.etag
+    })
   };
 }

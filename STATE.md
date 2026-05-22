@@ -189,3 +189,12 @@
 
 - Added Tailwind CSS and Live on Vercel badges to the README badge row, keeping the existing compact Shields style.
 - Verification: badge image URLs and the live Vercel URL returned `200`, and `git diff --check` passed.
+
+## 2026-05-22 GitHub Activity Refresh + Review Reminders
+
+- Added local GitHub activity comparison metadata on board cards, including ETag-aware refresh state, comment deltas, state/assignee/label changes, and cleanup for stale activity summaries after no-change refreshes.
+- Reworked saved-card refresh into manual `Refresh this card` and `Refresh active board` paths. Active-board refresh only covers `Considering`, `Read Docs`, `Asked Maintainer`, `Working`, and `PR Open`; `Merged` and `Passed` are excluded by default.
+- Refresh requests use direct GitHub issue endpoints, send `If-None-Match` when available, handle `304 Not Modified`, run active-board batches serially, warn for no-token public batches above 5 requests, and stop on rate-limit errors.
+- Review reminders now include `New GitHub activity` above stale-refresh reminders, and board/inspector cards show a restrained local activity status line when new activity exists.
+- Verification on 2026-05-22: new tests were written first and failed before implementation. Final `npm test` passed 118/118, `npm run build` passed, and a built-preview mocked Playwright smoke at `http://127.0.0.1:4173/` verified Lookup save, `Refresh this card`, card/inspector activity summaries, Review reminders, board-to-`Merged` Proof Log behavior, active-board request count, `Merged` exclusion, serial active-board refresh with max concurrency 1, and no console warnings/errors. The Browser plugin could verify the app shell but could not seed/mock page `localStorage`, so the deterministic API smoke used the repo Playwright dependency.
+- Remaining risk: live GitHub issue metadata and public API limits can vary. No real PAT was used; token behavior was covered by request/header tests and mocked browser traffic.

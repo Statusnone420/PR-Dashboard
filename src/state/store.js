@@ -448,6 +448,9 @@ export class AppStore {
         issue.checklist = foundBoardCard.checklist;
         issue.progress = foundBoardCard.progress;
         issue.commits = foundBoardCard.commits;
+        issue.github_activity = foundBoardCard.github_activity;
+        issue.last_refreshed_at = foundBoardCard.last_refreshed_at;
+        issue.refresh_error = foundBoardCard.refresh_error;
       } else {
         // Default checklist for inspection
         issue.checklist = createDefaultActionPlan();

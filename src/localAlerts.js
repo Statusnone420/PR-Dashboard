@@ -10,12 +10,12 @@ function ageDays(value, now) {
   return Math.floor((now - time) / DAY_MS);
 }
 
-function alertBase(kind, card, column, message) {
+function alertBase(kind, card, column, message, options = {}) {
   return {
     kind,
     cardId: card?.id,
     key: getIssueDisplayKey(card) || String(card?.id || ''),
-    title: card?.title || 'Saved issue',
+    title: options.title || card?.title || 'Saved issue',
     column,
     message
   };
@@ -27,6 +27,22 @@ export function buildLocalAlerts(boardCardsByColumn = {}, options = {}) {
   const maintainerDays = options.maintainerDays || 3;
   const prDays = options.prDays || 3;
   const refreshDays = options.refreshDays || 3;
+
+  for (const column of ACTIVE_COLUMNS) {
+    for (const card of boardCardsByColumn[column] || []) {
+      const activity = card?.github_activity;
+      if (activity?.has_new_activity) {
+        const key = getIssueDisplayKey(card) || card?.title || 'Saved issue';
+        alerts.push(alertBase(
+          'github-activity',
+          card,
+          column,
+          `${key} has ${activity.summary || 'new GitHub activity since last refresh.'}`,
+          { title: 'New GitHub activity' }
+        ));
+      }
+    }
+  }
 
   for (const card of boardCardsByColumn['Asked Maintainer'] || []) {
     if (ageDays(card.column_entered_at || card.last_moved_at, now) >= maintainerDays) {
