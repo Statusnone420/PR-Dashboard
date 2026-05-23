@@ -19,7 +19,7 @@ Find GitHub issues worth contributing to, not just random noise.
 
 ## What It Does
 
-PR Dashboard is a local-first GitHub issue finder for people who want to make better contribution decisions. It keeps the familiar search flow, then adds deterministic scoring, contribution guidance, and a lightweight Board so promising candidates do not get lost.
+PR Dashboard is a local-first GitHub issue finder for people who want to make better contribution decisions. It keeps the familiar search flow, then adds deterministic scoring, local contribution preferences, learned feedback, lazy inspector context, and a lightweight Board so promising candidates do not get lost.
 
 The app runs entirely in the browser. There is no backend sync in v1, no model API dependency, and no app-owned server receiving your GitHub token or Board data. Export/Import Local Data is the current phone/desktop bridge.
 
@@ -51,13 +51,14 @@ This is not an endorsement, partnership, or affiliation with TEAMMATES. It is a 
 
 - **Find Contributions** searches GitHub issues with contribution-focused filters.
 - **Lookup** supports exact issue URLs and `owner/repo#123` references without breaking normal search.
-- **Match/Fit Score** ranks issues with transparent scoring rows and pass reasons.
+- **Match/Fit Score** ranks issues with transparent scoring rows, pass reasons, confidence, mini-scores, local preferences, and learned feedback.
 - **Contribution Brief** explains who an issue is best for, why it may be worth trying, and what to do first.
+- **Advanced Context** inspects comments, timeline events, setup files, recent pull requests, and same-label history only after an issue inspector opens, with scan-line loading cards while summaries resolve.
 - **Hidden Results** lets you hide noisy issues or repos locally, then review or unhide them in Settings.
 - **Board flow** saves candidates into a local Board for follow-up.
 - **Proof Log** preserves completed local contribution history when board cards move to Merged.
-- **Profile and Review reminders** summarize Proof Log records, Board health, profile avatar, GitHub activity, and follow-up reminders without a backend.
-- **Export/Import Local Data** moves board, hidden, profile, and Proof Log data between browsers without exporting tokens.
+- **Profile and Review reminders** summarize Proof Log records, Board health, profile avatar, GitHub activity, contribution preferences, learned feedback, and follow-up reminders without a backend.
+- **Export/Import Local Data** moves board, hidden, profile, Proof Log, contribution preferences, and learned feedback between browsers without exporting tokens or GitHub API caches.
 - **API limits** shows primary REST/core and Search buckets so Lookup, refresh, and Find Contributions limits are easier to reason about.
 - **Optional GitHub token** increases rate limits while staying browser-local unless you choose remember mode.
 
@@ -79,6 +80,7 @@ Useful commands:
 ```bash
 npm test
 npm run build
+npm run test:layout
 npm run test:readme-screenshots
 ```
 
@@ -88,14 +90,15 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 
 - Public searches work without a token.
 - Tokens are optional and only used for GitHub API requests.
-- Find Contributions uses GitHub Search API limits. Exact Lookup and saved-card refresh use normal REST/core issue endpoints; see [GitHub REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [GitHub Search API limits](https://docs.github.com/en/rest/search/search?apiVersion=2026-03-10).
+- Find Contributions uses GitHub Search API limits. Exact Lookup, saved-card refresh, and most inspector enrichment use normal REST/core endpoints; same-label history uses Search. See [GitHub REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [GitHub Search API limits](https://docs.github.com/en/rest/search/search?apiVersion=2026-03-10).
 - API limits are tracked from response headers when possible. The manual `Check limits` action calls GitHub's rate-limit endpoint and shows the primary `core` and `search` buckets.
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
-- Proof Log entries, profile metadata, Hidden Results keys, and board-derived reminder data stay local to your browser.
+- Proof Log entries, profile metadata, Hidden Results keys, contribution preferences, learned feedback, and board-derived reminder data stay local to your browser.
+- Inspector enrichment stores compact six-hour public summaries in `pr_dashboard_score_enrichment_cache_v1`; it does not store raw comment bodies, setup file bodies, tokens, Authorization headers, or private repository summaries.
 - GitHub avatar images load directly from safe GitHub avatar URLs. Tokens are never placed in avatar URLs or sent with image requests.
 - Export/Import Local Data is the current cross-device bridge.
-- GitHub tokens are never exported, and repo metadata cache is excluded from exports.
+- GitHub tokens, repo metadata cache, and score enrichment cache are never exported.
 - Hidden results are stored as compact issue/repo keys and timestamps only.
 - No issue titles, bodies, labels, repo metadata, or tokens are stored in the hidden-results list.
 
@@ -105,18 +108,20 @@ Read the full security notes in [docs/SECURITY.md](docs/SECURITY.md).
 
 ```text
 src/
-  api/                 GitHub API and repo metadata helpers
+  api/                 GitHub API, repo metadata, and inspector enrichment helpers
   state/               Local app store
   boardConstants.js    Board lane and refresh constants
   boardModel.js        Board storage, migration, and movement helpers
   boardRefresh.js      Saved-card refresh orchestration
   contributionBrief.js Rules-based contribution guidance
+  contributionPreferences.js Local contribution preference storage
   dashboardHero.js     Dashboard next-action recommendation logic
   dashboardMetrics.js  Local dashboard metric summaries
   dashboardReviewFlow.js Local review-flow summaries
   githubActivity.js    Saved-card activity comparison helpers
   hiddenItems.js       Local hidden issue/repo storage
   issueKeys.js         Canonical issue and pull request keys
+  matchFeedback.js     Local learned feedback storage
   proofLog.js          Local completed-contribution history
   profile.js           Local non-secret profile metadata
   localData.js         Local export/import helpers

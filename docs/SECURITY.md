@@ -3,15 +3,15 @@
 ## v1 Local-First Boundary
 
 - PR Dashboard v1 is local-first and browser-only. There is no app backend, backend sync, encrypted sync, database, or app-owned remote storage.
-- Export/Import Local Data is the current cross-device bridge for moving board cards, hidden keys, profile metadata, and Proof Log entries between phone/desktop browsers.
-- GitHub tokens are never exported. Import ignores token and repository metadata cache fields even if they are present in a hand-edited file.
+- Export/Import Local Data is the current cross-device bridge for moving board cards, hidden keys, profile metadata, Proof Log entries, contribution preferences, and learned feedback between phone/desktop browsers.
+- GitHub tokens are never exported. Import ignores token, repository metadata cache, and score enrichment cache fields even if they are present in a hand-edited file.
 - GitHub OAuth, GitHub App auth, and encrypted backend sync are deferred future work for a dedicated backend-sync project.
 
 ## GitHub Access
 
 - Public issue search works without a GitHub Personal Access Token.
 - A PAT is optional. It is only used to increase GitHub API rate limits or to run the Settings connection test.
-- All GitHub API traffic in Finder v2 is read-only. The app blocks `POST`, `PATCH`, `PUT`, and `DELETE` request methods through its GitHub request helper.
+- All GitHub API traffic in PR Dashboard is read-only. The app blocks `POST`, `PATCH`, `PUT`, and `DELETE` request methods through its GitHub request helper.
 - Authorization headers are only attached to `https://api.github.com` requests.
 - External GitHub issue links are validated before rendering and open in a new tab with `rel="noopener noreferrer"`.
 - Exact Lookup validates GitHub issue URLs and `owner/repo#number` references before constructing an API URL.
@@ -20,13 +20,15 @@
 
 - Find Contributions uses `GET https://api.github.com/search/issues`, which is governed by GitHub Search API limits: 10 requests per minute without a token and 30 requests per minute with authentication.
 - Exact Lookup and saved-card refresh use `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}`, which uses the normal REST/core primary rate limit: 60 requests per hour without a token and 5,000 requests per hour with a user/PAT token.
-- Repository metadata hydration and Settings "Test Connection" also use normal REST/core requests.
+- Repository metadata hydration, Settings "Test Connection", and inspector comment/timeline/setup enrichment also use normal REST/core requests.
+- Inspector repo history enrichment samples recent closed pull requests through REST/core and same-label issues through Search.
 - The app uses response rate-limit headers for normal operation. The manual "Check limits" action calls `GET https://api.github.com/rate_limit` and shows the primary `core` and `search` buckets. GitHub does not expose a direct secondary-limit status bucket. See GitHub's [REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [rate-limit endpoint notes](https://docs.github.com/en/rest/rate-limit/rate-limit?apiVersion=2026-03-10).
 
 ## Token Storage
 
 - Session-only memory is the default. If "Remember token locally" is not checked, the token is not written to `localStorage`.
 - Remember mode is opt-in. When enabled, the token is stored in browser `localStorage`.
+- The token field is a normal text input that is visually masked while hidden so browser password managers are less likely to treat it as a login password. The app still treats the token value as sensitive.
 - `localStorage` is convenience storage, not secure secret storage. Do not use remember mode on shared or untrusted machines.
 - Settings has separate destructive actions for token/settings, board data, hidden results, and all app data. "Clear Token/Settings" does not wipe the board.
 - "Clear Token/Settings" also clears local non-secret profile identity metadata, while keeping board cards, hidden keys, and Proof Log entries.
@@ -42,15 +44,30 @@
 
 - Public issue searches send the GitHub search query and selected filters to `https://api.github.com/search/issues`.
 - Exact Lookup sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests after local input validation.
-- Finder v2 hydrates repository metadata with read-only `GET https://api.github.com/repos/{owner}/{repo}` requests so stars/forks and local stars filtering can work from non-secret repo data.
+- Find Contributions hydrates repository metadata with read-only `GET https://api.github.com/repos/{owner}/{repo}` requests so stars/forks and local stars filtering can work from non-secret repo data.
 - Manual saved-card refresh sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests for active board cards. Completed `Merged` and `Passed` lanes are excluded from active-board refresh.
+- Opening an issue inspector can send read-only enrichment requests:
+  - `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments?per_page=100`
+  - `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}/timeline?per_page=100`
+  - `GET https://api.github.com/repos/{owner}/{repo}/contents` plus discovered setup paths such as README, CONTRIBUTING, package manifests, `.github/workflows`, and `docs/CONTRIBUTING*`
+  - `GET https://api.github.com/repos/{owner}/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=5`
+  - `GET https://api.github.com/search/issues?...` for a same-label issue sample
 - Settings "Test Connection" sends a read-only `GET https://api.github.com/user` request with the entered token.
 - The app does not have a backend and does not send tokens, board data, or settings to any app-owned server.
-- Board cards, hidden result keys, and non-secret UI state are stored locally in the browser.
+- Board cards, hidden result keys, contribution preferences, learned feedback, and non-secret UI state are stored locally in the browser.
 - Proof Log entries and profile metadata are stored locally in the browser. Profile metadata is limited to whitelisted non-secret GitHub identity fields from the Settings connection test.
 - Profile/header avatar images may load from `https://avatars.githubusercontent.com/...` after strict URL validation. Tokens are never placed in avatar URLs or sent with image requests.
-- Export Local Data includes board cards, hidden keys, profile metadata, and Proof Log entries. It excludes GitHub tokens and repository metadata cache.
+- Export Local Data includes board cards, hidden keys, profile metadata, Proof Log entries, contribution preferences, and learned feedback. It excludes GitHub tokens, repository metadata cache, and score enrichment cache.
 - Repository metadata hydration caches only non-secret repository fields for 24 hours. Tokens, Authorization headers, API errors, and request URLs containing secrets are never cached.
+
+## Local Score And Enrichment Storage
+
+- Contribution preferences are stored under `pr_dashboard_contribution_preferences_v1` and contain only normalized non-secret preference fields such as languages, work-type preferences, experience, and time budget.
+- Learned feedback is stored under `pr_dashboard_match_feedback_v1` as compact action markers and aggregate feature buckets. It does not store raw issue titles, bodies, tokens, Authorization headers, or private profile data.
+- Inspector enrichment summaries are stored under `pr_dashboard_score_enrichment_cache_v1` for up to six hours. Entries are compact public summaries for comments, timeline, repo setup, and repo history.
+- Score enrichment cache entries store normalized booleans, counts, timestamps, and short reasons only. Raw comment bodies, setup/config file bodies, raw API responses, tokens, Authorization headers, and private repository summaries are not stored.
+- When a token is used and repository visibility is unknown, enrichment summaries are not cached. Private repositories are not cached.
+- Token save/change/clear and Clear All App Data clear the score enrichment cache. Export/import excludes the cache.
 
 ## Hidden Results Storage
 
