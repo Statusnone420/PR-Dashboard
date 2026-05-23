@@ -89,6 +89,10 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(mainJs, /Export Local Data/);
   assert.match(mainJs, /Import Local Data/);
   assert.match(mainJs, /Review reminders/);
+  assert.match(copy, /API limits/);
+  assert.match(copy, /REST\/core/);
+  assert.match(copy, /Search/);
+  assert.match(copy, /Check limits/);
   assert.match(mainJs, /Refresh this card/);
   assert.match(mainJs, /Refresh stale cards/);
   assert.match(mainJs, /Refresh all active cards/);
@@ -102,6 +106,9 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(copy, /GitHub API limits/);
   assert.match(copy, /REST\/core/);
   assert.match(copy, /Search limits/);
+  assert.match(copy, /primary limits only/);
+  assert.match(copy, /Secondary limits can still happen/);
+  assert.match(copy, /not directly exposed by GitHub/);
   assert.match(copy, /Do not paste GitHub tokens or private data/);
   assert.match(mainJs, /No review reminders right now\./);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);

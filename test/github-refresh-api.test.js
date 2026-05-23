@@ -69,7 +69,11 @@ test('refresh issue metadata sends If-None-Match and returns ETag plus rate-limi
   assert.equal(request.init.headers['If-None-Match'], '"old-etag"');
   assert.equal(result.notModified, false);
   assert.equal(result.etag, '"new-etag"');
-  assert.deepEqual(result.rateLimit, { remaining: 4999, limit: 5000, reset: 1770000000 });
+  assert.equal(result.rateLimit.resource, 'core');
+  assert.equal(result.rateLimit.remaining, 4999);
+  assert.equal(result.rateLimit.limit, 5000);
+  assert.equal(result.rateLimit.used, null);
+  assert.equal(result.rateLimit.reset, 1770000000);
   assert.equal(result.issue.repository.full_name, 'openai/codex');
 });
 
@@ -95,7 +99,11 @@ test('refresh issue metadata handles 304 without parsing a JSON body', async () 
   assert.equal(result.notModified, true);
   assert.equal(result.issue, null);
   assert.equal(result.etag, '"same-etag"');
-  assert.deepEqual(result.rateLimit, { remaining: 59, limit: 60, reset: null });
+  assert.equal(result.rateLimit.resource, 'core');
+  assert.equal(result.rateLimit.remaining, 59);
+  assert.equal(result.rateLimit.limit, 60);
+  assert.equal(result.rateLimit.used, null);
+  assert.equal(result.rateLimit.reset, null);
 });
 
 test('refresh issue metadata throws a structured rate-limit error for 403 and 429', async () => {
@@ -119,7 +127,11 @@ test('refresh issue metadata throws a structured rate-limit error for 403 and 42
       assert.equal(error instanceof GitHubRefreshRateLimitError, true);
       assert.equal(error.status, 403);
       assert.equal(error.retryAfter, 60);
-      assert.deepEqual(error.rateLimit, { remaining: 0, limit: 60, reset: 1770000000 });
+      assert.equal(error.rateLimit.resource, 'core');
+      assert.equal(error.rateLimit.remaining, 0);
+      assert.equal(error.rateLimit.limit, 60);
+      assert.equal(error.rateLimit.used, null);
+      assert.equal(error.rateLimit.reset, 1770000000);
       assert.match(error.message, /rate limit/i);
       return true;
     }

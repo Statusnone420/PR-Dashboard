@@ -1,5 +1,5 @@
 import { store } from './state/store.js';
-import { buildQueryPreview, createGitHubRequestOptions, fetchExactIssue, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
+import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
 import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
@@ -39,16 +39,18 @@ let inspectorRefreshStatusCardId = null;
 document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupGlobalSearch();
+  setupApiLimitsTracker();
   store.currentScreen = screenFromHash(window.location.hash);
   
   // Initial render
   updateHeaderProfile();
+  renderApiLimitsTracker(store.rateLimits);
   renderActiveScreen();
   updateSidebarActiveState(store.currentScreen);
 
   // Subscribe UI to store changes
   store.subscribe((state) => {
-    updateRateLimitBadge(state.rateLimit);
+    renderApiLimitsTracker(state.rateLimits);
     updateHeaderProfile();
     renderLocalAlertsPopover();
     renderActiveScreen();
@@ -407,28 +409,174 @@ function setupGlobalSearch() {
   }
 }
 
-function updateRateLimitBadge(rateLimit) {
-  const badge = document.getElementById('rate-limit-badge');
-  const remEl = document.getElementById('rate-limit-remaining');
-  const limEl = document.getElementById('rate-limit-limit');
-  
-  if (badge && remEl && limEl) {
-    if (rateLimit.remaining !== null) {
-      badge.style.display = 'block';
-      remEl.textContent = rateLimit.remaining;
-      limEl.textContent = rateLimit.limit;
-      
-      // Warn if rate limit is dangerously low
-      if (rateLimit.remaining < 5) {
-        badge.classList.remove('bg-surface-container', 'border-outline-variant');
-        badge.classList.add('bg-error-container/20', 'border-error/30', 'text-error');
-      } else {
-        badge.classList.remove('bg-error-container/20', 'border-error/30', 'text-error');
-        badge.classList.add('bg-surface-container', 'border-outline-variant', 'text-on-surface-variant');
-      }
-    } else {
-      badge.style.display = 'none';
+function setupApiLimitsTracker() {
+  const wrapper = document.getElementById('api-limits-wrapper');
+  const trigger = document.getElementById('api-limits-trigger');
+  const checkBtn = document.getElementById('api-limits-check-btn');
+  if (!wrapper || !trigger) return;
+
+  const closePopover = () => {
+    const popover = document.getElementById('api-limits-popover');
+    if (!popover) return;
+    popover.classList.add('hidden');
+    trigger.setAttribute('aria-expanded', 'false');
+  };
+
+  const togglePopover = () => {
+    const popover = document.getElementById('api-limits-popover');
+    if (!popover) return;
+    const nextOpen = popover.classList.contains('hidden');
+    popover.classList.toggle('hidden', !nextOpen);
+    trigger.setAttribute('aria-expanded', String(nextOpen));
+  };
+
+  trigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    togglePopover();
+  });
+
+  checkBtn?.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    store.setRateLimitStatus('loading', null);
+    try {
+      const snapshot = await fetchGitHubRateLimitStatus();
+      store.setRateLimits({
+        ...snapshot,
+        status: 'checked',
+        error: null
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'GitHub rate-limit check failed.';
+      store.setRateLimitStatus('error', message);
     }
+  });
+
+  document.addEventListener('click', (event) => {
+    const popover = document.getElementById('api-limits-popover');
+    if (!popover || popover.classList.contains('hidden')) return;
+    if (!wrapper.contains(event.target)) {
+      closePopover();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closePopover();
+    }
+  });
+}
+
+function hasKnownRateLimit(bucket) {
+  return Number.isFinite(Number(bucket?.remaining)) && Number.isFinite(Number(bucket?.limit)) && Number(bucket.limit) > 0;
+}
+
+function formatLimitNumber(value) {
+  return Number.isFinite(Number(value)) ? Number(value).toLocaleString() : '--';
+}
+
+function getBucketPercent(bucket) {
+  if (!hasKnownRateLimit(bucket)) return null;
+  return Math.max(0, Math.min(100, (Number(bucket.remaining) / Number(bucket.limit)) * 100));
+}
+
+function getBucketLevel(bucket) {
+  if (!hasKnownRateLimit(bucket)) return 'unknown';
+  const remaining = Number(bucket.remaining);
+  const percent = getBucketPercent(bucket);
+  if (remaining < 5 || percent < 10) return 'critical';
+  if (percent <= 30) return 'warning';
+  return 'healthy';
+}
+
+function getBucketLabel(resource) {
+  return resource === 'search' ? 'Search' : 'REST';
+}
+
+function getSummaryBucket(rateLimits = {}) {
+  const buckets = ['core', 'search']
+    .map(resource => ({ resource, bucket: rateLimits[resource] }))
+    .filter(entry => hasKnownRateLimit(entry.bucket));
+
+  const urgent = buckets
+    .filter(entry => ['critical', 'warning'].includes(getBucketLevel(entry.bucket)))
+    .sort((a, b) => Number(a.bucket.remaining) - Number(b.bucket.remaining));
+  if (urgent.length) return urgent[0];
+
+  const lastResource = rateLimits.lastResource;
+  if (lastResource && hasKnownRateLimit(rateLimits[lastResource])) {
+    return { resource: lastResource, bucket: rateLimits[lastResource] };
+  }
+
+  return buckets[0] || null;
+}
+
+function getApiLimitsSummary(rateLimits = {}) {
+  const summary = getSummaryBucket(rateLimits);
+  if (!summary) return 'API limits';
+  return `${getBucketLabel(summary.resource)} ${formatLimitNumber(summary.bucket.remaining)} left`;
+}
+
+function formatResetTime(reset) {
+  const seconds = Number(reset);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'Reset unknown';
+  return `Resets ${new Date(seconds * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function formatCheckedTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `Last checked ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function renderApiLimitRow(bucket, label) {
+  const known = hasKnownRateLimit(bucket);
+  const percent = known ? getBucketPercent(bucket) : 0;
+  const level = getBucketLevel(bucket);
+  const usedText = Number.isFinite(Number(bucket?.used)) ? `Used ${formatLimitNumber(bucket.used)}` : 'Used unknown';
+  const valueText = known ? `${formatLimitNumber(bucket.remaining)} / ${formatLimitNumber(bucket.limit)}` : '-- / --';
+
+  return `
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="text-sm font-semibold text-on-surface">${label}</div>
+        <div class="mt-1 text-xs text-on-surface-variant">${usedText} - ${formatResetTime(bucket?.reset)}</div>
+      </div>
+      <div class="shrink-0 text-right text-sm font-mono text-on-surface">${valueText}</div>
+    </div>
+    <div class="api-limit-progress-track mt-3" aria-label="${label} remaining ${known ? `${percent}%` : 'unknown'}">
+      <div class="api-limit-progress-fill" data-limit-level="${level}" style="width: ${percent}%;"></div>
+    </div>
+  `;
+}
+
+function renderApiLimitsTracker(rateLimits = store.rateLimits) {
+  const summaryEl = document.getElementById('api-limits-summary');
+  const coreRow = document.getElementById('api-limits-core-row');
+  const searchRow = document.getElementById('api-limits-search-row');
+  const statusEl = document.getElementById('api-limits-status');
+  const checkBtn = document.getElementById('api-limits-check-btn');
+  if (!summaryEl || !coreRow || !searchRow || !statusEl) return;
+
+  summaryEl.textContent = getApiLimitsSummary(rateLimits);
+  coreRow.innerHTML = renderApiLimitRow(rateLimits.core, 'REST/core');
+  searchRow.innerHTML = renderApiLimitRow(rateLimits.search, 'Search');
+
+  if (checkBtn) {
+    checkBtn.disabled = rateLimits.status === 'loading';
+    checkBtn.textContent = rateLimits.status === 'loading' ? 'Checking...' : 'Check limits';
+  }
+
+  if (rateLimits.status === 'loading') {
+    statusEl.textContent = 'Checking GitHub limits...';
+    statusEl.className = 'api-limits-status text-on-surface-variant';
+  } else if (rateLimits.status === 'error') {
+    statusEl.textContent = `Unable to check limits: ${rateLimits.error || 'GitHub request failed.'}`;
+    statusEl.className = 'api-limits-status text-error';
+  } else {
+    statusEl.textContent = formatCheckedTime(rateLimits.lastCheckedAt)
+      || 'Uses latest GitHub response headers. Check limits for a full snapshot.';
+    statusEl.className = 'api-limits-status text-on-surface-variant';
   }
 }
 
@@ -2167,10 +2315,14 @@ function renderHelp(container) {
 
           <article class="interactive-card p-5">
             <h2 class="mb-3 text-lg font-headline font-bold text-on-surface">GitHub API limits</h2>
-            <p class="mb-3 text-sm text-on-surface-variant">Find Contributions uses Search limits. Lookup and saved-card refresh use REST/core limits.</p>
+            <p class="mb-3 text-sm text-on-surface-variant">The header tracker shows primary limits only. Secondary limits can still happen and are not directly exposed by GitHub.</p>
+            <ul class="mb-3 space-y-2 text-sm text-on-surface-variant">
+              <li><strong class="text-on-surface">REST/core</strong> powers Lookup, token test, and saved-card refresh.</li>
+              <li><strong class="text-on-surface">Search</strong> powers Find Contributions.</li>
+            </ul>
             <div class="flex flex-wrap gap-3 text-sm">
+              <a class="text-primary hover:underline" href="https://docs.github.com/en/rest/rate-limit/rate-limit?apiVersion=2022-11-28" target="_blank" rel="noopener noreferrer">GitHub rate-limit status docs</a>
               <a class="text-primary hover:underline" href="https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28" target="_blank" rel="noopener noreferrer">GitHub REST/core rate-limit docs</a>
-              <a class="text-primary hover:underline" href="https://docs.github.com/en/rest/rate-limit/rate-limit?apiVersion=2022-11-28" target="_blank" rel="noopener noreferrer">GitHub Search rate-limit docs</a>
             </div>
           </article>
 
@@ -2780,18 +2932,11 @@ function renderSettings(container) {
       statusDiv.textContent = "Testing connection with GitHub User API /user...";
 
       try {
-        const res = await fetch('https://api.github.com/user', createGitHubRequestOptions('https://api.github.com/user', tokVal));
-
-        if (res.ok) {
-          const userObj = await res.json();
-          store.updateProfileFromGitHubUser(userObj, { notify: false });
-          updateHeaderProfile();
-          statusDiv.className = 'p-3.5 rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-xs flex items-center gap-2';
-          statusDiv.textContent = `Connection active! Welcome, ${userObj.login || 'GitHub user'} (Rate limits verified).`;
-          
-        } else {
-          throw new Error(`Auth test rejected: ${res.statusText} (${res.status})`);
-        }
+        const userObj = await fetchGitHubUserForToken(tokVal);
+        store.updateProfileFromGitHubUser(userObj, { notify: false });
+        updateHeaderProfile();
+        statusDiv.className = 'p-3.5 rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-xs flex items-center gap-2';
+        statusDiv.textContent = `Connection active! Welcome, ${userObj.login || 'GitHub user'} (Rate limits verified).`;
       } catch (e) {
         statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs flex items-center gap-2';
         statusDiv.textContent = `Connection failed: ${e.message}. Double check credentials.`;

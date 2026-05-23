@@ -90,7 +90,8 @@ test('no-PAT search, board persistence, inspectors, links, and settings token hy
   });
   await page.reload();
   await expect(page.locator('#search-keyword-input')).toHaveValue('');
-  await expect(page.locator('#rate-limit-badge')).toBeHidden();
+  await expect(page.locator('#api-limits-trigger')).toBeVisible();
+  await expect(page.locator('#api-limits-summary')).toHaveText('API limits');
 
   await page.goto(`${baseURL}/#board`);
   await expect(page.locator('.board-card-item')).toHaveCount(0);
@@ -135,8 +136,8 @@ test('no-PAT search, board persistence, inspectors, links, and settings token hy
   expect(Array.isArray(searchData.items)).toBe(true);
   expect(searchData.items.length).toBeGreaterThan(0);
   await expect(page.locator('.issue-card').first()).toBeVisible({ timeout: 45000 });
-  await expect(page.locator('#rate-limit-badge')).toBeVisible();
-  await expect(page.locator('#rate-limit-remaining')).toHaveText(/^\d+$/);
+  await expect(page.locator('#api-limits-trigger')).toBeVisible();
+  await expect(page.locator('#api-limits-summary')).toContainText(/Search|REST/);
 
   const firstCard = page.locator('.issue-card').first();
   const firstTitle = safeTitle(await firstCard.locator('.pr-title-click').textContent());
