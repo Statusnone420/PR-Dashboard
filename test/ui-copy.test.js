@@ -83,17 +83,25 @@ test('settings exposes hidden results management copy', () => {
 
 test('settings token input discourages browser password saving', () => {
   const { mainJs } = readCopySources();
+  const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
   const tokenInput = settings.match(/<input[^>]+id="settings-pat-input"[^>]*>/)?.[0] || '';
 
-  assert.match(tokenInput, /type="password"/);
-  assert.match(tokenInput, /autocomplete="new-password"/);
+  assert.match(tokenInput, /type="text"/);
+  assert.doesNotMatch(tokenInput, /type="password"/);
+  assert.match(tokenInput, /autocomplete="off"/);
+  assert.doesNotMatch(tokenInput, /autocomplete="new-password"/);
+  assert.match(tokenInput, /secure-token-input/);
+  assert.match(tokenInput, /data-token-visible="false"/);
   assert.match(tokenInput, /autocapitalize="off"/);
   assert.match(tokenInput, /autocorrect="off"/);
   assert.match(tokenInput, /spellcheck="false"/);
   assert.match(tokenInput, /data-lpignore="true"/);
   assert.match(tokenInput, /data-1p-ignore="true"/);
   assert.match(tokenInput, /data-bwignore="true"/);
+  assert.match(styles, /\.secure-token-input\[data-token-visible='false'\]/);
+  assert.match(styles, /-webkit-text-security:\s*disc/);
+  assert.match(settings, /patInput\.dataset\.tokenVisible/);
 });
 
 test('profile, proof log, export import, and review reminders are visible product surfaces', () => {

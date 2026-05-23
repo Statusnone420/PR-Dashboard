@@ -1,11 +1,12 @@
 # PR Dashboard State
 
-## 2026-05-23 Token Input Password Manager Hint
+## 2026-05-23 Token Input Password Manager Avoidance
 
-- Added browser/password-manager suppression hints to the Settings GitHub token input: `autocomplete="new-password"`, autocap/autocorrect/spellcheck off, and common password-manager ignore attributes. This keeps the token field masked while discouraging Chrome and third-party managers from treating Save Configuration as a login password save.
-- Added UI copy/markup contract coverage so the token input keeps those hints.
+- Replaced the Settings GitHub token field with a normal `type="text"` input that is visually masked via `-webkit-text-security` while hidden. This avoids Chrome treating the token as a login password field, which caused both Save Password and Strong Password prompts.
+- Kept browser/password-manager suppression hints on the token input: `autocomplete="off"`, autocap/autocorrect/spellcheck off, and common password-manager ignore attributes. The visibility button now toggles a `data-token-visible` state instead of changing the input type.
+- Added UI copy/markup contract coverage so the token input stays out of password-field heuristics.
 - Verification on 2026-05-23: `node --test test/ui-copy.test.js` passed 21/21, `npm test` passed 211/211, `npm run build` passed, and `git diff --check` passed.
-- Remaining risk: browsers and password managers use their own heuristics, so these attributes strongly discourage the prompt but cannot guarantee every manager will obey them.
+- Remaining risk: Chrome and Chromium browsers support the masking CSS used here. Other browsers or third-party password managers can still apply their own heuristics, but the app no longer renders this token control as an actual password field.
 
 ## 2026-05-23 Phase 4 Setup Enrichment DevTools Noise Fix
 
