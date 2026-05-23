@@ -68,7 +68,6 @@ test('primary navigation labels contribution finding, not generic issue search',
 test('contribution coach UI exposes a best-for chip and inspector brief', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
-  assert.match(mainJs, /Fit:/);
   assert.match(mainJs, /Best fit/);
   assert.match(mainJs, /Contribution Brief/);
 });
@@ -104,14 +103,17 @@ test('settings token input discourages browser password saving', () => {
   assert.match(settings, /patInput\.dataset\.tokenVisible/);
 });
 
-test('profile, proof log, export import, and review reminders are visible product surfaces', () => {
+test('activity, proof log, export import, and review reminders are visible product surfaces', () => {
   const { indexHtml, mainJs, boardRefreshJs } = readCopySources();
   const copy = visibleAppCopy({ indexHtml, mainJs, boardRefreshJs });
 
+  assert.match(indexHtml, />\s*Activity\s*</);
+  assert.match(mainJs, /function renderActivity/);
   assert.match(mainJs, /Proof Log/);
   assert.match(mainJs, /Export Local Data/);
   assert.match(mainJs, /Import Local Data/);
   assert.match(mainJs, /Review reminders/);
+  assert.match(mainJs, /Personal scoring signals/);
   assert.match(copy, /API limits/);
   assert.match(copy, /REST\/core/);
   assert.match(copy, /Search/);
@@ -137,20 +139,39 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(mainJs, /Contribution preferences/);
   assert.match(mainJs, /Save preferences/);
   assert.match(mainJs, /Reset preferences/);
-  assert.match(mainJs, /Learned feedback/);
-  assert.match(mainJs, /Reset learned feedback/);
+  assert.match(mainJs, /Personal scoring signals/);
+  assert.match(mainJs, /Reset scoring signals/);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
 });
 
-test('match score v3 UI exposes compact confidence and inspector diagnostics', () => {
+test('profile is separated from activity and settings responsibilities', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function renderActivity(container)');
+
+  assert.match(profile, /renderContributionPreferencesCard/);
+  assert.match(profile, /Saved candidates/);
+  assert.match(profile, /Active board work/);
+  assert.doesNotMatch(profile, /Export Local Data/);
+  assert.doesNotMatch(profile, /Import Local Data/);
+  assert.doesNotMatch(profile, /Proof Log/);
+  assert.doesNotMatch(profile, /Review reminders/);
+  assert.doesNotMatch(profile, /Learned feedback/);
+});
+
+test('match score v3 UI exposes strength-first cards and inspector tabs', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
 
-  assert.match(resultCards, /% Match/);
-  assert.match(resultCards, /Fit:/);
+  assert.match(resultCards, /renderScoreChip\(fitObj\.score/);
+  assert.match(resultCards, /getPrimaryIssueLabel/);
   assert.match(resultCards, /Confidence:/);
+  assert.match(inspector, /data-inspector-tab="overview"/);
+  assert.match(inspector, /data-inspector-tab="evidence"/);
+  assert.match(inspector, /data-inspector-tab="action"/);
+  assert.match(inspector, /renderScoreChip\(score, \{ showExact: true, animate: true \}\)/);
+  assert.match(inspector, /runInspectorEntryEffects/);
   assert.match(inspector, /Score diagnostics/);
   assert.match(inspector, /Confidence/);
   assert.match(inspector, /Mini-scores/);
@@ -165,7 +186,7 @@ test('match score v3 UI exposes compact confidence and inspector diagnostics', (
 
 test('profile preferences UI does not auto-apply search filters', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
-  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function hiddenItemMatchesFilter');
+  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function renderActivity(container)');
 
   assert.match(profile, /contribution-preferences-form/);
   assert.match(mainJs, /profile-preferences-save-btn/);
@@ -173,10 +194,12 @@ test('profile preferences UI does not auto-apply search filters', () => {
   assert.doesNotMatch(profile, /runGitHubSearch|performSearch|applyDraftFilters|setFilters/);
 });
 
-test('profile learned feedback summary exposes reset without private data wording', () => {
+test('activity personal scoring signals expose reset without private data wording', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
   assert.match(mainJs, /renderMatchFeedbackCard/);
+  assert.match(mainJs, /Personal scoring signals/);
+  assert.match(mainJs, /Reset scoring signals/);
   assert.match(mainJs, /Saved to board/);
   assert.match(mainJs, /Moved to Merged/);
   assert.match(mainJs, /Hidden issue/);
@@ -304,6 +327,18 @@ test('empty results recovery uses broaden search copy', () => {
   assert.doesNotMatch(mainJs, />Relax Filters</);
 });
 
+test('find contributions uses compact header, filter quick actions, and hidden query preview', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
+
+  assert.match(finder, /Quick filters/);
+  assert.match(finder, /View GitHub query/);
+  assert.match(finder, /active-filter-chip/);
+  assert.match(finder, /order-2 lg:order-1/);
+  assert.match(finder, /order-1 lg:order-2/);
+  assert.doesNotMatch(finder, /Command Palette Search Hero/);
+});
+
 test('dashboard exposes richer local metric cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
@@ -311,6 +346,9 @@ test('dashboard exposes richer local metric cards', () => {
   assert.match(mainJs, /Contribution candidates/);
   assert.match(mainJs, /Filtered from future searches/);
   assert.match(mainJs, /Board flow/);
+  assert.match(mainJs, /activeBoardPreviewEntries/);
+  assert.match(mainJs, /more active cards on the Board/);
+  assert.match(mainJs, /renderScoreChip\(score\)/);
 });
 
 test('visible app copy rejects banned product wording', () => {
@@ -360,6 +398,49 @@ test('refresh batch confirmation uses app modal instead of native browser confir
   assert.match(mainJs, /refresh-confirm-dialog/);
   assert.match(mainJs, /Refresh cards/);
   assert.doesNotMatch(mainJs, /window\.confirm/);
+});
+
+test('phase four settings copy and destructive actions are explicit', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
+
+  assert.match(settings, /Persist token in this browser/);
+  assert.match(settings, /Off: token clears when this browser session ends\. On: token is stored in localStorage on this machine\./);
+  assert.match(settings, /Persistence warning/);
+  assert.doesNotMatch(settings, /Remember token locally/);
+  assert.match(mainJs, /function openConfirmDialog/);
+  assert.match(settings, /openConfirmDialog/);
+  assert.match(settings, /requirePhrase:\s*'CLEAR ALL'/);
+  assert.match(mainJs, /confirm-phrase-input/);
+  assert.match(mainJs, /Confirm/);
+  assert.doesNotMatch(mainJs, /window\.confirm/);
+});
+
+test('phase four feedback and empty-state helpers avoid private diagnostics', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /function renderEmptyState/);
+  assert.match(mainJs, /empty-state/);
+  assert.match(mainJs, /Move a board card to Merged to preserve completed work\./);
+  assert.match(mainJs, /Save a candidate from Find Contributions to start tracking it\./);
+  assert.match(mainJs, /function buildFeedbackDiagnostics/);
+  assert.match(mainJs, /route:/);
+  assert.match(mainJs, /viewport:/);
+  assert.match(mainJs, /userAgent:/);
+  assert.match(mainJs, /savedCandidates:/);
+  assert.match(mainJs, /hiddenResults:/);
+  assert.match(mainJs, /Do not include tokens, Authorization headers, raw localStorage, or private repository data\./);
+});
+
+test('phase four overlay helpers close popovers and restore focus', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /function bindEscapeToClose/);
+  assert.match(mainJs, /function closeOpenPopovers/);
+  assert.match(mainJs, /returnFocus/);
+  assert.match(mainJs, /aria-expanded/);
+  assert.match(mainJs, /popover-panel/);
+  assert.match(mainJs, /Escape/);
 });
 
 test('inspector action plan checkbox handler does not reopen inspector', () => {

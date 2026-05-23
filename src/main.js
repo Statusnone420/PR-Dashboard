@@ -1,4 +1,4 @@
-import { store } from './state/store.js';
+import { createDefaultFilters, store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
 import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
@@ -13,7 +13,9 @@ import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { summarizeDashboardMetrics } from './dashboardMetrics.js';
+import { summarizeAppMetrics } from './appMetrics.js';
 import { buildContributionBrief } from './contributionBrief.js';
+import { getMatchStrength } from './scorePresentation.js';
 import { filterHiddenIssues, isIssueHidden, isRepoHidden, listHiddenItems } from './hiddenItems.js';
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
 import { getCanonicalIssueKey, getCanonicalRepoKey } from './issueKeys.js';
@@ -23,6 +25,7 @@ import { buildLocalAlerts } from './localAlerts.js';
 import { isGitHubActivityVisible } from './githubActivity.js';
 import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
+import { getBoardMode } from './boardMode.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -45,6 +48,13 @@ const inspectorRepoSetupEnrichmentStates = new Map();
 const inspectorRepoHistoryEnrichmentStates = new Map();
 const ADVANCED_CONTEXT_MIN_LOADING_MS = 300;
 let activeAdvancedContextIssueKey = '';
+const INSPECTOR_TABS = ['overview', 'evidence', 'action'];
+let activeInspectorIssueKey = '';
+let activeInspectorTab = 'overview';
+let activeInspectorEntryAnimationKey = '';
+let removeInspectorEscapeHandler = null;
+let inspectorReturnFocus = null;
+let boardViewMode = 'auto';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -108,6 +118,156 @@ function getConfidenceTone(level) {
   if (level === 'High') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
   if (level === 'Medium') return 'border-primary/20 bg-primary/10 text-primary';
   return 'border-error/25 bg-error-container/10 text-error';
+}
+
+function renderScoreChip(score, { showExact = false, animate = false } = {}) {
+  const safeScore = safeInteger(score);
+  const strength = getMatchStrength(safeScore);
+  const text = showExact ? `${safeScore}% Match` : strength.label;
+  const animateAttr = animate ? ' data-animate-score="true"' : '';
+  return `<span class="score-chip score-chip--${strength.tone}" data-score-value="${safeScore}" aria-label="${safeScore}% match strength: ${escapeHTML(strength.label)}"${animateAttr}>${escapeHTML(text)}</span>`;
+}
+
+function getPrimaryIssueLabel(labels = []) {
+  const names = (labels || [])
+    .map(label => String(typeof label === 'object' ? label.name : label || '').trim())
+    .filter(Boolean);
+  const preferred = names.find(name => /good first issue|help wanted|documentation|docs|bug/i.test(name));
+  return preferred || names[0] || '';
+}
+
+function getIssueLabelCount(labels = []) {
+  return (labels || []).filter(Boolean).length;
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
+function animateScoreCounter(el) {
+  if (!el || prefersReducedMotion() || el.dataset.scoreAnimated === 'true') return;
+
+  const target = Number.parseInt(el.dataset.scoreValue, 10);
+  if (!Number.isFinite(target)) return;
+
+  el.dataset.scoreAnimated = 'true';
+  const duration = 600;
+  const start = performance.now();
+
+  function tick(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const value = Math.round(target * eased);
+    el.textContent = `${value}% Match`;
+
+    if (progress < 1) requestAnimationFrame(tick);
+    else el.textContent = `${target}% Match`;
+  }
+
+  el.textContent = '0% Match';
+  requestAnimationFrame(tick);
+}
+
+function runInspectorEntryEffects(panel, issue) {
+  const issueKey = getCanonicalIssueKey(issue) || String(issue?.id || '');
+  if (!issueKey || activeInspectorEntryAnimationKey === issueKey) return;
+  activeInspectorEntryAnimationKey = issueKey;
+
+  window.setTimeout(() => {
+    animateScoreCounter(panel.querySelector('[data-animate-score="true"][data-score-value]'));
+  }, 20);
+}
+
+function runSavePop(button) {
+  if (!button || prefersReducedMotion()) return;
+  button.classList.remove('save-pop');
+  void button.offsetWidth;
+  button.classList.add('save-pop');
+  button.addEventListener('animationend', () => button.classList.remove('save-pop'), { once: true });
+}
+
+function renderEmptyStateAction(action, tone = 'primary') {
+  if (!action?.label) return '';
+  const iconHTML = action.icon ? `<span class="material-symbols-outlined text-[16px]">${escapeHTML(action.icon)}</span>` : '';
+  const className = tone === 'primary'
+    ? 'interactive-button interactive-button-primary'
+    : 'interactive-button interactive-button-secondary';
+  const idAttr = action.id ? ` id="${escapeHTML(action.id)}"` : '';
+  const dataAttr = action.dataScreen ? ` data-screen-target="${escapeHTML(action.dataScreen)}"` : '';
+  if (action.href) {
+    return `<a class="${className} px-4 py-2 text-xs" href="${escapeHTML(action.href)}"${idAttr}${dataAttr}>${iconHTML}${escapeHTML(action.label)}</a>`;
+  }
+  return `<button class="${className} px-4 py-2 text-xs" type="button"${idAttr}${dataAttr}>${iconHTML}${escapeHTML(action.label)}</button>`;
+}
+
+function renderEmptyState({ title, body, primaryAction, secondaryAction, variant = 'default', icon = 'info' }) {
+  const compact = variant === 'compact';
+  return `
+    <div class="empty-state empty-state--${escapeHTML(variant)}">
+      <span class="material-symbols-outlined empty-state__icon">${escapeHTML(icon)}</span>
+      <div>
+        <p class="empty-state__title">${escapeHTML(title)}</p>
+        <p class="empty-state__body">${escapeHTML(body)}</p>
+      </div>
+      ${primaryAction || secondaryAction ? `
+        <div class="${compact ? 'chip-row' : 'mt-2 flex flex-wrap justify-center gap-2'}">
+          ${renderEmptyStateAction(primaryAction, 'primary')}
+          ${renderEmptyStateAction(secondaryAction, 'secondary')}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function bindEmptyStateActions(root = document) {
+  root.querySelectorAll('[data-screen-target]').forEach(action => {
+    action.addEventListener('click', (event) => {
+      event.preventDefault();
+      const target = action.getAttribute('data-screen-target');
+      if (!target) return;
+      if (window.location.hash !== `#${target}`) {
+        window.location.hash = target;
+      } else {
+        store.setScreen(target);
+      }
+    });
+  });
+}
+
+function bindEscapeToClose(closeFn) {
+  function onKeyDown(event) {
+    if (event.key === 'Escape') closeFn(event);
+  }
+  document.addEventListener('keydown', onKeyDown);
+  return () => document.removeEventListener('keydown', onKeyDown);
+}
+
+function restoreFocus(target) {
+  if (target && typeof target.focus === 'function' && document.contains(target)) {
+    target.focus();
+  }
+}
+
+function closeOpenPopovers({ returnFocus = false } = {}) {
+  let focusTarget = null;
+  const apiPopover = document.getElementById('api-limits-popover');
+  const apiTrigger = document.getElementById('api-limits-trigger');
+  if (apiPopover && !apiPopover.classList.contains('hidden')) {
+    apiPopover.classList.add('hidden');
+    apiTrigger?.setAttribute('aria-expanded', 'false');
+    focusTarget = apiTrigger;
+  }
+
+  const alertsPopover = document.getElementById('local-alerts-popover');
+  const alertsTrigger = document.getElementById('btn-notifications');
+  if (alertsPopover) {
+    alertsPopover.remove();
+    localAlertsOpen = false;
+    alertsTrigger?.setAttribute('aria-expanded', 'false');
+    focusTarget ||= alertsTrigger;
+  }
+
+  if (returnFocus) restoreFocus(focusTarget);
 }
 
 function getStageLabel(stage) {
@@ -214,13 +374,13 @@ function renderMatchFeedbackCard(feedback) {
   const totals = summary.totals || {};
   const updated = summary.eventCount > 0
     ? `Updated ${escapeHTML(formatDate(summary.updated_at))}`
-    : 'No learned feedback yet';
+    : 'No scoring signals yet';
 
   return `
     <section class="interactive-card rounded-xl p-6">
       <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 class="text-lg font-headline font-bold text-on-surface">Learned feedback</h2>
+          <h2 class="text-lg font-headline font-bold text-on-surface">Personal scoring signals</h2>
           <p class="mt-1 text-xs text-on-surface-variant">Derived from local Board and Hidden Results actions, then used as small explainable score nudges.</p>
         </div>
         <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${updated}</span>
@@ -235,7 +395,7 @@ function renderMatchFeedbackCard(feedback) {
       </div>
       <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p class="text-xs text-on-surface-variant">${safeInteger(summary.eventCount)} local event markers. Aggregates are recomputed from markers.</p>
-        <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-match-feedback-reset-btn" type="button">Reset learned feedback</button>
+        <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-match-feedback-reset-btn" type="button">Reset scoring signals</button>
       </div>
     </section>
   `;
@@ -684,6 +844,7 @@ function setupNavigation() {
     { id: 'dashboard', navId: 'tab-dashboard', mobileId: 'mobile-tab-dashboard' },
     { id: 'find-issues', navId: 'tab-find-issues', mobileId: 'mobile-tab-find-issues' },
     { id: 'board', navId: 'tab-board', mobileId: 'mobile-tab-board' },
+    { id: 'activity', navId: 'tab-activity', mobileId: 'mobile-tab-activity' },
     { id: 'settings', navId: 'btn-settings', mobileId: 'mobile-tab-settings' },
     { id: 'help', navId: 'tab-help', mobileId: 'mobile-tab-help' },
     { id: 'feedback', navId: 'tab-feedback', mobileId: 'mobile-tab-feedback' }
@@ -753,11 +914,22 @@ function setupNavigation() {
 
   const notificationsBtn = document.getElementById('btn-notifications');
   if (notificationsBtn) {
-    notificationsBtn.addEventListener('click', () => {
-      localAlertsOpen = !localAlertsOpen;
+    notificationsBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const nextOpen = !localAlertsOpen;
+      closeOpenPopovers();
+      localAlertsOpen = nextOpen;
       renderLocalAlertsPopover();
     });
   }
+  document.addEventListener('click', (event) => {
+    const popover = document.getElementById('local-alerts-popover');
+    const trigger = document.getElementById('btn-notifications');
+    if (!popover || !localAlertsOpen) return;
+    if (!popover.contains(event.target) && !trigger?.contains(event.target)) {
+      closeOpenPopovers();
+    }
+  });
 
   // Setup click triggers on active window location hashes
   window.addEventListener('hashchange', () => {
@@ -835,11 +1007,12 @@ function renderLocalAlertsPopover() {
   button.classList.toggle('text-primary', alerts.length > 0);
   button.setAttribute('aria-label', remindersLabel);
   button.setAttribute('data-tooltip', remindersLabel);
+  button.setAttribute('aria-expanded', String(localAlertsOpen));
   if (!localAlertsOpen) return;
 
   const popover = document.createElement('div');
   popover.id = 'local-alerts-popover';
-  popover.className = 'fixed right-4 top-16 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-outline-variant bg-surface p-4 shadow-2xl';
+  popover.className = 'popover-panel fixed right-4 top-16 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-outline-variant bg-surface p-4 shadow-2xl';
   const alertsHTML = alerts.length
     ? alerts.slice(0, 8).map(alert => `
         <div class="interactive-row w-full rounded border border-outline-variant bg-surface-container-lowest p-3 text-left text-sm local-alert-row" data-card-id="${escapeHTML(String(alert.cardId || ''))}">
@@ -855,7 +1028,19 @@ function renderLocalAlertsPopover() {
           ` : ''}
         </div>
       `).join('')
-    : '<div class="rounded border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</div>';
+    : `
+        <div class="empty-state empty-state--compact">
+          <span class="material-symbols-outlined empty-state__icon">notifications</span>
+          <div>
+            <p class="empty-state__title">No review reminders right now.</p>
+            <p class="empty-state__body">Cards in Working or PR Open can generate reminders after refresh.</p>
+          </div>
+          <div class="chip-row">
+            <button class="interactive-button interactive-button-secondary px-3 py-1.5 text-xs" id="local-alerts-board-btn" type="button">View Board</button>
+            <button class="interactive-button interactive-button-secondary px-3 py-1.5 text-xs" id="local-alerts-activity-btn" type="button">Open Activity</button>
+          </div>
+        </div>
+      `;
 
   popover.innerHTML = `
     <div class="mb-3 flex items-center justify-between gap-3">
@@ -870,15 +1055,25 @@ function renderLocalAlertsPopover() {
   const closeBtn = document.getElementById('local-alerts-close-btn');
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
-      localAlertsOpen = false;
-      renderLocalAlertsPopover();
+      closeOpenPopovers({ returnFocus: true });
     });
   }
+  document.getElementById('local-alerts-board-btn')?.addEventListener('click', () => {
+    closeOpenPopovers();
+    store.setScreen('board');
+    window.location.hash = 'board';
+  });
+  document.getElementById('local-alerts-activity-btn')?.addEventListener('click', () => {
+    closeOpenPopovers();
+    store.setScreen('activity');
+    window.location.hash = 'activity';
+  });
   popover.querySelectorAll('.local-alert-row').forEach(row => {
     row.addEventListener('click', () => {
       const cardId = Number.parseInt(row.getAttribute('data-card-id'), 10);
       const card = Object.values(store.boardCards).flat().find(item => item.id === cardId);
       if (card) {
+        closeOpenPopovers();
         store.setInspectedIssue(card);
         openInspector();
       }
@@ -901,6 +1096,7 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'tab-dashboard',
     'find-issues': 'tab-find-issues',
     'board': 'tab-board',
+    'activity': 'tab-activity',
     'settings': 'btn-settings',
     'help': 'tab-help',
     'feedback': 'tab-feedback'
@@ -927,6 +1123,7 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'mobile-tab-dashboard',
     'find-issues': 'mobile-tab-find-issues',
     'board': 'mobile-tab-board',
+    'activity': 'mobile-tab-activity',
     'settings': 'mobile-tab-settings',
     'help': 'mobile-tab-help',
     'feedback': 'mobile-tab-feedback'
@@ -978,6 +1175,7 @@ function setupApiLimitsTracker() {
     const popover = document.getElementById('api-limits-popover');
     if (!popover) return;
     const nextOpen = popover.classList.contains('hidden');
+    closeOpenPopovers();
     popover.classList.toggle('hidden', !nextOpen);
     trigger.setAttribute('aria-expanded', String(nextOpen));
   };
@@ -1013,7 +1211,7 @@ function setupApiLimitsTracker() {
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      closePopover();
+      closeOpenPopovers({ returnFocus: true });
     }
   });
 }
@@ -1138,6 +1336,7 @@ function renderApiLimitsTracker(rateLimits = store.rateLimits) {
 function renderActiveScreen() {
   const container = document.getElementById('app-content');
   if (!container) return;
+  document.body.dataset.screen = store.currentScreen;
 
   switch (store.currentScreen) {
     case 'dashboard':
@@ -1148,6 +1347,9 @@ function renderActiveScreen() {
       break;
     case 'board':
       renderBoard(container);
+      break;
+    case 'activity':
+      renderActivity(container);
       break;
     case 'settings':
       renderSettings(container);
@@ -1164,6 +1366,8 @@ function renderActiveScreen() {
     default:
       renderDashboard(container);
   }
+
+  bindEmptyStateActions(container);
 }
 
 /**
@@ -1221,18 +1425,29 @@ function renderBoardFlow(reviewFlow) {
 
 function renderDashboard(container) {
   // Grab dynamic data
-  const dashboardMetrics = summarizeDashboardMetrics(store.boardCards);
-  const boardCards = dashboardMetrics.boardCards;
-  const activeCards = boardCards.filter(card => !isClosedIssue(card));
-  const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
-  const totalSavedCount = dashboardMetrics.totalSavedCount;
-  const activeReviewCount = dashboardMetrics.activeReviewCount;
-  const resolvedOrPassedCount = dashboardMetrics.resolvedOrPassedCount;
   const hiddenItems = listHiddenItems(localStorage);
-  const hiddenIssueCount = hiddenItems.issues.length;
-  const hiddenRepoCount = hiddenItems.repos.length;
-  const hiddenTotalCount = hiddenIssueCount + hiddenRepoCount;
   const proofEntries = listProofEntries(localStorage);
+  const alerts = buildLocalAlerts(store.boardCards);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards,
+    hiddenIssues: hiddenItems.issues,
+    hiddenRepos: hiddenItems.repos,
+    proofEntries,
+    reviewReminders: alerts
+  });
+  const dashboardMetrics = summarizeDashboardMetrics(store.boardCards);
+  const boardCards = appMetrics.boardCards;
+  const activeCards = boardCards.filter(card => !isClosedIssue(card));
+  const activeBoardPreviewEntries = appMetrics.boardEntries.filter(({ column, card }) =>
+    ACTIVE_BOARD_COLUMNS.includes(column) && !isClosedIssue(card)
+  );
+  const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
+  const totalSavedCount = appMetrics.savedCandidates;
+  const activeReviewCount = appMetrics.activeBoardWork;
+  const resolvedOrPassedCount = appMetrics.resolvedOrPassed;
+  const hiddenIssueCount = appMetrics.hiddenIssues;
+  const hiddenRepoCount = appMetrics.hiddenRepos;
+  const hiddenTotalCount = appMetrics.hiddenResults;
   const activeReviewProgress = dashboardMetrics.activeReviewProgress;
   const resolvedProgress = dashboardMetrics.resolvedProgress;
   const hiddenRepoHelper = `${hiddenIssueCount.toLocaleString()} issues / ${hiddenRepoCount.toLocaleString()} repos`;
@@ -1312,20 +1527,16 @@ function renderDashboard(container) {
   // Saved candidates lists the Board Considering lane (or mocks if empty)
   let savedIssuesHTML = '';
   if (dashboardSavedCards.length === 0) {
-    savedIssuesHTML = `
-      <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
-        <span class="material-symbols-outlined text-on-surface-variant text-3xl">bookmarks</span>
-        <h4 class="text-on-surface font-medium">No saved candidates</h4>
-        <p class="text-xs text-on-surface-variant max-w-xs">Save candidates from Find Contributions to see them on your Dashboard.</p>
-        <button class="interactive-button interactive-button-primary mt-2 px-4 py-1.5 text-xs" id="dash-go-find-btn">Find Contributions</button>
-      </div>
-    `;
+    savedIssuesHTML = renderEmptyState({
+      title: 'No saved candidates',
+      body: 'Save a candidate from Find Contributions to start tracking it.',
+      primaryAction: { label: 'Find Contributions', id: 'dash-go-find-btn', dataScreen: 'find-issues', icon: 'search' },
+      icon: 'bookmarks'
+    });
   } else {
     savedIssuesHTML = dashboardSavedCards.slice(0, 3).map(issue => {
       const fitObj = calculateFitScore(issue);
       const { score } = fitObj;
-      const rating = getFitScoreRating(score);
-      const contributionBrief = buildContributionBrief(issue, fitObj);
       const labelsSlice = (issue.labels || []).slice(0, 2);
       const labelsHTML = labelsSlice.map(l => {
         const name = String(typeof l === 'object' ? l.name : l || '');
@@ -1341,11 +1552,7 @@ function renderDashboard(container) {
           <div class="flex justify-between items-start mb-1">
             <span class="text-xs font-mono text-on-surface-variant">${repoName}</span>
             <div class="flex flex-wrap justify-end gap-1">
-              <div class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border ${rating.bgClass}">
-                <span class="w-1.5 h-1.5 rounded-full ${score >= 75 ? 'bg-tertiary animate-pulse' : 'bg-outline'}"></span>
-                ${score}% Match
-              </div>
-              <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+              ${renderScoreChip(score)}
               <span class="px-2 py-0.5 rounded text-xs border ${getConfidenceTone(fitObj.confidence.level)} whitespace-nowrap">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
             </div>
           </div>
@@ -1359,12 +1566,36 @@ function renderDashboard(container) {
     }).join('');
   }
 
-  const localReviewHTML = `
-    <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
-      <span class="material-symbols-outlined text-on-surface-variant text-3xl">commit</span>
-      <h4 class="text-on-surface font-medium">No active board work</h4>
-      <p class="text-xs text-on-surface-variant max-w-xs">Saved candidates appear on the Board after you save them from Find Contributions.</p>
-    </div>
+  const localReviewHTML = activeBoardPreviewEntries.length ? `
+    ${activeBoardPreviewEntries.slice(0, 3).map(({ column, card }) => {
+      const fitObj = calculateFitScore(card);
+      const issueId = safeInteger(card.id);
+      const repoName = escapeHTML(card.repository?.full_name || card.repository?.name || 'github');
+      const issueTitle = escapeHTML(card.title);
+      const issueNumber = safeInteger(card.number);
+      return `
+        <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4 cursor-pointer dashboard-issue-card" data-id="${issueId}">
+          <div class="mb-2 flex items-start justify-between gap-3">
+            <span class="min-w-0 truncate text-xs font-mono text-on-surface-variant">${repoName} #${issueNumber}</span>
+            <span class="shrink-0 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">${escapeHTML(column)}</span>
+          </div>
+          <h4 class="text-sm font-medium leading-snug text-on-surface">${issueTitle}</h4>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            ${renderScoreChip(fitObj.score)}
+            <span class="text-xs text-on-surface-variant">Next: ${escapeHTML(buildContributionBrief(card, fitObj).firstMove)}</span>
+          </div>
+        </div>
+      `;
+    }).join('')}
+    ${activeBoardPreviewEntries.length > 3 ? `<p class="text-xs text-on-surface-variant">${activeBoardPreviewEntries.length - 3} more active cards on the Board.</p>` : ''}
+  ` : `
+    ${renderEmptyState({
+      title: 'No active board work',
+      body: 'Save a candidate from Find Contributions to start tracking it.',
+      variant: 'compact',
+      secondaryAction: { label: 'Open Board', dataScreen: 'board' },
+      icon: 'commit'
+    })}
   `;
   const recentProofHTML = proofEntries.length ? proofEntries.slice(0, 3).map(entry => `
     <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
@@ -1375,11 +1606,13 @@ function renderDashboard(container) {
       <p class="text-xs text-on-surface-variant">${escapeHTML(entry.snapshot.display_key || entry.key)} - ${escapeHTML(formatDate(entry.completed_at))}</p>
     </div>
   `).join('') : `
-    <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
-      <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
-      <h4 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h4>
-      <p class="mt-1 text-xs text-on-surface-variant">Move a board card to Merged to preserve completed work.</p>
-    </div>
+    ${renderEmptyState({
+      title: 'No Proof Log entries yet',
+      body: 'Move a board card to Merged to preserve completed work.',
+      variant: 'compact',
+      secondaryAction: { label: 'Open Board', dataScreen: 'board' },
+      icon: 'workspace_premium'
+    })}
   `;
 
   container.innerHTML = `
@@ -1645,12 +1878,12 @@ function renderNoResults(queryPreview, filters) {
     .join('');
 
   return `
-    <div class="p-8 rounded-lg bg-surface-container border border-outline-variant flex flex-col gap-5">
+    <div class="app-card flex flex-col gap-5">
       <div class="flex items-start gap-4">
         <span class="material-symbols-outlined text-on-surface-variant text-4xl">search_off</span>
         <div>
           <h3 class="text-on-surface font-medium text-lg mb-1">No matching GitHub issues found</h3>
-          <p class="text-sm text-on-surface-variant">PR Dashboard searches GitHub issues only. It does not search users, profiles, or every repository.</p>
+          <p class="readable-copy text-on-surface-variant">PR Dashboard searches GitHub issues only. It does not search users, profiles, or every repository.</p>
         </div>
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
@@ -1699,6 +1932,54 @@ async function runFinderSearch(value) {
   return searchGitHubIssues(queryValue, true, { mode, filters: appliedFilters });
 }
 
+function getActiveFilterChips(filters = {}) {
+  const chips = [];
+  (filters.languages || []).forEach(value => chips.push({ type: 'language', value, label: value }));
+  (filters.labels || []).forEach(value => chips.push({ type: 'label', value, label: value }));
+  if (filters.stars && filters.stars !== 'Any') chips.push({ type: 'stars', value: filters.stars, label: `Stars ${filters.stars}` });
+  if (filters.comments && filters.comments !== 'Any') chips.push({ type: 'comments', value: filters.comments, label: `Comments ${filters.comments}` });
+  if (filters.updatedDate && filters.updatedDate !== 'Any') chips.push({ type: 'updatedDate', value: filters.updatedDate, label: filters.updatedDate });
+  if (filters.includeClosed) chips.push({ type: 'includeClosed', value: 'true', label: 'Includes closed' });
+  if (filters.unassigned) chips.push({ type: 'unassigned', value: 'true', label: 'Unassigned only' });
+  if (filters.useFiltersInLookup) chips.push({ type: 'useFiltersInLookup', value: 'true', label: 'Lookup filters' });
+  return chips;
+}
+
+function renderActiveFilterChips(filters = {}) {
+  const chips = getActiveFilterChips(filters);
+  if (!chips.length) {
+    return '<span class="text-xs text-on-surface-variant">No active filters.</span>';
+  }
+
+  return chips.map(chip => `
+    <button class="active-filter-chip rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs text-primary" type="button" data-filter-type="${escapeHTML(chip.type)}" data-filter-value="${escapeHTML(chip.value)}">
+      ${escapeHTML(chip.label)}
+      <span class="material-symbols-outlined text-[13px] align-[-2px]">close</span>
+    </button>
+  `).join('');
+}
+
+function removeDraftFilterChip(type, value) {
+  const filters = store.draftFilters;
+  if (type === 'language') {
+    applyFilterPatch(store, { languages: filters.languages.filter(item => item !== value) });
+  } else if (type === 'label') {
+    applyFilterPatch(store, { labels: filters.labels.filter(item => item !== value) });
+  } else if (type === 'stars') {
+    applyFilterPatch(store, { stars: 'Any' });
+  } else if (type === 'comments') {
+    applyFilterPatch(store, { comments: 'Any' });
+  } else if (type === 'updatedDate') {
+    applyFilterPatch(store, { updatedDate: 'Any' });
+  } else if (type === 'includeClosed') {
+    applyFilterPatch(store, { includeClosed: false });
+  } else if (type === 'unassigned') {
+    applyFilterPatch(store, { unassigned: false });
+  } else if (type === 'useFiltersInLookup') {
+    applyFilterPatch(store, { useFiltersInLookup: false });
+  }
+}
+
 function renderFindIssues(container) {
   const results = store.searchResults;
   const applyHiddenFilter = store.lastSearchMode !== 'lookup';
@@ -1719,6 +2000,8 @@ function renderFindIssues(container) {
     ? `GET ${buildExactIssueApiUrl(exactLookup)}`
     : buildQueryPreview(store.searchQuery, filters, { mode });
   const filtersChanged = store.hasDraftFilterChanges();
+  const activeFilterChipsHTML = renderActiveFilterChips(filters);
+  const showResetFilters = filtersChanged || getActiveFilterChips(filters).length > 0;
   const isLookupMode = mode === 'lookup';
   const findModeClass = !isLookupMode
     ? 'bg-primary text-on-primary border-primary'
@@ -1805,28 +2088,20 @@ function renderFindIssues(container) {
     const token = store.githubToken;
     countText = 'No search run yet';
     resultsHTML = `
-      <div class="mb-6 flex flex-col items-center justify-center text-center gap-4 border border-outline-variant bg-surface-container-lowest rounded-xl p-6">
-        <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-          <span class="material-symbols-outlined text-3xl filled-icon">terminal</span>
-        </div>
-        <div>
-          <h2 class="text-2xl font-headline font-bold text-on-surface mb-2">Find your next contribution</h2>
-          <p class="text-sm text-on-surface-variant leading-relaxed">
-            Query the official GitHub REST API directly from your browser. Filter by stars, programming language, issue tags, and comments count.
-          </p>
-        </div>
-        
+      <div class="mb-6 flex flex-col gap-4">
+        ${renderEmptyState({
+          title: 'Find your next contribution',
+          body: 'Search GitHub issues, then use filters and scoring to decide quickly.',
+          primaryAction: { label: 'Perform Initial Query', id: 'start-search-btn', icon: 'search' },
+          icon: 'terminal'
+        })}
         <div class="w-full callout p-4 rounded-lg flex items-start gap-3 bg-surface-container text-left border-outline-variant">
           <span class="material-symbols-outlined text-primary mt-0.5">info</span>
-          <div class="text-xs text-on-surface-variant leading-relaxed">
+          <div class="readable-copy text-on-surface-variant">
             <strong>GitHub API rate limits</strong>: Public searches without a GitHub token are rate-limited to 10 requests per minute by GitHub.
             ${token ? '<span class="text-tertiary">A GitHub token is active.</span>' : 'You can paste an optional fine-grained token in <strong>Settings</strong> to increase these limits.'}
           </div>
         </div>
-        
-            <button class="interactive-button interactive-button-primary px-6 py-2.5" id="start-search-btn">
-          Perform Initial Query
-        </button>
       </div>
     `;
   }
@@ -1835,19 +2110,21 @@ function renderFindIssues(container) {
     <!-- Find Issues layout -->
     <div class="bg-background flex min-h-[calc(100vh-3.5rem)] flex-col relative hide-scrollbar">
       
-      <!-- Command Palette Search Hero -->
-      <section class="w-full pt-12 pb-8 px-6 md:px-8 border-b border-outline-variant/30 bg-surface-container-lowest relative">
-        <div class="max-w-3xl mx-auto relative z-10">
-          <h1 class="text-3xl font-headline font-bold text-on-surface mb-6 tracking-tight text-center">Find your next contribution</h1>
-          <div class="mb-4 flex justify-center">
-            <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" role="group" aria-label="Finder mode">
+      <!-- Contribution Finder Header -->
+      <section class="w-full border-b border-outline-variant/30 bg-surface-container-lowest px-6 py-5 md:px-8">
+        <div class="mx-auto max-w-5xl">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 class="text-2xl font-headline font-bold text-on-surface tracking-tight">Find your next contribution</h1>
+              <p class="mt-1 text-sm text-on-surface-variant">Search GitHub issues, then use filters and scoring to decide quickly.</p>
+            </div>
+            <div class="inline-flex w-fit rounded-lg border border-outline-variant bg-surface-container-lowest p-1" role="group" aria-label="Finder mode">
               <button class="finder-mode-btn interactive-button rounded-md px-3 py-1.5 text-sm ${findModeClass}" data-mode="find" type="button">Find Contributions</button>
               <button class="finder-mode-btn interactive-button rounded-md px-3 py-1.5 text-sm ${lookupModeClass}" data-mode="lookup" type="button">Lookup</button>
             </div>
           </div>
-          
-          <!-- Command Bar -->
-          <div class="flex gap-3">
+
+          <div class="flex flex-col gap-3 sm:flex-row">
             <div class="relative flex-1 group">
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
@@ -1858,34 +2135,14 @@ function renderFindIssues(container) {
               Search
             </button>
           </div>
-          <div class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
-            <div class="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1">GitHub query preview</div>
-            <code class="block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
-          </div>
-          
-          <!-- Presets -->
-          <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
-              <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
-              <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
-              <span class="material-symbols-outlined text-[16px]">description</span> Documentation Only
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
-              <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
-            </button>
-          </div>
         </div>
       </section>
       
       <!-- Main Workspace: Filters + Results -->
-      <div class="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-8">
+      <div class="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-6">
         
         <!-- Left Sidebar Filters -->
-        <aside class="w-full lg:w-56 shrink-0 flex flex-col gap-6" id="find-issues-sidebar">
+        <aside class="order-2 lg:order-1 w-full lg:w-56 shrink-0 flex flex-col gap-5" id="find-issues-sidebar">
           <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
             <div class="flex items-center justify-between gap-2">
               <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Filters</h3>
@@ -1894,12 +2151,35 @@ function renderFindIssues(container) {
             <button class="interactive-button interactive-button-primary w-full px-4 py-2" id="apply-filters-btn">
               Apply Filters
             </button>
+            ${showResetFilters ? `
+              <button class="interactive-button interactive-button-secondary w-full px-4 py-2 text-xs" id="reset-filters-btn" type="button">
+                Reset filters
+              </button>
+            ` : ''}
             ${isLookupMode ? `
               <label class="flex items-start gap-3 group cursor-pointer rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
                 <input class="lookup-filter-checkbox mt-0.5" type="checkbox" ${filters.useFiltersInLookup ? 'checked' : ''} />
                 <span class="text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">Use filters in Lookup</span>
               </label>
             ` : ''}
+          </div>
+
+          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Quick filters</h3>
+            <div class="flex flex-wrap gap-2">
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
+                <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
+                <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
+                <span class="material-symbols-outlined text-[16px]">description</span> Docs
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
+                <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
+              </button>
+            </div>
           </div>
           
           <!-- Language Filter -->
@@ -1963,18 +2243,27 @@ function renderFindIssues(container) {
         </aside>
         
         <!-- Results Content viewport -->
-        <div class="flex-1 flex flex-col">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-sm font-medium text-on-surface-variant" id="results-count-label">${countText}</h2>
-            <div class="flex items-center gap-2 text-sm text-on-surface-variant">
-              <span>Sort by:</span>
-              <select class="bg-transparent border-none text-on-surface focus:ring-0 cursor-pointer font-medium p-0 pr-4" id="sort-filter-select" style="border:none; padding-right:16px;">
-                <option ${filters.sortMode === 'Fit Score' ? 'selected' : ''}>Fit Score</option>
-                <option ${filters.sortMode === 'Updated Date' ? 'selected' : ''}>Updated Date</option>
-                <option ${filters.sortMode === 'Most Commented' ? 'selected' : ''}>Most Commented</option>
-                <option ${filters.sortMode === 'Recently Created' ? 'selected' : ''}>Recently Created</option>
-              </select>
+        <div class="order-1 lg:order-2 flex-1 flex flex-col">
+          <div class="mb-4 flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 class="text-sm font-medium text-on-surface-variant" id="results-count-label">${countText}</h2>
+              <div class="flex items-center gap-2 text-sm text-on-surface-variant">
+                <span>Sort:</span>
+                <select class="bg-transparent border-none text-on-surface focus:ring-0 cursor-pointer font-medium p-0 pr-4" id="sort-filter-select" style="border:none; padding-right:16px;">
+                  <option ${filters.sortMode === 'Fit Score' ? 'selected' : ''}>Fit Score</option>
+                  <option ${filters.sortMode === 'Updated Date' ? 'selected' : ''}>Updated Date</option>
+                  <option ${filters.sortMode === 'Most Commented' ? 'selected' : ''}>Most Commented</option>
+                  <option ${filters.sortMode === 'Recently Created' ? 'selected' : ''}>Recently Created</option>
+                </select>
+              </div>
             </div>
+            <div class="flex flex-wrap items-center gap-2">
+              ${activeFilterChipsHTML}
+            </div>
+            <details class="rounded border border-outline-variant bg-surface-container px-3 py-2 text-left">
+              <summary class="cursor-pointer text-xs font-medium text-on-surface-variant">View GitHub query</summary>
+              <code class="mt-2 block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
+            </details>
           </div>
           
           <div class="flex-1" id="search-results-viewport">
@@ -2038,6 +2327,19 @@ function renderFindIssues(container) {
       runFinderSearch(store.searchQuery);
     });
   }
+
+  const resetFiltersBtn = document.getElementById('reset-filters-btn');
+  if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener('click', () => {
+      applyFilterPatch(store, createDefaultFilters());
+    });
+  }
+
+  document.querySelectorAll('.active-filter-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      removeDraftFilterChip(btn.getAttribute('data-filter-type'), btn.getAttribute('data-filter-value'));
+    });
+  });
 
   const broadenBtn = document.getElementById('broaden-search-btn');
   if (broadenBtn) {
@@ -2155,7 +2457,6 @@ function renderIssueCardsList(issuesList, options = {}) {
 
   const cardsHTML = sorted.map((issue, index) => {
     const fitObj = issue.fitRating;
-    const rating = getFitScoreRating(fitObj.score);
     const contributionBrief = buildContributionBrief(issue, fitObj);
     const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
     const isFeatured = index === 0 && sorted.length > 1;
@@ -2171,6 +2472,7 @@ function renderIssueCardsList(issuesList, options = {}) {
     const issueBody = escapeHTML(issue.body || 'No summary description provided.');
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
+    const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const hiddenLocally = !applyHiddenFilter && (isIssueHidden(issue) || isRepoHidden(issue));
     const lookupWarningHTML = lookupRisky ? `
@@ -2189,15 +2491,21 @@ function renderIssueCardsList(issuesList, options = {}) {
       <span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">Repo metadata unavailable</span>
     ` : '';
 
-    const labelsHTML = (issue.labels || []).slice(0, 3).map(l => {
-      const name = String(typeof l === 'object' ? l.name : l || '');
-      const tone = name.includes('help wanted') || name.includes('good first') 
+    const primaryLabel = getPrimaryIssueLabel(issue.labels);
+    const labelCount = getIssueLabelCount(issue.labels);
+    const hiddenLabelCount = Math.max(0, labelCount - (primaryLabel ? 1 : 0));
+    const primaryLabelHTML = primaryLabel ? (() => {
+      const name = primaryLabel;
+      const tone = name.includes('help wanted') || name.includes('good first')
         ? 'border-primary/30 bg-primary/10 text-primary' 
         : name.includes('enhancement') || name.includes('feature') 
           ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
           : 'border-outline-variant bg-surface-dim text-on-surface-variant';
-      return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${escapeHTML(name)}</span>`;
-    }).join(' ');
+      return `<span class="rounded border ${tone} px-2 py-0.5 text-xs">${escapeHTML(name)}</span>`;
+    })() : '';
+    const labelOverflowHTML = hiddenLabelCount > 0
+      ? `<span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">+${safeInteger(hiddenLabelCount)} labels</span>`
+      : '';
 
     const saved = isIssueSavedToBoard(issue);
 
@@ -2216,14 +2524,17 @@ function renderIssueCardsList(issuesList, options = {}) {
         </h3>
         
         <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issueBody}</p>
+        <p class="text-xs text-on-surface-variant/90 line-clamp-1">
+          <span class="text-tertiary">Why:</span> ${escapeHTML(topReason || 'Review the inspector for fit details.')}
+        </p>
         ${lookupWarningHTML}
         ${hiddenBadgeHTML}
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
-          ${labelsHTML}
-          <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="interactive-chip rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+          ${renderScoreChip(fitObj.score)}
           <span class="interactive-chip rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          ${primaryLabelHTML}
+          ${labelOverflowHTML}
           ${repoUnavailableHTML}
         </div>
         
@@ -2330,10 +2641,13 @@ function bindIssueCardListEvents() {
           return;
         }
         store.saveIssueToBoard(issue);
+        const refreshedButton = document.querySelector(`.save-issue-btn[data-id="${issueId}"]`);
+        runSavePop(refreshedButton || btn);
         // Toast / alert indicator
-        btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">check</span> Saved`;
-        btn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
-        btn.classList.remove('bg-transparent', 'text-on-surface-variant', 'border-outline-variant');
+        const targetButton = refreshedButton || btn;
+        targetButton.innerHTML = `<span class="material-symbols-outlined text-[14px]">check</span> Saved`;
+        targetButton.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
+        targetButton.classList.remove('bg-transparent', 'text-on-surface-variant', 'border-outline-variant');
       }
     });
   });
@@ -2436,6 +2750,79 @@ function confirmRefreshBatch({ message, requestCount, token }) {
   });
 }
 
+function openConfirmDialog({ title, body, consequences = [], requirePhrase = '', confirmLabel = 'Confirm', confirmTone = 'danger', onConfirm, trigger = document.activeElement }) {
+  const existing = document.getElementById('confirm-dialog');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'confirm-dialog';
+  overlay.className = 'confirm-dialog-backdrop';
+  const consequencesHTML = consequences.length
+    ? `<ul class="mt-4 space-y-2">${consequences.map(item => `<li>${escapeHTML(item)}</li>`).join('')}</ul>`
+    : '';
+  const phraseHTML = requirePhrase ? `
+    <label class="mt-5 block">
+      <span class="mb-2 block text-xs font-medium text-on-surface-variant">Type ${escapeHTML(requirePhrase)} to confirm.</span>
+      <input class="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface" id="confirm-phrase-input" type="text" autocomplete="off" />
+    </label>
+  ` : '';
+  const confirmClass = confirmTone === 'danger' ? 'interactive-button interactive-button-danger' : 'interactive-button interactive-button-primary';
+
+  overlay.innerHTML = `
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-body">
+      <div class="flex items-start gap-3">
+        <span class="material-symbols-outlined mt-0.5 text-error">warning</span>
+        <div>
+          <h2 class="text-base font-headline font-bold text-on-surface" id="confirm-dialog-title">${escapeHTML(title)}</h2>
+          <p class="readable-copy mt-2 text-on-surface-variant" id="confirm-dialog-body">${escapeHTML(body)}</p>
+        </div>
+      </div>
+      ${consequencesHTML}
+      ${phraseHTML}
+      <div class="mt-6 flex flex-wrap justify-end gap-2">
+        <button class="interactive-button interactive-button-secondary px-4 py-2" id="confirm-dialog-cancel" type="button">Cancel</button>
+        <button class="${confirmClass} px-4 py-2" id="confirm-dialog-submit" type="button" ${requirePhrase ? 'disabled' : ''}>${escapeHTML(confirmLabel)}</button>
+      </div>
+    </div>
+  `;
+
+  const close = (confirmed = false) => {
+    removeEscape();
+    overlay.remove();
+    if (confirmed && typeof onConfirm === 'function') onConfirm();
+    restoreFocus(trigger);
+  };
+  const removeEscape = bindEscapeToClose(() => close(false));
+
+  document.body.appendChild(overlay);
+  const cancelBtn = document.getElementById('confirm-dialog-cancel');
+  const submitBtn = document.getElementById('confirm-dialog-submit');
+  const phraseInput = document.getElementById('confirm-phrase-input');
+
+  cancelBtn?.addEventListener('click', () => close(false));
+  submitBtn?.addEventListener('click', () => close(true));
+  phraseInput?.addEventListener('input', () => {
+    submitBtn.disabled = phraseInput.value.trim() !== requirePhrase;
+  });
+  overlay.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const focusableEls = Array.from(overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href]'));
+    if (!focusableEls.length) return;
+    const first = focusableEls[0];
+    const last = focusableEls[focusableEls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  const focusable = phraseInput || cancelBtn || submitBtn;
+  focusable?.focus();
+}
+
 async function refreshBoardEntriesFromGitHub({ statusEl, entries, requestCount, modeLabel, emptyMessage, cancelMessage, confirmLargeBatch = false }) {
   if (requestCount === 0) {
     const statusMessage = emptyMessage;
@@ -2499,6 +2886,7 @@ async function refreshSingleSavedBoardCard(card) {
 
 function renderBoard(container) {
   const totalCards = Object.values(store.boardCards).flat().length;
+  const boardMode = getBoardMode(store.boardCards, boardViewMode);
   const activeRefreshRequestCount = getActiveBoardRefreshRequestCount(store.boardCards);
   const staleRefreshRequestCount = getStaleBoardRefreshRequestCount(store.boardCards);
   const staleRefreshTotalCount = getStaleBoardRefreshTotalCount(store.boardCards);
@@ -2665,8 +3053,114 @@ function renderBoard(container) {
       </div>
     `;
   }).join('');
+  const activeBoardEntries = ACTIVE_BOARD_COLUMNS.flatMap(column =>
+    (store.boardCards[column] || [])
+      .filter(card => !isClosedIssue(card))
+      .map(card => ({ column, card }))
+  );
+  const collapsedLaneRowsHTML = ACTIVE_BOARD_COLUMNS.map(column => {
+    const count = (store.boardCards[column] || []).filter(card => !isClosedIssue(card)).length;
+    return `
+      <div class="board-compact-lane-row">
+        <span>${escapeHTML(column)}</span>
+        <strong>${count}</strong>
+      </div>
+    `;
+  }).join('');
+  const compactCardsHTML = activeBoardEntries.length ? activeBoardEntries.map(({ column, card }) => {
+    const cIdx = BOARD_COLUMNS.indexOf(column);
+    const nextColumn = BOARD_COLUMNS[cIdx + 1];
+    const fitObj = calculateFitScore(card);
+    const brief = buildContributionBrief(card, fitObj);
+    const repoName = escapeHTML(card.repository?.full_name || card.repository?.name || 'github');
+    const cardId = safeInteger(card.id);
+    const cardNumber = safeInteger(card.number);
+    const cardTitle = escapeHTML(card.title);
+    const cardDate = escapeHTML(formatDate(card.updated_at));
+    return `
+      <div class="board-compact-card board-card-item" data-id="${cardId}">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="min-w-0 truncate font-mono text-xs text-on-surface-variant">${repoName} #${cardNumber}</span>
+          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">${escapeHTML(column)}</span>
+        </div>
+        <h3 class="mt-3 text-lg font-semibold leading-snug text-on-surface">${cardTitle}</h3>
+        <p class="mt-2 text-sm text-on-surface-variant">Next: ${escapeHTML(brief.firstMove)}</p>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          ${renderScoreChip(fitObj.score)}
+          <span class="rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          <span class="text-xs text-on-surface-variant">${cardDate}</span>
+        </div>
+        <div class="mt-5 flex flex-wrap gap-2">
+          ${nextColumn ? `
+            <button class="interactive-button interactive-button-primary px-3 py-2 text-xs move-right-btn" data-id="${cardId}">
+              Move to ${escapeHTML(nextColumn)}
+            </button>
+          ` : ''}
+          <button class="interactive-button interactive-button-secondary px-3 py-2 text-xs move-passed-btn" data-id="${cardId}">
+            Pass
+          </button>
+          <button class="interactive-button interactive-button-secondary px-3 py-2 text-xs compact-inspect-btn" data-id="${cardId}" type="button">
+            Inspect
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('') : `
+    ${renderEmptyState({
+      title: 'Save a candidate to start tracking it.',
+      body: 'Find Contributions is where new board cards begin.',
+      primaryAction: { label: 'Find Contributions', id: 'board-go-find-btn', dataScreen: 'find-issues', icon: 'search' },
+      icon: 'view_kanban'
+    })}
+  `;
+  const compactBoardHTML = `
+    <section class="board-section board-compact-section" data-board-section="active">
+      <div class="board-section-heading">
+        <h2>Active workflow</h2>
+        <span>${activeBoardEntries.length <= 3 ? 'Compact mode for focused board work.' : 'Compact mode forced manually.'}</span>
+      </div>
+      <div class="board-compact-layout">
+        <div class="board-compact-cards">${compactCardsHTML}</div>
+        <aside class="board-compact-lanes" aria-label="Board lane counts">
+          <h3>Lane counts</h3>
+          ${collapsedLaneRowsHTML}
+        </aside>
+      </div>
+    </section>
+  `;
   const activeColumnsHTML = renderColumnsHTML(ACTIVE_BOARD_COLUMNS);
   const completedColumnsHTML = renderColumnsHTML(COMPLETED_BOARD_COLUMNS, { compact: true });
+  const boardWorkflowHTML = boardMode === 'compact' ? `
+    ${compactBoardHTML}
+    <section class="board-section board-completed-section" data-board-section="completed">
+      <div class="board-section-heading">
+        <h2>Completed</h2>
+        <span>Compact local outcomes.</span>
+      </div>
+      <div class="board-completed-grid">
+        ${completedColumnsHTML}
+      </div>
+    </section>
+  ` : `
+    <section class="board-section board-active-section" data-board-section="active">
+      <div class="board-section-heading">
+        <h2>Active workflow</h2>
+        <span>Manual refreshes run only from saved active cards.</span>
+      </div>
+      <div class="board-active-grid">
+        ${activeColumnsHTML}
+      </div>
+    </section>
+    <section class="board-section board-completed-section" data-board-section="completed">
+      <div class="board-section-heading">
+        <h2>Completed</h2>
+        <span>Compact local outcomes.</span>
+      </div>
+      <div class="board-completed-grid">
+        ${completedColumnsHTML}
+      </div>
+    </section>
+  `;
 
   container.innerHTML = `
     <!-- Kanban Board layout -->
@@ -2680,6 +3174,10 @@ function renderBoard(container) {
         </div>
         
         <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+          <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" aria-label="Board view mode">
+            <button class="board-view-mode-btn interactive-button rounded-md px-3 py-1.5 text-xs ${boardMode === 'compact' ? 'bg-primary text-on-primary border-primary' : 'interactive-button-secondary'}" data-board-view-mode="compact" type="button">Compact</button>
+            <button class="board-view-mode-btn interactive-button rounded-md px-3 py-1.5 text-xs ${boardMode === 'kanban' ? 'bg-primary text-on-primary border-primary' : 'interactive-button-secondary'}" data-board-view-mode="kanban" type="button">Full Kanban</button>
+          </div>
           <div class="min-w-0 text-xs text-on-surface-variant">
             <div id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</div>
             ${staleRefreshHelper ? `<div>${escapeHTML(staleRefreshHelper)}</div>` : ''}
@@ -2699,28 +3197,38 @@ function renderBoard(container) {
       <!-- Scrollable Kanban Area -->
       <div class="board-page-body flex-1 p-4 sm:p-6 md:p-8">
         <div class="board-layout-shell" style="--board-layout-max-width: ${BOARD_LAYOUT_MAX_WIDTH}px;">
-          <section class="board-section board-active-section" data-board-section="active">
-            <div class="board-section-heading">
-              <h2>Active workflow</h2>
-              <span>Manual refreshes run only from saved active cards.</span>
-            </div>
-            <div class="board-active-grid">
-              ${activeColumnsHTML}
-            </div>
-          </section>
-          <section class="board-section board-completed-section" data-board-section="completed">
-            <div class="board-section-heading">
-              <h2>Completed</h2>
-              <span>Compact local outcomes.</span>
-            </div>
-            <div class="board-completed-grid">
-              ${completedColumnsHTML}
-            </div>
-          </section>
+          ${boardWorkflowHTML}
         </div>
       </div>
     </section>
   `;
+
+  document.querySelectorAll('.board-view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      boardViewMode = btn.getAttribute('data-board-view-mode') === 'kanban' ? 'kanban' : 'compact';
+      renderBoard(container);
+    });
+  });
+
+  const boardGoFindBtn = document.getElementById('board-go-find-btn');
+  if (boardGoFindBtn) {
+    boardGoFindBtn.addEventListener('click', () => {
+      store.setScreen('find-issues');
+    });
+  }
+
+  document.querySelectorAll('.compact-inspect-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const cardId = parseInt(btn.getAttribute('data-id'), 10);
+      const allCards = Object.values(store.boardCards).flat();
+      const match = allCards.find(c => c.id === cardId);
+      if (match) {
+        store.setInspectedIssue(match);
+        openInspector();
+      }
+    });
+  });
 
   // Bind Lane Card Clicks
   document.querySelectorAll('.board-card-item').forEach(card => {
@@ -2813,12 +3321,46 @@ function renderBoard(container) {
   const clearBoardBtn = document.getElementById('board-clear-btn');
   if (clearBoardBtn) {
     clearBoardBtn.addEventListener('click', () => {
-      store.clearBoard();
+      openConfirmDialog({
+        title: 'Clear board data?',
+        body: 'This removes saved candidate cards and local board progress from this browser.',
+        consequences: [
+          'GitHub token settings are kept.',
+          'Proof Log entries are kept.'
+        ],
+        confirmLabel: 'Clear Board',
+        onConfirm: () => store.clearBoard(),
+        trigger: clearBoardBtn
+      });
     });
   }
 }
 
+function buildFeedbackDiagnostics() {
+  const hiddenItems = listHiddenItems(localStorage);
+  const proofEntries = listProofEntries(localStorage);
+  const alerts = buildLocalAlerts(store.boardCards);
+  const metrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards,
+    hiddenIssues: hiddenItems.issues,
+    hiddenRepos: hiddenItems.repos,
+    proofEntries,
+    reviewReminders: alerts
+  });
+  return {
+    route: window.location.hash || window.location.pathname,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    userAgent: window.navigator.userAgent,
+    savedCandidates: metrics.savedCandidates,
+    activeBoardWork: metrics.activeBoardWork,
+    hiddenResults: metrics.hiddenResults,
+    proofLogEntries: metrics.proofLogEntries,
+    reviewReminders: metrics.reviewReminders
+  };
+}
+
 function getFeedbackIssueUrl() {
+  const diagnostics = buildFeedbackDiagnostics();
   const title = encodeURIComponent('PR Dashboard feedback');
   const body = encodeURIComponent([
     '## What happened',
@@ -2833,13 +3375,34 @@ function getFeedbackIssueUrl() {
     '## Screenshot',
     '',
     '## Browser / viewport',
+    `Route: ${diagnostics.route}`,
+    `Viewport: ${diagnostics.viewport}`,
+    `User agent: ${diagnostics.userAgent}`,
     '',
-    'Do not paste GitHub tokens or private data.'
+    '## Local state counts',
+    `Saved candidates: ${diagnostics.savedCandidates}`,
+    `Active board work: ${diagnostics.activeBoardWork}`,
+    `Hidden results: ${diagnostics.hiddenResults}`,
+    `Proof Log entries: ${diagnostics.proofLogEntries}`,
+    `Review reminders: ${diagnostics.reviewReminders}`,
+    '',
+    'Do not include tokens, Authorization headers, raw localStorage, or private repository data.'
   ].join('\n'));
   return `https://github.com/Statusnone420/PR-Dashboard/issues/new?title=${title}&body=${body}`;
 }
 
 function renderHelp(container) {
+  const appMetrics = summarizeAppMetrics({ boardCardsByColumn: store.boardCards });
+  const firstRunCTA = appMetrics.savedCandidates === 0 ? `
+    <div class="app-card app-card--compact flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="readable-copy text-on-surface-variant">Start by searching public GitHub issues, then save the best candidate to your Board.</p>
+      <button class="interactive-button interactive-button-primary px-4 py-2 text-sm" type="button" data-screen-target="find-issues">
+        <span class="material-symbols-outlined text-[16px]">search</span>
+        Start with Find Contributions
+      </button>
+    </div>
+  ` : '';
+
   container.innerHTML = `
     <section class="p-6 md:p-12">
       <div class="mx-auto max-w-4xl space-y-6">
@@ -2847,6 +3410,7 @@ function renderHelp(container) {
           <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Help</h1>
           <p class="text-sm text-on-surface-variant">Compact operating notes for local-first contribution tracking.</p>
         </header>
+        ${firstRunCTA}
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <article class="interactive-card p-5">
@@ -2993,13 +3557,13 @@ function formatProofLogSource(source) {
 
 function renderProofLogRows(entries) {
   if (!entries.length) {
-    return `
-      <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
-        <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
-        <h3 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h3>
-        <p class="mt-1 text-xs text-on-surface-variant">Move a board card to Merged to preserve completed work.</p>
-      </div>
-    `;
+    return renderEmptyState({
+      title: 'No Proof Log entries yet',
+      body: 'Move a board card to Merged to preserve completed work.',
+      variant: 'compact',
+      secondaryAction: { label: 'Open Board', dataScreen: 'board' },
+      icon: 'workspace_premium'
+    });
   }
 
   return entries.map(entry => `
@@ -3023,8 +3587,9 @@ function renderProofLogRows(entries) {
 }
 
 function renderProfile(container) {
-  const proofEntries = listProofEntries(localStorage);
-  const alerts = buildLocalAlerts(store.boardCards);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards
+  });
   const profile = store.profile;
   const displayName = profile?.name || profile?.login || 'Local contributor';
   const loginLine = profile?.login ? `GitHub: ${profile.login}` : 'No GitHub identity saved yet';
@@ -3045,67 +3610,31 @@ function renderProfile(container) {
                 <p class="text-sm text-on-surface-variant">${escapeHTML(displayName)} - ${escapeHTML(loginLine)}</p>
               </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-export-btn">Export Local Data</button>
-              <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
-                Import Local Data
-                <input class="hidden" id="profile-import-input" type="file" accept="application/json" />
-              </label>
-            </div>
           </div>
-          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include Board cards, Hidden Results, profile, contribution preferences, learned feedback, and Proof Log. GitHub tokens and repo metadata cache are excluded.</p>
+          <p class="mt-3 text-xs text-on-surface-variant">Identity and contribution preferences stay local to this browser. Export, import, and reset controls live in Settings.</p>
         </header>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Proof Log</span>
-            <div class="mt-4 metric-card-value">${proofEntries.length}</div>
-          </div>
-          <div class="metric-card">
             <span class="text-sm text-on-surface-variant">Saved candidates</span>
-            <div class="mt-4 metric-card-value">${Object.values(store.boardCards).flat().length}</div>
+            <div class="mt-4 metric-card-value">${appMetrics.savedCandidates}</div>
           </div>
           <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Review reminders</span>
-            <div class="mt-4 metric-card-value">${alerts.length}</div>
+            <span class="text-sm text-on-surface-variant">Active board work</span>
+            <div class="mt-4 metric-card-value">${appMetrics.activeBoardWork}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Resolved / Passed</span>
+            <div class="mt-4 metric-card-value">${appMetrics.resolvedOrPassed}</div>
           </div>
         </div>
 
         ${renderContributionPreferencesCard(store.contributionPreferences)}
-
-        ${renderMatchFeedbackCard(store.matchFeedback)}
-
-        <section class="interactive-card rounded-xl p-6">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-lg font-headline font-bold text-on-surface">Proof Log</h2>
-            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
-          </div>
-          <div class="space-y-3">${renderProofLogRows(proofEntries)}</div>
-        </section>
-
-        <section class="interactive-card rounded-xl p-6">
-          <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
-          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
-          <div class="space-y-3">
-            ${alerts.length ? alerts.map(alert => `
-              <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-                <div class="mb-1 flex items-center justify-between gap-3">
-                  <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
-                  <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
-                </div>
-                <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
-              </div>
-            `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</p>'}
-          </div>
-        </section>
       </div>
     </section>
   `;
 
-  const exportBtn = document.getElementById('profile-export-btn');
-  if (exportBtn) exportBtn.addEventListener('click', handleExportLocalData);
   bindAvatarFallbacks(container);
-  bindLocalDataImport('profile-import-input', 'profile-import-status');
   const preferencesForm = document.getElementById('contribution-preferences-form');
   if (preferencesForm) {
     preferencesForm.addEventListener('submit', (event) => {
@@ -3126,6 +3655,89 @@ function renderProfile(container) {
       store.clearContributionPreferences();
     });
   }
+}
+
+function renderActivity(container) {
+  const proofEntries = listProofEntries(localStorage);
+  const alerts = buildLocalAlerts(store.boardCards);
+  const hiddenItems = listHiddenItems(localStorage);
+  const feedbackSummary = summarizeMatchFeedback(store.matchFeedback);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards,
+    hiddenIssues: hiddenItems.issues,
+    hiddenRepos: hiddenItems.repos,
+    proofEntries,
+    reviewReminders: alerts
+  });
+
+  const remindersHTML = alerts.length ? alerts.map(alert => `
+    <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4 activity-alert-row" data-card-id="${escapeHTML(String(alert.cardId || ''))}">
+      <div class="mb-1 flex items-center justify-between gap-3">
+        <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
+        <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
+      </div>
+      <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
+      ${alert.kind === 'github-activity' ? `
+        <button class="action-button mt-3 px-2 py-1 text-[11px] mark-activity-reviewed-btn" data-id="${escapeHTML(String(alert.cardId || ''))}">
+          Mark reviewed
+        </button>
+      ` : ''}
+    </div>
+  `).join('') : renderEmptyState({
+    title: 'No review reminders right now.',
+    body: 'Cards in Working or PR Open can generate reminders after refresh.',
+    variant: 'compact',
+    secondaryAction: { label: 'Open Board', dataScreen: 'board' },
+    icon: 'notifications'
+  });
+
+  container.innerHTML = `
+    <section class="p-6 md:p-12">
+      <div class="mx-auto max-w-5xl space-y-8">
+        <header class="interactive-card rounded-xl p-6">
+          <div class="flex items-start gap-4">
+            <span class="material-symbols-outlined text-primary text-3xl">timeline</span>
+            <div>
+              <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Activity</h1>
+              <p class="mt-1 text-sm text-on-surface-variant">Proof Log, Review reminders, and Personal scoring signals from local workflow actions.</p>
+            </div>
+          </div>
+        </header>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Proof Log</span>
+            <div class="mt-4 metric-card-value">${appMetrics.proofLogEntries}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Review reminders</span>
+            <div class="mt-4 metric-card-value">${appMetrics.reviewReminders}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Personal scoring signals</span>
+            <div class="mt-4 metric-card-value">${safeInteger(feedbackSummary.eventCount)}</div>
+          </div>
+        </div>
+
+        <section class="interactive-card rounded-xl p-6">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-headline font-bold text-on-surface">Proof Log</h2>
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
+          </div>
+          <div class="space-y-3">${renderProofLogRows(proofEntries)}</div>
+        </section>
+
+        <section class="interactive-card rounded-xl p-6">
+          <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
+          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
+          <div class="space-y-3">${remindersHTML}</div>
+        </section>
+
+        ${renderMatchFeedbackCard(store.matchFeedback)}
+      </div>
+    </section>
+  `;
+
   const resetFeedbackBtn = document.getElementById('profile-match-feedback-reset-btn');
   if (resetFeedbackBtn) {
     resetFeedbackBtn.addEventListener('click', () => {
@@ -3135,6 +3747,23 @@ function renderProfile(container) {
   document.querySelectorAll('.proof-remove-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       store.removeProofLogEntry(btn.getAttribute('data-key'));
+    });
+  });
+  document.querySelectorAll('.mark-activity-reviewed-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const cardId = Number.parseInt(btn.getAttribute('data-id'), 10);
+      store.markGitHubActivityReviewed(cardId);
+    });
+  });
+  document.querySelectorAll('.activity-alert-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const cardId = Number.parseInt(row.getAttribute('data-card-id'), 10);
+      const card = Object.values(store.boardCards).flat().find(item => item.id === cardId);
+      if (card) {
+        store.setInspectedIssue(card);
+        openInspector();
+      }
     });
   });
 }
@@ -3147,11 +3776,13 @@ function hiddenItemMatchesFilter(item, filterText) {
 
 function renderHiddenRows(items, type) {
   if (items.length === 0) {
-    return `
-      <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
-        No matching hidden ${type === 'issue' ? 'issues' : 'repositories'}.
-      </div>
-    `;
+    return renderEmptyState({
+      title: `No matching hidden ${type === 'issue' ? 'issues' : 'repositories'}.`,
+      body: 'Hide an item from Find Contributions to manage it here.',
+      variant: 'compact',
+      secondaryAction: { label: 'Find Contributions', dataScreen: 'find-issues' },
+      icon: 'visibility_off'
+    });
   }
 
   return `
@@ -3285,9 +3916,9 @@ function renderSettings(container) {
         <div id="settings-storage-warning" class="interactive-card bg-error-container/10 border-error/30 rounded-lg p-5 flex items-start gap-4" style="display: ${remember ? 'flex' : 'none'};">
           <span class="material-symbols-outlined text-error mt-0.5">warning</span>
           <div>
-            <h3 class="text-sm font-semibold text-error mb-1">Local Browser Security Warning</h3>
-            <p class="text-sm text-on-error-container leading-relaxed">
-              Stored in this browser. Do not use this on shared machines. localStorage is not secure storage for secrets.
+            <h3 class="text-sm font-semibold text-error mb-1">Persistence warning</h3>
+            <p class="readable-copy text-on-error-container">
+              Token persistence stores the token in localStorage on this machine. Do not enable it on shared devices.
             </p>
           </div>
         </div>
@@ -3296,9 +3927,9 @@ function renderSettings(container) {
         <div class="interactive-card border-tertiary/30 rounded-lg p-5 flex items-start gap-4">
           <span class="material-symbols-outlined text-tertiary mt-0.5">lock</span>
           <div>
-            <h3 class="text-sm font-semibold text-tertiary mb-1">Local Session Storage by Default</h3>
-            <p class="text-sm text-on-secondary-container leading-relaxed">
-              We value your secrets. Access tokens are stored temporarily in your session-only memory by default. They are never transmitted to external databases and all API requests are dispatched directly from your browser.
+            <h3 class="text-sm font-semibold text-tertiary mb-1">Session memory by default</h3>
+            <p class="readable-copy text-on-secondary-container">
+              Off: token clears when this browser session ends. On: token is stored in localStorage on this machine. API requests still go directly from your browser to GitHub.
             </p>
           </div>
         </div>
@@ -3358,8 +3989,8 @@ function renderSettings(container) {
             <label class="interactive-row flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest cursor-pointer">
               <input class="mt-0.5" id="settings-remember-checkbox" type="checkbox" ${remember ? 'checked' : ''} />
               <div>
-                <span class="text-sm font-semibold text-on-surface block">Remember token locally</span>
-                <span class="text-xs text-on-surface-variant mt-1 block leading-relaxed">Save token within browser local storage. Useful to avoid pasting token repeatedly. Displays a security banner as it is stored in cleartext.</span>
+                <span class="text-sm font-semibold text-on-surface block">Persist token in this browser</span>
+                <span class="text-xs text-on-surface-variant mt-1 block leading-relaxed">Off: token clears when this browser session ends. On: token is stored in localStorage on this machine.</span>
               </div>
             </label>
             
@@ -3389,7 +4020,7 @@ function renderSettings(container) {
             </h2>
           </div>
           <div class="p-6 space-y-4">
-            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, contribution preferences, learned feedback, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
+            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, contribution preferences, personal scoring signals, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
             <div class="flex flex-wrap gap-3">
               <button class="interactive-button interactive-button-secondary px-4 py-2" id="settings-export-local-data-btn">Export Local Data</button>
               <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
@@ -3402,43 +4033,45 @@ function renderSettings(container) {
         </div>
 
         <!-- Danger Zone -->
-        <div class="pt-8 border-t border-outline-variant space-y-4">
+        <div class="app-section pt-8 border-t border-outline-variant space-y-4">
           <h3 class="text-sm font-semibold text-error uppercase tracking-wider">Danger Zone</h3>
-          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
+          <div class="danger-action-list">
+          <div class="danger-action-row">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear GitHub token and settings</div>
-              <div class="text-sm text-on-surface-variant">Remove the GitHub token, remember-token setting, and connection state. Board cards are kept.</div>
+              <div class="readable-copy text-on-surface-variant">Remove the GitHub token, persistence setting, profile identity, and connection state. Board cards are kept.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-token-settings-btn">
               Clear GitHub Token
             </button>
           </div>
-          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
+          <div class="danger-action-row">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear board data</div>
-              <div class="text-sm text-on-surface-variant">Remove saved candidate cards and local board progress. GitHub token settings are kept.</div>
+              <div class="readable-copy text-on-surface-variant">Remove saved candidate cards and local board progress. GitHub token settings and Proof Log entries are kept.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-board-settings-btn">
               Clear Board
             </button>
           </div>
-          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
+          <div class="danger-action-row">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear hidden items</div>
-              <div class="text-sm text-on-surface-variant">Show previously hidden issues and repositories in future results.</div>
+              <div class="readable-copy text-on-surface-variant">Show previously hidden issues and repositories in future results. Board cards are kept.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-hidden-settings-btn">
               Clear Hidden
             </button>
           </div>
-          <div class="interactive-row flex flex-col gap-4 p-5 rounded-lg border border-error/20 bg-error-container/10 md:flex-row md:items-center md:justify-between">
+          <div class="danger-action-row" data-danger-level="critical">
             <div>
               <div class="font-medium text-on-surface mb-1">Clear all app data</div>
-              <div class="text-sm text-on-surface-variant">Remove GitHub token settings and saved board data from this browser.</div>
+              <div class="readable-copy text-on-surface-variant">Remove token settings, saved board cards, hidden items, Proof Log entries, profile metadata, preferences, caches, and personal scoring signals from this browser.</div>
             </div>
             <button class="interactive-button interactive-button-danger px-4 py-2" id="clear-all-settings-btn">
               Clear All
             </button>
+          </div>
           </div>
         </div>
         
@@ -3495,7 +4128,7 @@ function renderSettings(container) {
       if (statusDiv) {
         statusDiv.style.display = 'block';
         statusDiv.className = 'p-3.5 rounded bg-tertiary/10 border border-tertiary/30 text-tertiary text-xs';
-        statusDiv.textContent = `Token saved! Current rate-limit thresholds cleared. Retention mode set to: ${remVal ? 'Persistent localStorage' : 'Session Memory'}`;
+        statusDiv.textContent = `Token saved. Current rate-limit thresholds cleared. Retention mode: ${remVal ? 'Persistent localStorage on this machine' : 'Session memory only'}.`;
       }
     });
   }
@@ -3535,65 +4168,115 @@ function renderSettings(container) {
   const clearTokenBtn = document.getElementById('clear-token-settings-btn');
   if (clearTokenBtn) {
     clearTokenBtn.addEventListener('click', () => {
-      clearInspectorEnrichmentStates();
-      store.clearToken();
-      if (patInput) patInput.value = '';
-      if (rememberCheckbox) rememberCheckbox.checked = false;
-      if (warningBanner) warningBanner.style.display = 'none';
+      openConfirmDialog({
+        title: 'Clear GitHub token?',
+        body: 'This removes token storage and connection state from this browser.',
+        consequences: [
+          'Board cards, hidden items, Proof Log entries, preferences, and personal scoring signals are kept.',
+          'Profile identity from the token test is cleared.'
+        ],
+        confirmLabel: 'Clear Token',
+        onConfirm: () => {
+          clearInspectorEnrichmentStates();
+          store.clearToken();
+          if (patInput) patInput.value = '';
+          if (rememberCheckbox) rememberCheckbox.checked = false;
+          if (warningBanner) warningBanner.style.display = 'none';
 
-      const statusDiv = document.getElementById('settings-connection-status');
-      if (statusDiv) {
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
-        statusDiv.textContent = "Token wiped permanently from browser store. Rate limits set back to public thresholds.";
-      }
-      
-      updateHeaderProfile();
+          const statusDiv = document.getElementById('settings-connection-status');
+          if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+            statusDiv.textContent = 'Token removed. Rate limits are back to public thresholds.';
+          }
+
+          updateHeaderProfile();
+        },
+        trigger: clearTokenBtn
+      });
     });
   }
 
   const clearBoardBtn = document.getElementById('clear-board-settings-btn');
   if (clearBoardBtn) {
     clearBoardBtn.addEventListener('click', () => {
-      store.clearBoard();
-      const statusDiv = document.getElementById('settings-connection-status');
-      if (statusDiv) {
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
-        statusDiv.textContent = "Board data removed. GitHub token settings were kept.";
-      }
+      openConfirmDialog({
+        title: 'Clear board data?',
+        body: 'This removes saved candidate cards and local board progress from this browser.',
+        consequences: [
+          'GitHub token settings are kept.',
+          'Proof Log entries are kept.'
+        ],
+        confirmLabel: 'Clear Board',
+        onConfirm: () => {
+          store.clearBoard();
+          const statusDiv = document.getElementById('settings-connection-status');
+          if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+            statusDiv.textContent = 'Board data removed. GitHub token settings and Proof Log entries were kept.';
+          }
+        },
+        trigger: clearBoardBtn
+      });
     });
   }
 
   const clearHiddenBtn = document.getElementById('clear-hidden-settings-btn');
   if (clearHiddenBtn) {
     clearHiddenBtn.addEventListener('click', () => {
-      hiddenSettingsFilter = '';
-      store.clearHiddenItems();
-      const statusDiv = document.getElementById('settings-connection-status');
-      if (statusDiv) {
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
-        statusDiv.textContent = "Hidden issues and repositories cleared. New renders will show normal results.";
-      }
+      openConfirmDialog({
+        title: 'Clear hidden items?',
+        body: 'This makes previously hidden issues and repositories eligible for future results again.',
+        consequences: [
+          'Saved board cards are kept.',
+          'GitHub token settings are kept.'
+        ],
+        confirmLabel: 'Clear Hidden',
+        onConfirm: () => {
+          hiddenSettingsFilter = '';
+          store.clearHiddenItems();
+          const statusDiv = document.getElementById('settings-connection-status');
+          if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+            statusDiv.textContent = 'Hidden issues and repositories cleared. New renders will show normal results.';
+          }
+        },
+        trigger: clearHiddenBtn
+      });
     });
   }
 
   const clearAllBtn = document.getElementById('clear-all-settings-btn');
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
-      hiddenSettingsFilter = '';
-      clearInspectorEnrichmentStates();
-      store.clearAllLocalData();
-      if (patInput) patInput.value = '';
-      if (rememberCheckbox) rememberCheckbox.checked = false;
-      if (warningBanner) warningBanner.style.display = 'none';
-      const statusDiv = document.getElementById('settings-connection-status');
-      if (statusDiv) {
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
-        statusDiv.textContent = "All PR-Dashboard local app data removed from this browser.";
-      }
+      openConfirmDialog({
+        title: 'Clear all app data?',
+        body: 'This is the full local reset for this browser.',
+        consequences: [
+          'Removes GitHub token settings.',
+          'Removes saved board cards, hidden items, Proof Log entries, profile metadata, preferences, caches, and personal scoring signals.',
+          'Exports you already downloaded are not changed.'
+        ],
+        requirePhrase: 'CLEAR ALL',
+        confirmLabel: 'Clear All',
+        onConfirm: () => {
+          hiddenSettingsFilter = '';
+          clearInspectorEnrichmentStates();
+          store.clearAllLocalData();
+          if (patInput) patInput.value = '';
+          if (rememberCheckbox) rememberCheckbox.checked = false;
+          if (warningBanner) warningBanner.style.display = 'none';
+          const statusDiv = document.getElementById('settings-connection-status');
+          if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'p-3.5 rounded bg-error-container/10 border border-error/20 text-error text-xs';
+            statusDiv.textContent = 'All PR Dashboard local app data removed from this browser.';
+          }
+        },
+        trigger: clearAllBtn
+      });
     });
   }
 
@@ -3607,7 +4290,7 @@ function renderSettings(container) {
 /**
  * 5. DETAILS INSPECTOR DRAW PANEL VIEW
  */
-function openInspector() {
+function legacyInspectorRenderer() {
   const panel = document.getElementById('inspector-overlay-drawer');
   if (!panel) return;
 
@@ -3944,6 +4627,7 @@ function openInspector() {
   panel.style.display = 'flex';
   setTimeout(() => {
     panel.classList.remove('translate-x-full');
+    panel.querySelector('#inspector-save-issue-btn, #inspector-close-btn')?.focus();
   }, 20);
 
   // Bind close
@@ -4062,16 +4746,529 @@ function openInspector() {
   });
 }
 
+function openInspector() {
+  const panel = document.getElementById('inspector-overlay-drawer');
+  if (!panel) return;
+  closeOpenPopovers();
+  if (!panel.contains(document.activeElement)) {
+    inspectorReturnFocus = document.activeElement;
+  }
+
+  const issue = store.inspectedIssue;
+  if (!issue) return;
+
+  const issueKey = getCanonicalIssueKey(issue) || String(issue.id || '');
+  if (issueKey && issueKey !== activeInspectorIssueKey) {
+    activeInspectorIssueKey = issueKey;
+    activeInspectorTab = 'overview';
+  }
+  if (!INSPECTOR_TABS.includes(activeInspectorTab)) activeInspectorTab = 'overview';
+
+  resetAdvancedContextLoadingForIssue(issue);
+  const commentEnrichmentState = getInspectorCommentEnrichmentState(issue);
+  const timelineEnrichmentState = getInspectorTimelineEnrichmentState(issue);
+  const repoSetupEnrichmentState = getInspectorRepoSetupEnrichmentState(issue);
+  const repoHistoryEnrichmentState = getInspectorRepoHistoryEnrichmentState(issue);
+  const inspectorEnrichment = getInspectorEnrichmentForScore({
+    comments: commentEnrichmentState,
+    timeline: timelineEnrichmentState,
+    setup: repoSetupEnrichmentState,
+    history: repoHistoryEnrichmentState
+  });
+  const fitObj = calculateFitScore(issue, { enrichment: inspectorEnrichment });
+  const { score } = fitObj;
+  const rating = getFitScoreRating(score);
+  const strength = getMatchStrength(score);
+  const contributionBrief = buildContributionBrief(issue, fitObj);
+  const inspectorBestFitLabel = getInspectorBestFitLabel(contributionBrief.bestFor);
+  const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
+  const saved = isIssueSavedToBoard(issue);
+  const hiddenLocally = isIssueHidden(issue) || isRepoHidden(issue);
+  const safeIssueTitle = escapeHTML(issue.title);
+  const safeIssueLanguage = escapeHTML(issue.repository?.language || 'Code');
+  const safeIssueNumber = safeInteger(issue.number);
+  const safeIssueUser = escapeHTML(issue.user ? issue.user.login : 'anonymous');
+  const safeIssueDate = escapeHTML(formatDate(issue.updated_at));
+  const safeIssueState = escapeHTML(issue.state || 'Open');
+  const safeIssueBody = escapeHTML(issue.body || 'No detailed issue summary description offered.');
+  const safeIssueUrl = getSafeIssueHtmlUrl(issue);
+  const safeProgress = safePercent(issue.progress || 0);
+  const closed = isClosedIssue(issue);
+  const riskyContribution = !fitObj.isContributionCandidate;
+  const stageLabel = getStageLabel(fitObj.stage);
+  const confidenceTone = getConfidenceTone(fitObj.confidence.level);
+  const refreshStatusHTML = inspectorRefreshStatus && inspectorRefreshStatusCardId === issue.id
+    ? `<span class="text-xs text-on-surface-variant" id="inspector-refresh-status">${escapeHTML(inspectorRefreshStatus)}</span>`
+    : '';
+  const briefVerdictTone = contributionBrief.verdict === 'Good candidate'
+    ? 'border-tertiary/25 bg-tertiary/10 text-tertiary'
+    : contributionBrief.verdict === 'Likely pass'
+      ? 'border-error/25 bg-error-container/10 text-error'
+      : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
+  const briefBestForTone = contributionBrief.bestFor === 'Skip'
+    ? 'border-error/25 bg-error-container/10 text-error'
+    : 'border-primary/20 bg-primary/10 text-primary';
+  const confidenceReasonsHTML = (fitObj.confidence.reasons || []).map(reason => `
+    <li class="flex items-start gap-2 text-xs text-on-surface-variant">
+      <span class="material-symbols-outlined text-primary text-[13px] mt-0.5">info</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const miniScoresHTML = renderMiniScoreList(fitObj.miniScores);
+  const fitScoreReasonsHTML = fitObj.rows.map(row => {
+    const signed = `${row.points >= 0 ? '+' : ''}${row.points}`;
+    const tone = row.points >= 0 ? 'text-tertiary' : 'text-error';
+    return `
+      <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+        <span class="font-mono text-xs ${tone} min-w-8">${escapeHTML(signed)}</span>
+        <span>${escapeHTML(row.label)}</span>
+      </li>
+    `;
+  }).join('');
+  const passChipsHTML = fitObj.passReasons.length ? `
+    <div class="mt-4 flex flex-wrap gap-2">
+      ${fitObj.passReasons.map(reason => `<span class="rounded-full border border-error/25 bg-error-container/10 px-2 py-0.5 text-[11px] text-error">${escapeHTML(reason)}</span>`).join('')}
+    </div>
+  ` : '';
+  const contributionBriefWhyHTML = contributionBrief.why.map(reason => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-tertiary text-[14px] mt-0.5">check_circle</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const contributionBriefRisksHTML = contributionBrief.risks.map(risk => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-error text-[14px] mt-0.5">error</span>
+      <span>${escapeHTML(risk)}</span>
+    </li>
+  `).join('');
+  const maintainerQuestionHTML = contributionBrief.maintainerQuestion ? `
+    <div class="mt-4 rounded border border-primary/20 bg-primary/5 p-3">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-primary mb-1">Suggested maintainer question</div>
+      <p class="text-sm text-on-surface-variant">${escapeHTML(contributionBrief.maintainerQuestion)}</p>
+    </div>
+  ` : '';
+  const checklist = issue.checklist || [];
+  const actionPlanHTML = checklist.map(task => {
+    const taskText = escapeHTML(task.text);
+    return `
+      <label class="flex items-start gap-3 cursor-pointer group">
+        <input class="mt-0.5 inspector-task-checkbox" type="checkbox" data-task="${taskText}" ${task.completed ? 'checked' : ''} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-background transition-colors ${task.completed ? 'line-through opacity-70' : ''}">${taskText}</span>
+      </label>
+    `;
+  }).join('');
+  const closedInspectorHTML = closed ? `
+    <div class="inspector-section rounded-lg border border-error/25 bg-error-container/10 p-4">
+      <h3 class="text-sm font-semibold text-error mb-1">This issue is closed</h3>
+      <p class="text-sm text-on-surface-variant">GitHub reports this issue as closed${issue.state_reason ? ` (${escapeHTML(issue.state_reason)})` : ''}${issue.closed_at ? ` since ${escapeHTML(formatDate(issue.closed_at))}` : ''}. Treat it as inactive, not an active candidate.</p>
+    </div>
+  ` : '';
+  const riskyLookupHTML = !closed && riskyContribution ? `
+    <div class="inspector-section rounded-lg border border-error/25 bg-error-container/10 p-4 flex items-start gap-3">
+      <span class="material-symbols-outlined text-error mt-0.5">warning</span>
+      <div>
+        <h3 class="text-sm font-semibold text-error mb-1">Not a contribution candidate</h3>
+        <p class="text-sm text-on-surface-variant">This can still be saved for tracking, but the score flags it as a likely pass.</p>
+      </div>
+    </div>
+  ` : '';
+  const hiddenInspectorHTML = hiddenLocally ? `
+    <div class="inspector-section rounded-lg border border-primary/25 bg-primary/10 p-4">
+      <h3 class="text-sm font-semibold text-primary mb-1">Hidden locally</h3>
+      <p class="text-sm text-on-surface-variant">Hidden Results suppress Find Contributions suggestions only. Lookup can still recover this item.</p>
+    </div>
+  ` : '';
+  const activityInspectorHTML = isGitHubActivityVisible(issue.github_activity) ? `
+    <div class="inspector-section rounded-lg border border-primary/20 bg-primary/10 p-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-sm font-semibold text-primary mb-1">New GitHub activity</h3>
+          <p class="text-sm text-on-surface-variant">${escapeHTML(issue.github_activity.summary || 'Updated on GitHub since last refresh.')}</p>
+        </div>
+        <button class="action-button shrink-0 px-3 py-1.5 text-xs" id="inspector-mark-reviewed-btn">Mark reviewed</button>
+      </div>
+    </div>
+  ` : '';
+  const commentEnrichmentHTML = renderCommentEnrichmentCard(commentEnrichmentState);
+  const advancedEnrichmentHTML = renderAdvancedEnrichmentCard({
+    timeline: timelineEnrichmentState,
+    setup: repoSetupEnrichmentState,
+    history: repoHistoryEnrichmentState
+  });
+  const topReasonsHTML = contributionBrief.why.slice(0, 3).map(reason => `
+    <li class="flex items-start gap-2 text-sm text-on-surface-variant">
+      <span class="material-symbols-outlined text-tertiary text-[14px] mt-0.5">check_circle</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const topRisk = contributionBrief.risks[0] || fitObj.passReasons[0] || 'No major risk flagged by the current score.';
+  const inspectorTabs = {
+    overview: `
+      <div class="space-y-4">
+        ${closedInspectorHTML}
+        ${riskyLookupHTML}
+        ${hiddenInspectorHTML}
+        ${activityInspectorHTML}
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-5" style="--inspector-section-delay: 50ms">
+          <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Verdict</div>
+              <h3 class="text-xl font-headline font-bold text-on-surface">${escapeHTML(contributionBrief.verdict)}</h3>
+              <p class="mt-2 max-w-2xl text-sm text-on-surface-variant">${escapeHTML(contributionBrief.firstMove)}</p>
+            </div>
+            <div class="flex flex-wrap gap-2 md:justify-end">
+              ${renderScoreChip(score, { showExact: true, animate: true })}
+              <span class="rounded border ${briefBestForTone} px-2 py-1 text-xs">Best fit: ${escapeHTML(inspectorBestFitLabel)}</span>
+              <span class="rounded border ${confidenceTone} px-2 py-1 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+            </div>
+          </div>
+        </section>
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-5" style="--inspector-section-delay: 100ms">
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.65fr)]">
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Top reasons</div>
+              <ul class="space-y-2">${topReasonsHTML || '<li class="text-sm text-on-surface-variant">Open Evidence for the complete score breakdown.</li>'}</ul>
+            </div>
+            <div class="rounded border border-error/20 bg-error-container/10 p-3">
+              <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-error">Top risk</div>
+              <p class="text-sm text-on-surface-variant">${escapeHTML(topRisk)}</p>
+            </div>
+          </div>
+        </section>
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-5" style="--inspector-section-delay: 150ms">
+          <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">First move</div>
+          <p class="text-sm text-on-surface">${escapeHTML(contributionBrief.firstMove)}</p>
+          ${maintainerQuestionHTML}
+        </section>
+      </div>
+    `,
+    evidence: `
+      <div class="space-y-4">
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-4" style="--inspector-section-delay: 50ms">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h4 class="text-sm font-headline font-semibold text-on-background mb-1 flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary text-[18px]">monitoring</span>
+                Score diagnostics
+              </h4>
+              <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${escapeHTML(strength.label)} - ${stageLabel} stage</p>
+            </div>
+            <span class="w-fit rounded border ${confidenceTone} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          </div>
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Confidence</div>
+              <ul class="space-y-2">${confidenceReasonsHTML}</ul>
+            </div>
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
+            </div>
+          </div>
+        </section>
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-4" style="--inspector-section-delay: 100ms">
+          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[18px]">radar</span>
+            Why this score?
+          </h4>
+          <ul class="space-y-2">${fitScoreReasonsHTML}</ul>
+          ${passChipsHTML}
+        </section>
+        <div class="inspector-section grid grid-cols-1 gap-4 xl:grid-cols-2" style="--inspector-section-delay: 150ms">
+          ${commentEnrichmentHTML}
+          ${advancedEnrichmentHTML}
+        </div>
+      </div>
+    `,
+    action: `
+      <div class="space-y-4">
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-4" style="--inspector-section-delay: 50ms">
+          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[18px]">rule</span>
+            Action Plan
+          </h4>
+          <div class="space-y-2.5">${actionPlanHTML}</div>
+          ${saved ? `
+            <div class="mt-4 pt-3 border-t border-outline-variant/30">
+              <div class="flex justify-between items-center text-[10px] text-on-surface-variant mb-1">
+                <span>Interactive Progress</span>
+                <span data-inspector-progress-value>${safeProgress}%</span>
+              </div>
+              <div class="w-full bg-surface-container-lowest rounded-full h-1 overflow-hidden">
+                <div class="bg-primary h-1 rounded-full" data-inspector-progress-bar style="width: ${safeProgress}%"></div>
+              </div>
+            </div>
+          ` : ''}
+        </section>
+        <section class="inspector-section rounded-lg border border-outline-variant bg-surface-container p-4" style="--inspector-section-delay: 100ms">
+          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[18px]">assistant_direction</span>
+            Contribution Brief
+          </h4>
+          <div class="mb-4 flex flex-wrap gap-2">
+            <span class="rounded border ${briefVerdictTone} px-2 py-0.5 text-xs">Verdict: ${escapeHTML(contributionBrief.verdict)}</span>
+            <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best fit: ${escapeHTML(inspectorBestFitLabel)}</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Why</div>
+              <ul class="space-y-2">${contributionBriefWhyHTML}</ul>
+            </div>
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Risks</div>
+              <ul class="space-y-2">${contributionBriefRisksHTML}</ul>
+            </div>
+          </div>
+          ${maintainerQuestionHTML}
+        </section>
+        <section class="inspector-section bg-surface-container rounded-lg border border-outline-variant p-5" style="--inspector-section-delay: 150ms">
+          <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary">description</span>
+            Issue Description
+          </h3>
+          <div class="prose prose-invert text-sm text-on-surface-variant font-body leading-relaxed whitespace-pre-wrap select-text">${safeIssueBody}</div>
+        </section>
+      </div>
+    `
+  };
+
+  panel.innerHTML = `
+    <div class="sticky top-0 bg-surface-dim/95 backdrop-blur-md border-b border-outline-variant p-6 z-20 flex justify-between items-start shrink-0">
+      <div class="max-w-2xl">
+        <div class="flex items-center flex-wrap gap-2 mb-3">
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${safeIssueLanguage}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${escapeHTML(strength.label)}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border border-outline-variant bg-surface-container-high text-on-surface-variant">${stageLabel}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${confidenceTone}">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          <span class="text-xs text-on-surface-variant font-mono">${repoName} #${safeIssueNumber}</span>
+        </div>
+        <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${safeIssueTitle}</h2>
+        <div class="flex flex-wrap items-center gap-4 mt-4 text-xs text-on-surface-variant">
+          <div class="flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[18px]">account_circle</span>
+            <span>Opened by <strong class="text-on-background">${safeIssueUser}</strong></span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[18px]">schedule</span>
+            <span>Updated ${safeIssueDate}</span>
+          </div>
+          <div class="flex items-center gap-1.5 ${closed ? 'text-error' : 'text-tertiary'}">
+            <span class="material-symbols-outlined text-[18px] filled-icon">${closed ? 'cancel' : 'check_circle'}</span>
+            <span>${safeIssueState}</span>
+          </div>
+        </div>
+      </div>
+      <button class="action-button interactive-button-secondary h-8 w-8 p-0" id="inspector-close-btn">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+      <!-- Actions buttons inside details -->
+      <div class="action-toolbar shrink-0">
+        <span class="text-xs text-on-surface-variant">Action center</span>
+        <div class="flex flex-wrap gap-2">
+          <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn" aria-label="${saved ? 'Saved to board - View on board' : 'Save issue'}">
+            <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
+            ${saved ? 'View on board' : 'Save issue'}
+          </button>
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
+            <span class="material-symbols-outlined text-[16px]">visibility_off</span>
+            Hide issue
+          </button>
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-repo-btn">
+            <span class="material-symbols-outlined text-[16px]">folder_off</span>
+            Hide repo
+          </button>
+          ${hiddenLocally ? `<button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-unhide-btn">
+            <span class="material-symbols-outlined text-[16px]">visibility</span>
+            Unhide
+          </button>` : ''}
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-refresh-card-btn" ${saved ? '' : 'disabled'}>
+            <span class="material-symbols-outlined text-[16px]">sync</span>
+            Refresh this card
+          </button>
+          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-move-passed-btn">
+            <span class="material-symbols-outlined text-[16px]">do_not_disturb_on</span>
+            ${saved ? 'Pass' : 'Save as passed'}
+          </button>
+          ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
+            Open on GitHub
+            <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+          </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}
+        </div>
+        ${refreshStatusHTML}
+      </div>
+      <!-- Description Block -->
+      <div class="flex flex-wrap gap-2 border-b border-outline-variant pb-3" role="tablist" aria-label="Inspector sections">
+        <button class="inspector-tab action-button px-3 py-1.5 text-xs" type="button" role="tab" data-inspector-tab="overview" aria-selected="${activeInspectorTab === 'overview'}" tabindex="${activeInspectorTab === 'overview' ? '0' : '-1'}">Overview</button>
+        <button class="inspector-tab action-button px-3 py-1.5 text-xs" type="button" role="tab" data-inspector-tab="evidence" aria-selected="${activeInspectorTab === 'evidence'}" tabindex="${activeInspectorTab === 'evidence' ? '0' : '-1'}">Evidence</button>
+        <button class="inspector-tab action-button px-3 py-1.5 text-xs" type="button" role="tab" data-inspector-tab="action" aria-selected="${activeInspectorTab === 'action'}" tabindex="${activeInspectorTab === 'action' ? '0' : '-1'}">Action</button>
+      </div>
+      <div data-inspector-body>${inspectorTabs[activeInspectorTab]}</div>
+    </div>
+  `;
+
+  panel.style.display = 'flex';
+  setTimeout(() => {
+    panel.classList.remove('translate-x-full');
+  }, 20);
+
+  const closeBtn = document.getElementById('inspector-close-btn');
+  if (closeBtn) closeBtn.addEventListener('click', closeInspector);
+
+  if (removeInspectorEscapeHandler) removeInspectorEscapeHandler();
+  removeInspectorEscapeHandler = bindEscapeToClose(() => closeInspector());
+
+  const updateInspectorTabState = (tabId) => {
+    panel.querySelectorAll('[data-inspector-tab]').forEach(button => {
+      const selected = button.getAttribute('data-inspector-tab') === tabId;
+      button.setAttribute('aria-selected', selected ? 'true' : 'false');
+      button.setAttribute('tabindex', selected ? '0' : '-1');
+      button.classList.toggle('interactive-button-primary', selected);
+      button.classList.toggle('interactive-button-secondary', !selected);
+    });
+  };
+  const bindInspectorTabContent = () => {
+    panel.querySelectorAll('.inspector-task-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const taskText = cb.getAttribute('data-task');
+        store.toggleTaskChecklist(issue.id, taskText, cb.checked);
+        updateInspectorTaskVisualState(cb);
+        cb.focus();
+      });
+    });
+  };
+
+  panel.querySelectorAll('[data-inspector-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const tabId = button.getAttribute('data-inspector-tab');
+      if (!INSPECTOR_TABS.includes(tabId)) return;
+      activeInspectorTab = tabId;
+      const body = panel.querySelector('[data-inspector-body]');
+      if (body) body.innerHTML = inspectorTabs[tabId];
+      updateInspectorTabState(tabId);
+      bindInspectorTabContent();
+    });
+  });
+  updateInspectorTabState(activeInspectorTab);
+  bindInspectorTabContent();
+  runInspectorEntryEffects(panel, issue);
+
+  const saveBtn = document.getElementById('inspector-save-issue-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      if (isIssueSavedToBoard(issue)) {
+        store.setScreen('board');
+        return;
+      }
+      if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
+        saveBtn.setAttribute('data-confirm-risk', 'true');
+        saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">warning</span> Save anyway?`;
+        saveBtn.classList.add('bg-error-container/10', 'text-error', 'border-error/30');
+        return;
+      }
+      store.saveIssueToBoard(issue);
+      runSavePop(saveBtn);
+      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">check</span> Saved to board`;
+      saveBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');
+      renderActiveScreen();
+    });
+  }
+
+  const unhideBtn = document.getElementById('inspector-unhide-btn');
+  if (unhideBtn) {
+    unhideBtn.addEventListener('click', () => {
+      const currentIssueKey = getCanonicalIssueKey(issue);
+      const repoKey = getCanonicalRepoKey(issue);
+      if (currentIssueKey) store.unhideHiddenItem('issue', currentIssueKey);
+      if (repoKey) store.unhideHiddenItem('repo', repoKey);
+      openInspector();
+    });
+  }
+
+  const refreshCardBtn = document.getElementById('inspector-refresh-card-btn');
+  if (refreshCardBtn) {
+    refreshCardBtn.addEventListener('click', async () => {
+      const savedCard = findSavedBoardCard(issue);
+      if (!savedCard) return;
+
+      inspectorRefreshStatusCardId = issue.id;
+      inspectorRefreshStatus = 'Checking GitHub...';
+      openInspector();
+
+      try {
+        const updatedCard = await refreshSingleSavedBoardCard(savedCard);
+        inspectorRefreshStatusCardId = updatedCard.id;
+        inspectorRefreshStatus = isGitHubActivityVisible(updatedCard.github_activity)
+          ? 'New GitHub activity found.'
+          : 'No changes since last refresh.';
+        store.setInspectedIssue(updatedCard);
+        openInspector();
+      } catch (error) {
+        inspectorRefreshStatusCardId = issue.id;
+        inspectorRefreshStatus = `Refresh failed: ${getSafeRefreshErrorMessage(error)}`;
+        openInspector();
+      }
+    });
+  }
+
+  const inspectorMarkReviewedBtn = document.getElementById('inspector-mark-reviewed-btn');
+  if (inspectorMarkReviewedBtn) {
+    inspectorMarkReviewedBtn.addEventListener('click', () => {
+      const updated = store.markGitHubActivityReviewed(issue.id);
+      if (updated) store.setInspectedIssue(updated);
+      openInspector();
+    });
+  }
+
+  const hideIssueBtn = document.getElementById('inspector-hide-issue-btn');
+  if (hideIssueBtn) {
+    hideIssueBtn.addEventListener('click', () => {
+      closeInspector();
+      store.hideIssue(issue);
+    });
+  }
+
+  const hideRepoBtn = document.getElementById('inspector-hide-repo-btn');
+  if (hideRepoBtn) {
+    hideRepoBtn.addEventListener('click', () => {
+      closeInspector();
+      store.hideRepo(issue);
+    });
+  }
+
+  const movePassedBtn = document.getElementById('inspector-move-passed-btn');
+  if (movePassedBtn) {
+    movePassedBtn.addEventListener('click', () => {
+      if (!isIssueSavedToBoard(issue)) store.saveIssueToBoard(issue);
+      store.moveCardToColumn(issue.id, 'Passed');
+      closeInspector();
+    });
+  }
+
+  ensureInspectorCommentEnrichment(issue);
+  ensureInspectorAdvancedEnrichment(issue);
+}
+
 function closeInspector() {
   const panel = document.getElementById('inspector-overlay-drawer');
   if (!panel) return;
 
+  if (removeInspectorEscapeHandler) {
+    removeInspectorEscapeHandler();
+    removeInspectorEscapeHandler = null;
+  }
   inspectorRefreshStatus = '';
   inspectorRefreshStatusCardId = null;
   activeAdvancedContextIssueKey = '';
+  activeInspectorIssueKey = '';
+  activeInspectorTab = 'overview';
   panel.classList.add('translate-x-full');
   setTimeout(() => {
     panel.style.display = 'none';
     store.setInspectedIssue(null);
+    restoreFocus(inspectorReturnFocus);
+    inspectorReturnFocus = null;
   }, 300);
 }

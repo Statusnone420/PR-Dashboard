@@ -9,19 +9,28 @@ function readRepoFile(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
-test('active plan is reset with archive pointers for completed work', () => {
+test('active plan is the vanilla JS UX sweep with archive pointers for completed work', () => {
   const plan = readRepoFile('PLAN.md');
 
-  assert.match(plan, /No active implementation plan is currently in progress/);
+  assert.match(plan, /# PR Dashboard UX Fix Plan/);
+  assert.match(plan, /active UX sweep plan/);
+  assert.match(plan, /vanilla JavaScript/);
+  assert.match(plan, /No new dependencies/);
+  assert.match(plan, /Do not introduce React\/TSX/);
+  assert.match(plan, /Plan \/ docs \/ baseline contract/);
+  assert.match(plan, /Core decision flow/);
+  assert.match(plan, /Primary workflow screens/);
+  assert.match(plan, /Polish and hardening/);
   assert.match(plan, /docs\/archive\/2026-05-23-match-score-full-system-implementation-plan\.md/);
-  assert.match(plan, /Ready for the next UX sweep plan/);
   assert.equal(existsSync(resolve(root, 'docs/archive/2026-05-23-match-score-full-system-implementation-plan.md')), true);
 });
 
-test('state handoff stays compact and records the scan-line implementation', () => {
+test('state handoff stays compact and records active UX sweep status', () => {
   const state = readRepoFile('STATE.md');
 
   assert.ok(state.length < 12000, 'STATE.md should stay compact after archiving history');
+  assert.match(state, /Active plan: PR Dashboard UX sweep/);
+  assert.match(state, /Phase 1 - Plan\/docs\/baseline contract/);
   assert.match(state, /Advanced Context Scan-Line Loading/);
   assert.match(state, /minimum 300ms loading display/);
   assert.match(state, /Fetching timeline/);

@@ -94,3 +94,52 @@ test('advanced context scan loading animation contract is defined', async () => 
   assert.match(css, /\.advanced-context-card-loaded\b/);
   assert.match(css, /animation:\s*fadeUp\s+220ms\s+ease-out\s+both/);
 });
+
+test('phase two decision-flow motion classes respect reduced motion', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.score-chip\b/);
+  assert.match(css, /\.score-chip--strong\b/);
+  assert.match(css, /\.score-chip--good\b/);
+  assert.match(css, /\.score-chip--possible\b/);
+  assert.match(css, /\.score-chip--skip\b/);
+  assert.match(css, /@keyframes\s+fadeSlideUp/);
+  assert.match(css, /\.inspector-section\b/);
+  assert.match(css, /animation:\s*fadeSlideUp\s+0\.3s\s+ease-out\s+forwards/);
+  assert.match(css, /@keyframes\s+savePop/);
+  assert.match(css, /\.save-pop\b/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(css, /\.save-pop\s*{\s*animation:\s*none/);
+});
+
+test('phase four density, empty state, popover, and dialog classes are defined', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  for (const token of [
+    '--space-section',
+    '--space-card',
+    '--space-card-compact',
+    '--font-meta',
+    '--line-body'
+  ]) {
+    assert.match(css, new RegExp(token));
+  }
+
+  for (const className of [
+    'app-section',
+    'app-card',
+    'app-card--compact',
+    'meta-row',
+    'chip-row',
+    'readable-copy',
+    'empty-state',
+    'empty-state--compact',
+    'danger-action-list',
+    'danger-action-row',
+    'confirm-dialog-backdrop',
+    'confirm-dialog',
+    'popover-panel'
+  ]) {
+    assert.match(css, new RegExp(`\\.${className}\\b`));
+  }
+});
