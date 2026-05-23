@@ -817,6 +817,16 @@ Each phase must be independently useful, fully verified, and stopped before the 
 
 Implementing agents must execute only the phase requested by `/goals`.
 
+### Autonomous Gated Mode Exception
+
+Default execution is one checkpoint at a time, with a stop for user review after each phase.
+
+If the user explicitly starts `/goals` with autonomous gated mode and grants approval to continue automatically after passing gates, that prompt overrides the per-phase wait-for-review stop conditions.
+
+In autonomous gated mode, still complete phases sequentially, run and record every phase gate, update `STATE.md` after each phase, keep diffs scoped to the active phase, and stop on any global stop condition.
+
+Autonomous gated mode does not allow commits, branches, pull requests, pushes, package script changes, backend/OAuth/AI additions, privacy-risk shortcuts, or skipping required UI/screenshot checks.
+
 ---
 
 # Phase 1A: Match Score v3 Core Data
@@ -1669,7 +1679,7 @@ npm run test:layout
 
 If README gallery screenshots or docs screenshots are affected, inspect package scripts and run the appropriate existing screenshot test.
 
-Do not continue to the next phase after passing gates. Report results and wait for explicit user instruction.
+Do not continue to the next phase after passing gates unless the active `/goals` prompt explicitly grants autonomous gated mode. In normal gated mode, report results and wait for explicit user instruction.
 
 ---
 
@@ -1823,8 +1833,8 @@ A fresh agent starting from this plan must:
 4. Run `git status --short`.
 5. Inspect `package.json`.
 6. Inspect the files listed in section 2 for the requested phase.
-7. Confirm which `/goals` phase was requested: Phase 1A, Phase 1B, Phase 2, Phase 3, or Phase 4.
-8. Execute only that phase.
+7. Confirm which `/goals` phase was requested: Phase 1A, Phase 1B, Phase 2, Phase 3, Phase 4, or autonomous gated mode.
+8. Execute only that phase, unless autonomous gated mode was explicitly requested.
 9. Use tests-first implementation for behavior changes.
 10. Keep diffs scoped to the phase.
 11. Do not create commits, branches, pushes, or pull requests unless the user explicitly asks.
@@ -1835,7 +1845,7 @@ A fresh agent starting from this plan must:
     - build result
     - screenshot/browser validation
     - known risk
-14. Stop after the phase and report results.
+14. Stop after the phase and report results, unless autonomous gated mode was explicitly requested and all gates passed.
 
 Do not create a new worktree. Work inside the current branch/workspace.
 
@@ -1848,6 +1858,31 @@ Do not create a new worktree. Work inside the current branch/workspace.
 ```text
 /goals
 Objective: Audit the Match Score full-system plan before implementation. Read AGENTS.md, PLAN.md, STATE.md, package.json, src/matchScore.js, src/main.js, src/profile.js, src/localData.js, src/state/store.js, and relevant tests. Do not edit files. Report whether PLAN.md is coherent, phase-bounded, compatible with current architecture, and missing safety/test/UI/data checks. Verify Phase 1A/1B boundaries, preview confidence, feedback idempotency, and enrichment cache privacy. Stop after audit.
+```
+
+### Autonomous Gated Mode Prompt
+
+```text
+/goals
+Objective: Execute PLAN.md in autonomous gated mode across Phase 1A, Phase 1B, Phase 2, Phase 3, and Phase 4.
+
+The audit findings are already incorporated into PLAN.md. Do not patch PLAN.md for those findings unless inspection proves they are missing.
+
+Treat this prompt as explicit user approval to continue from one phase/checkpoint to the next when that phase's required gates pass. Follow PLAN.md and AGENTS.md otherwise.
+
+Execute in order:
+Phase 1A -> Phase 1B -> Phase 2 -> Phase 3 -> Phase 4.
+
+Rules:
+- Keep diffs scoped to the active phase.
+- Do not create branches, commits, PRs, or pushes.
+- Run required tests/build/diff checks after each phase.
+- Run relevant UI/layout/screenshot checks after UI phases.
+- Update STATE.md after each implemented phase.
+- Never change package scripts unless you stop and ask.
+- Stop if tests/build fail and cannot be fixed, UI screenshots show serious drift/overflow, API/privacy/storage risk becomes unclear, the diff no longer maps to the phase, or the work requires backend/OAuth/AI.
+
+Final report: phases completed, files changed, tests run, screenshot checks, risks, and deferred work.
 ```
 
 ### Phase 1A Prompt
@@ -1889,4 +1924,4 @@ Objective: Execute Phase 4 only from PLAN.md: Advanced Enrichment. Add inspector
 
 ## 17. Final Instruction For Implementing Agents
 
-Implementing agents must execute only the phase requested by `/goals` and must not continue to the next phase or checkpoint without explicit user instruction.
+Implementing agents must execute only the phase or autonomous gated mode requested by `/goals` and must not continue to the next phase or checkpoint without explicit user instruction or an explicit autonomous gated mode grant.
