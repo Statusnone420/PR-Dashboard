@@ -1,5 +1,14 @@
 # PR Dashboard State
 
+## 2026-05-23 API Limits Tracker
+
+- Replaced the ambiguous header `API: n/n` badge with a desktop `API limits` button and app-styled popover for `REST/core` and `Search` primary GitHub limit buckets.
+- Added in-memory-only `rateLimits` tracking with `lastCheckedAt`/bucket `updatedAt`, while preserving the existing single `rateLimit` compatibility value. Token save/change/clear resets tracker state without adding storage keys.
+- GitHub response headers now parse `x-ratelimit-resource`, `remaining`, `limit`, `used`, and `reset`; Search updates the `search` bucket, while Lookup, saved-card refresh, and token test update `core`. Manual `Check limits` calls `GET /rate_limit` and applies the normalized snapshot in the UI.
+- Help now explains that the tracker shows primary limits only, `REST/core` powers Lookup/token test/saved-card refresh, `Search` powers Find Contributions, and secondary limits are not directly exposed by GitHub.
+- Verification on 2026-05-23: `npm test` passed 159/159, `npm run build` passed, `npm run test:layout` passed 9/9, and `git diff --check` passed. Generated A1 screenshot churn from layout testing was restored.
+- Remaining risk: popover/browser behavior was verified in Chromium via the existing layout smoke; live GitHub limit values and reset windows vary by token/public session.
+
 ## 2026-05-23 Avatar Clipping Review Fix
 
 - Kept `#user-profile-avatar` as the custom tooltip host without `overflow-hidden`.

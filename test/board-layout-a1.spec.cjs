@@ -111,6 +111,90 @@ test.describe('A1 board layout', () => {
     }
   });
 
+  test('API limits popover opens, checks limits, and closes without horizontal overflow', async ({ page }) => {
+    let rateLimitRequestCount = 0;
+    await page.route('https://api.github.com/rate_limit', async route => {
+      rateLimitRequestCount += 1;
+      const searchRemaining = rateLimitRequestCount === 1 ? 29 : 1;
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          resources: {
+            core: { limit: 5000, remaining: 4995, used: 5, reset: 1770000000 },
+            search: { limit: 30, remaining: searchRemaining, used: 30 - searchRemaining, reset: 1770000300 }
+          }
+        })
+      });
+    });
+
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(`${baseURL}/#dashboard`);
+    await expect(page.locator('#api-limits-trigger')).toBeVisible();
+    await expect(page.locator('#api-limits-popover')).toBeHidden();
+
+    await page.locator('#api-limits-trigger').click();
+    await expect(page.locator('#api-limits-popover')).toBeVisible();
+    await page.locator('#api-limits-check-btn').click();
+    await expect(page.locator('#api-limits-core-row')).toContainText('4,995 / 5,000');
+    await expect(page.locator('#api-limits-search-row')).toContainText('29 / 30');
+
+    let widths = await page.evaluate(() => ({
+      core: parseFloat(document.querySelector('#api-limits-core-row .api-limit-progress-fill').style.width),
+      search: parseFloat(document.querySelector('#api-limits-search-row .api-limit-progress-fill').style.width)
+    }));
+    expect(widths.core).toBeGreaterThan(99.8);
+    expect(widths.core).toBeLessThan(100);
+    expect(widths.search).toBeGreaterThan(96.6);
+    expect(widths.search).toBeLessThan(96.8);
+
+    let metrics = await page.evaluate(() => ({
+      documentHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      popoverHorizontalOverflow: document.getElementById('api-limits-popover').scrollWidth > document.getElementById('api-limits-popover').clientWidth + 1
+    }));
+    expect(metrics.documentHorizontalOverflow).toBe(false);
+    expect(metrics.popoverHorizontalOverflow).toBe(false);
+
+    await page.locator('#api-limits-check-btn').click();
+    await expect(page.locator('#api-limits-search-row')).toContainText('1 / 30');
+    widths = await page.evaluate(() => ({
+      search: parseFloat(document.querySelector('#api-limits-search-row .api-limit-progress-fill').style.width)
+    }));
+    expect(widths.search).toBeGreaterThan(3.2);
+    expect(widths.search).toBeLessThan(3.5);
+
+    const fillStyles = await page.evaluate(() => {
+      const searchTrack = document.querySelector('#api-limits-search-row .api-limit-progress-track');
+      const searchFill = document.querySelector('#api-limits-search-row .api-limit-progress-fill');
+      const coreTrack = document.querySelector('#api-limits-core-row .api-limit-progress-track');
+      const coreFill = document.querySelector('#api-limits-core-row .api-limit-progress-fill');
+      return {
+        searchLevel: searchFill.getAttribute('data-limit-level'),
+        searchFillBackground: getComputedStyle(searchFill).backgroundColor,
+        searchTrackBackground: getComputedStyle(searchTrack).backgroundColor,
+        coreLevel: coreFill.getAttribute('data-limit-level'),
+        coreFillBackground: getComputedStyle(coreFill).backgroundColor,
+        coreTrackBackground: getComputedStyle(coreTrack).backgroundColor
+      };
+    });
+    expect(fillStyles.searchLevel).toBe('critical');
+    expect(fillStyles.coreLevel).toBe('healthy');
+    expect(fillStyles.searchFillBackground).not.toBe('rgba(0, 0, 0, 0)');
+    expect(fillStyles.coreFillBackground).not.toBe('rgba(0, 0, 0, 0)');
+    expect(fillStyles.searchFillBackground).not.toBe(fillStyles.searchTrackBackground);
+    expect(fillStyles.coreFillBackground).not.toBe(fillStyles.coreTrackBackground);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#api-limits-popover')).toBeHidden();
+
+    await page.locator('#api-limits-trigger').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#api-limits-popover')).toBeVisible();
+
+    await page.mouse.click(20, 20);
+    await expect(page.locator('#api-limits-popover')).toBeHidden();
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((board) => {
       localStorage.clear();

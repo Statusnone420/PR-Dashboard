@@ -212,6 +212,57 @@ function retryAfterFromResponse(response) {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseRateLimitNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = parseInt(value, 10);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function normalizeRateLimitResource(value, fallback = 'core') {
+  const resource = String(value || '').toLowerCase();
+  if (resource === 'core') return 'core';
+  if (resource === 'search') return 'search';
+  return fallback === 'search' ? 'search' : 'core';
+}
+
+export function rateLimitFromResponse(response, fallbackResource = 'core', options = {}) {
+  const resource = normalizeRateLimitResource(
+    response.headers.get('x-ratelimit-resource'),
+    fallbackResource
+  );
+
+  return {
+    resource,
+    remaining: parseRateLimitNumber(response.headers.get('x-ratelimit-remaining')),
+    limit: parseRateLimitNumber(response.headers.get('x-ratelimit-limit')),
+    used: parseRateLimitNumber(response.headers.get('x-ratelimit-used')),
+    reset: parseRateLimitNumber(response.headers.get('x-ratelimit-reset')),
+    updatedAt: options.now || new Date().toISOString()
+  };
+}
+
+function normalizeRateLimitBucket(data, resource, options = {}) {
+  if (!data || typeof data !== 'object') return null;
+  return {
+    resource,
+    limit: parseRateLimitNumber(data.limit),
+    remaining: parseRateLimitNumber(data.remaining),
+    used: parseRateLimitNumber(data.used),
+    reset: parseRateLimitNumber(data.reset),
+    updatedAt: options.now || new Date().toISOString()
+  };
+}
+
+export function normalizeRateLimitStatusPayload(payload, options = {}) {
+  const now = options.now || new Date().toISOString();
+  const resources = payload?.resources || {};
+  return {
+    core: normalizeRateLimitBucket(resources.core, 'core', { now }),
+    search: normalizeRateLimitBucket(resources.search, 'search', { now }),
+    lastCheckedAt: now
+  };
+}
+
 function isRefreshRateLimitResponse(response, errorData, rateLimit) {
   if (response.status === 429) return true;
   if (response.status !== 403) return false;
@@ -235,8 +286,8 @@ export async function fetchIssueMetadataForRefresh(issue, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const response = await fetchImpl(url, createGitHubRequestOptions(url, token, { headers }));
 
-  const rateLimit = rateLimitFromResponse(response);
-  store.setRateLimit(rateLimit);
+  const rateLimit = rateLimitFromResponse(response, 'core');
+  store.setRateLimit(rateLimit, 'core');
   const responseEtag = response.headers.get('etag') || etag || '';
 
   if (response.status === 304) {
@@ -275,17 +326,6 @@ export async function fetchIssueMetadata(issue) {
   return result.notModified ? normalizeGitHubIssue(issue) : result.issue;
 }
 
-function rateLimitFromResponse(response) {
-  const remaining = response.headers.get('x-ratelimit-remaining');
-  const limit = response.headers.get('x-ratelimit-limit');
-  const reset = response.headers.get('x-ratelimit-reset');
-  return {
-    remaining: remaining ? parseInt(remaining, 10) : null,
-    limit: limit ? parseInt(limit, 10) : null,
-    reset: reset ? parseInt(reset, 10) : null
-  };
-}
-
 function getLookupRepoContextFromIssue(issue) {
   return extractRepoFullName(issue) || issue?.repository?.full_name || '';
 }
@@ -293,12 +333,13 @@ function getLookupRepoContextFromIssue(issue) {
 export async function fetchExactIssue(reference, options = {}) {
   const url = buildExactIssueApiUrl(reference);
   const mode = 'lookup';
+  const fetchImpl = options.fetchImpl || fetch;
   store.setSearchState(true, null);
 
   try {
-    const response = await fetch(url, createGitHubRequestOptions(url, options.token ?? store.githubToken));
-    const rateLimitInfo = rateLimitFromResponse(response);
-    store.setRateLimit(rateLimitInfo);
+    const response = await fetchImpl(url, createGitHubRequestOptions(url, options.token ?? store.githubToken));
+    const rateLimitInfo = rateLimitFromResponse(response, 'core');
+    store.setRateLimit(rateLimitInfo, 'core');
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -308,7 +349,8 @@ export async function fetchExactIssue(reference, options = {}) {
     const issue = normalizeGitHubIssue(await response.json());
     const hydrated = await hydrateIssueRepositories([issue], {
       token: options.token ?? store.githubToken,
-      forceRefresh: Boolean(options.forceRepoRefresh)
+      forceRefresh: Boolean(options.forceRepoRefresh),
+      fetchImpl
     });
     const queryPreview = `GET ${buildExactIssueApiUrl(reference)}`;
     store.setLastSearchMetadata({
@@ -351,7 +393,7 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
   if (!forceRefresh && recentSearchCache && recentSearchCache.key === cacheKey) {
     // Update store with cached rate limits
     if (recentSearchCache.rateLimit) {
-      store.setRateLimit(recentSearchCache.rateLimit);
+      store.setRateLimit(recentSearchCache.rateLimit, 'search');
     }
     store.setLastSearchMetadata({
       mode,
@@ -371,8 +413,8 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
     const response = await fetch(url, createGitHubRequestOptions(url, token));
 
     // Parse rate limits from headers
-    const rateLimitInfo = rateLimitFromResponse(response);
-    store.setRateLimit(rateLimitInfo);
+    const rateLimitInfo = rateLimitFromResponse(response, 'search');
+    store.setRateLimit(rateLimitInfo, 'search');
 
     if (!response.ok) {
       // Handle rate limits and forbidden status
@@ -425,4 +467,32 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
     store.setSearchState(false, message, null);
     throw error;
   }
+}
+
+export async function fetchGitHubRateLimitStatus(options = {}) {
+  const url = 'https://api.github.com/rate_limit';
+  const token = options.token ?? store.githubToken;
+  const fetchImpl = options.fetchImpl || fetch;
+  const response = await fetchImpl(url, createGitHubRequestOptions(url, token));
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `GitHub rate-limit status failed with status code ${response.status}`);
+  }
+
+  return normalizeRateLimitStatusPayload(await response.json(), { now: options.now });
+}
+
+export async function fetchGitHubUserForToken(token, options = {}) {
+  const url = 'https://api.github.com/user';
+  const fetchImpl = options.fetchImpl || fetch;
+  const response = await fetchImpl(url, createGitHubRequestOptions(url, token));
+  const rateLimit = rateLimitFromResponse(response, 'core');
+  store.setRateLimit(rateLimit, 'core');
+
+  if (!response.ok) {
+    throw new Error(`Auth test rejected: ${response.statusText} (${response.status})`);
+  }
+
+  return response.json();
 }

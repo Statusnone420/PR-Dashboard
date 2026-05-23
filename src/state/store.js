@@ -42,6 +42,54 @@ function cloneFilters(filters) {
   return JSON.parse(JSON.stringify(filters));
 }
 
+function createEmptyRateLimitBucket(resource) {
+  return {
+    resource,
+    remaining: null,
+    limit: null,
+    used: null,
+    reset: null,
+    updatedAt: null
+  };
+}
+
+function createDefaultRateLimits() {
+  return {
+    core: createEmptyRateLimitBucket('core'),
+    search: createEmptyRateLimitBucket('search'),
+    lastResource: null,
+    status: 'idle',
+    error: null,
+    lastCheckedAt: null
+  };
+}
+
+function normalizeRateLimitResource(resource, fallback = 'core') {
+  const value = String(resource || '').toLowerCase();
+  if (value === 'search') return 'search';
+  if (value === 'core') return 'core';
+  return fallback === 'search' ? 'search' : 'core';
+}
+
+function normalizeRateLimitNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeRateLimitBucket(rateLimit = {}, resourceOverride = null) {
+  const resource = normalizeRateLimitResource(resourceOverride || rateLimit.resource);
+  return {
+    ...createEmptyRateLimitBucket(resource),
+    ...rateLimit,
+    resource,
+    remaining: normalizeRateLimitNumber(rateLimit.remaining),
+    limit: normalizeRateLimitNumber(rateLimit.limit),
+    used: normalizeRateLimitNumber(rateLimit.used),
+    reset: normalizeRateLimitNumber(rateLimit.reset),
+    updatedAt: rateLimit.updatedAt || new Date().toISOString()
+  };
+}
+
 export class AppStore {
   constructor() {
     // 1. Navigation State
@@ -71,8 +119,12 @@ export class AppStore {
     this.rateLimit = {
       remaining: null,
       limit: null,
-      reset: null
+      used: null,
+      reset: null,
+      resource: null,
+      updatedAt: null
     };
+    this.rateLimits = createDefaultRateLimits();
 
     // Filter selections: filters are last applied; draftFilters drive controls and query preview.
     this.filters = createDefaultFilters();
@@ -124,6 +176,7 @@ export class AppStore {
     } else {
       localStorage.removeItem('pr_dashboard_token');
     }
+    this.resetRateLimits({ notify: false });
     this.notify();
   }
 
@@ -134,6 +187,7 @@ export class AppStore {
     localStorage.removeItem('pr_dashboard_token');
     clearProfile(localStorage);
     this.profile = null;
+    this.resetRateLimits({ notify: false });
     this.notify();
   }
 
@@ -458,8 +512,71 @@ export class AppStore {
     this.notify();
   }
 
-  setRateLimit(rateLimit) {
-    this.rateLimit = { ...this.rateLimit, ...rateLimit };
+  resetRateLimits(options = {}) {
+    this.rateLimit = {
+      remaining: null,
+      limit: null,
+      used: null,
+      reset: null,
+      resource: null,
+      updatedAt: null
+    };
+    this.rateLimits = createDefaultRateLimits();
+    if (options.notify !== false) {
+      this.notify();
+    }
+  }
+
+  setRateLimit(rateLimit, resourceOverride = null, options = {}) {
+    const bucket = normalizeRateLimitBucket(rateLimit, resourceOverride);
+    const nextRateLimits = {
+      ...this.rateLimits,
+      [bucket.resource]: bucket,
+      lastResource: bucket.resource
+    };
+
+    this.rateLimits = nextRateLimits;
+    this.rateLimit = { ...bucket };
+    if (options.notify !== false) {
+      this.notify();
+    }
+  }
+
+  setRateLimits(snapshot = {}, options = {}) {
+    let lastResource = this.rateLimits.lastResource;
+    const nextRateLimits = { ...this.rateLimits };
+
+    for (const resource of ['core', 'search']) {
+      if (snapshot[resource]) {
+        const bucket = normalizeRateLimitBucket(snapshot[resource], resource);
+        nextRateLimits[resource] = bucket;
+        lastResource = resource;
+      }
+    }
+
+    nextRateLimits.lastResource = snapshot.lastResource || lastResource;
+    if (snapshot.status !== undefined) nextRateLimits.status = snapshot.status;
+    if (snapshot.error !== undefined) nextRateLimits.error = snapshot.error;
+    if (snapshot.lastCheckedAt !== undefined) nextRateLimits.lastCheckedAt = snapshot.lastCheckedAt;
+
+    this.rateLimits = nextRateLimits;
+    if (nextRateLimits.lastResource && nextRateLimits[nextRateLimits.lastResource]) {
+      this.rateLimit = { ...nextRateLimits[nextRateLimits.lastResource] };
+    }
+    if (options.notify !== false) {
+      this.notify();
+    }
+  }
+
+  setRateLimitStatus(status, error = null, options = {}) {
+    this.rateLimits = {
+      ...this.rateLimits,
+      status,
+      error,
+      lastCheckedAt: options.lastCheckedAt !== undefined
+        ? options.lastCheckedAt
+        : this.rateLimits.lastCheckedAt
+    };
     this.notify();
   }
 

@@ -77,9 +77,26 @@
       
       <!-- Right actions: Notification, Settings, Rate limit & Profile -->
       <div class="flex items-center gap-4" id="header-right-actions">
-        <!-- Optional Rate Limit Status Indicator -->
-        <div class="desktop-only text-xs text-on-surface-variant bg-surface-container px-2.5 py-1 rounded-sm border border-outline-variant font-mono" id="rate-limit-badge" style="display:none;">
-          API: <span id="rate-limit-remaining">--</span>/<span id="rate-limit-limit">--</span>
+        <!-- API limits tracker -->
+        <div class="desktop-only api-limits-wrapper" id="api-limits-wrapper">
+          <button class="api-limits-trigger" id="api-limits-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="api-limits-popover">
+            <span class="material-symbols-outlined text-[16px]">speed</span>
+            <span id="api-limits-summary">API limits</span>
+          </button>
+          <div class="api-limits-popover hidden" id="api-limits-popover" role="dialog" aria-label="GitHub API limits">
+            <div class="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-semibold text-on-surface">GitHub API limits</div>
+                <div class="mt-1 text-xs text-on-surface-variant">Primary REST/core and Search buckets for this browser session.</div>
+              </div>
+              <button class="interactive-button interactive-button-secondary px-3 py-1.5 text-xs" id="api-limits-check-btn" type="button">Check limits</button>
+            </div>
+            <div class="space-y-4">
+              <div class="api-limits-row" id="api-limits-core-row"></div>
+              <div class="api-limits-row" id="api-limits-search-row"></div>
+            </div>
+            <div class="api-limits-status mt-4 text-xs text-on-surface-variant" id="api-limits-status">Uses latest GitHub response headers. Check limits for a full snapshot.</div>
+          </div>
         </div>
         
         <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-notifications" aria-label="Review reminders" data-tooltip="Review reminders" data-tooltip-position="bottom" style="background:none; border:none;">
