@@ -529,10 +529,13 @@ export class AppStore {
 
   setRateLimit(rateLimit, resourceOverride = null, options = {}) {
     const bucket = normalizeRateLimitBucket(rateLimit, resourceOverride);
+    const clearStaleError = this.rateLimits.status === 'error';
     const nextRateLimits = {
       ...this.rateLimits,
       [bucket.resource]: bucket,
-      lastResource: bucket.resource
+      lastResource: bucket.resource,
+      status: clearStaleError ? 'idle' : this.rateLimits.status,
+      error: clearStaleError ? null : this.rateLimits.error
     };
 
     this.rateLimits = nextRateLimits;

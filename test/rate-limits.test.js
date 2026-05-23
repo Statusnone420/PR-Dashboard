@@ -161,6 +161,26 @@ test('cached search replay restores search bucket without manual-check status', 
   assert.equal(store.rateLimits.lastCheckedAt, null);
 });
 
+test('successful header updates clear stale manual-check errors', async () => {
+  resetStorage();
+  const { store } = await import('../src/state/store.js');
+  store.resetRateLimits();
+  store.setRateLimitStatus('error', 'temporary failure', { lastCheckedAt: '2026-05-23T12:00:00.000Z' });
+
+  store.setRateLimit({
+    resource: 'search',
+    remaining: 29,
+    limit: 30,
+    used: 1,
+    reset: 1770000300,
+    updatedAt: '2026-05-23T12:01:00.000Z'
+  }, 'search');
+
+  assert.equal(store.rateLimits.status, 'idle');
+  assert.equal(store.rateLimits.error, null);
+  assert.equal(store.rateLimits.search.remaining, 29);
+});
+
 test('lookup, refresh, and token test update the core rate-limit bucket', async () => {
   resetStorage();
   const { store } = await import('../src/state/store.js');
@@ -169,6 +189,7 @@ test('lookup, refresh, and token test update the core rate-limit bucket', async 
     fetchGitHubUserForToken,
     fetchIssueMetadataForRefresh
   } = await import('../src/api/github.js');
+  store.githubToken = 'sample-token';
   store.resetRateLimits();
 
   await fetchExactIssue({ owner: 'openai', repo: 'codex', number: 42 }, {
@@ -225,6 +246,39 @@ test('lookup, refresh, and token test update the core rate-limit bucket', async 
   assert.equal(user.login, 'hardening-check');
   assert.equal(store.rateLimits.core.remaining, 4996);
   assert.equal(store.rateLimits.lastResource, 'core');
+  store.githubToken = '';
+});
+
+test('unsaved token tests do not update the active-session rate-limit tracker', async () => {
+  resetStorage();
+  const { store } = await import('../src/state/store.js');
+  const { fetchGitHubUserForToken } = await import('../src/api/github.js');
+  store.githubToken = 'active-token';
+  store.resetRateLimits();
+  store.setRateLimit({
+    resource: 'core',
+    remaining: 4990,
+    limit: 5000,
+    used: 10,
+    reset: 1770000000,
+    updatedAt: '2026-05-23T12:00:00.000Z'
+  }, 'core');
+
+  const user = await fetchGitHubUserForToken('draft-token', {
+    fetchImpl: async () => response({ login: 'draft-token-user' }, {
+      headers: {
+        'x-ratelimit-remaining': '42',
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-used': '4958',
+        'x-ratelimit-reset': '1770000000'
+      }
+    })
+  });
+
+  assert.equal(user.login, 'draft-token-user');
+  assert.equal(store.rateLimits.core.remaining, 4990);
+  assert.equal(store.rateLimits.core.used, 10);
+  store.githubToken = '';
 });
 
 test('fetchGitHubRateLimitStatus returns normalized snapshot without mutating store', async () => {

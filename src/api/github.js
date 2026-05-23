@@ -488,7 +488,13 @@ export async function fetchGitHubUserForToken(token, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const response = await fetchImpl(url, createGitHubRequestOptions(url, token));
   const rateLimit = rateLimitFromResponse(response, 'core');
-  store.setRateLimit(rateLimit, 'core');
+  const tokenValue = String(token || '').trim();
+  const activeToken = String(store.githubToken || '').trim();
+  const shouldTrackRateLimit = options.trackRateLimit === true
+    || (options.trackRateLimit !== false && tokenValue && tokenValue === activeToken);
+  if (shouldTrackRateLimit) {
+    store.setRateLimit(rateLimit, 'core');
+  }
 
   if (!response.ok) {
     throw new Error(`Auth test rejected: ${response.statusText} (${response.status})`);

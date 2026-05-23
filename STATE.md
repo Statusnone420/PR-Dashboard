@@ -1,5 +1,12 @@
 # PR Dashboard State
 
+## 2026-05-23 API Limits Tracker Review Fixes
+
+- Addressed PR #6 Codex review findings: successful GitHub response-header limit updates now clear stale manual `Check limits` error state, and unsaved Settings token tests no longer mutate the active-session API limits tracker.
+- Preserved active saved-token behavior: `/user` token tests still update the `REST/core` bucket when the tested token matches the currently active app token.
+- Verification on 2026-05-23: `npm test` passed 161/161, `npm run build` passed, `npm run test:layout` passed 9/9, and `git diff --check` passed.
+- Remaining risk: live GitHub limit headers vary by token/public session; the unsaved-token edge case is covered by unit tests rather than a real PAT.
+
 ## 2026-05-23 API Limits Tracker
 
 - Replaced the ambiguous header `API: n/n` badge with a desktop `API limits` button and app-styled popover for `REST/core` and `Search` primary GitHub limit buckets.
