@@ -81,6 +81,21 @@ test('settings exposes hidden results management copy', () => {
   assert.match(mainJs, /Clear Hidden/);
 });
 
+test('settings token input discourages browser password saving', () => {
+  const { mainJs } = readCopySources();
+  const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
+  const tokenInput = settings.match(/<input[^>]+id="settings-pat-input"[^>]*>/)?.[0] || '';
+
+  assert.match(tokenInput, /type="password"/);
+  assert.match(tokenInput, /autocomplete="new-password"/);
+  assert.match(tokenInput, /autocapitalize="off"/);
+  assert.match(tokenInput, /autocorrect="off"/);
+  assert.match(tokenInput, /spellcheck="false"/);
+  assert.match(tokenInput, /data-lpignore="true"/);
+  assert.match(tokenInput, /data-1p-ignore="true"/);
+  assert.match(tokenInput, /data-bwignore="true"/);
+});
+
 test('profile, proof log, export import, and review reminders are visible product surfaces', () => {
   const { indexHtml, mainJs, boardRefreshJs } = readCopySources();
   const copy = visibleAppCopy({ indexHtml, mainJs, boardRefreshJs });

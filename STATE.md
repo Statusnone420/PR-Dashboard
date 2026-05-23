@@ -1,5 +1,12 @@
 # PR Dashboard State
 
+## 2026-05-23 Token Input Password Manager Hint
+
+- Added browser/password-manager suppression hints to the Settings GitHub token input: `autocomplete="new-password"`, autocap/autocorrect/spellcheck off, and common password-manager ignore attributes. This keeps the token field masked while discouraging Chrome and third-party managers from treating Save Configuration as a login password save.
+- Added UI copy/markup contract coverage so the token input keeps those hints.
+- Verification on 2026-05-23: `node --test test/ui-copy.test.js` passed 21/21, `npm test` passed 211/211, `npm run build` passed, and `git diff --check` passed.
+- Remaining risk: browsers and password managers use their own heuristics, so these attributes strongly discourage the prompt but cannot guarantee every manager will obey them.
+
 ## 2026-05-23 Phase 4 Setup Enrichment DevTools Noise Fix
 
 - Updated inspector-only repo setup enrichment to fetch the repository root contents listing first, infer setup evidence from discovered entries, and fetch bodies only for discovered manifest files needed for test/build hints. Missing `package.json`, `pyproject.toml`, `pom.xml`, README, CONTRIBUTING, `.github`, `workflows`, or `docs/CONTRIBUTING*` files are now normal missing evidence instead of direct optional-file probes.
