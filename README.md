@@ -15,7 +15,7 @@ Find GitHub issues worth contributing to, not just random noise.
 
 </div>
 
-![PR Dashboard Find Contributions view](qa_screenshots/finder-v2/find-contributions-results-1920x1080.png)
+![PR Dashboard Find Contributions results for TEAMMATES issue candidates](qa_screenshots/readme/hero-find-contributions-1920x1080.png)
 
 ## What It Does
 
@@ -25,15 +25,27 @@ The app runs entirely in the browser. There is no backend sync in v1, no model A
 
 ## Product Proof Point
 
-In May 2026, PR Dashboard helped me discover and complete a [merged contribution to TEAMMATES](https://github.com/TEAMMATES/teammates/pull/13998), a free open-source education platform for peer feedback.
+In May 2026, PR Dashboard helped me discover and complete [TEAMMATES/teammates#13998](https://github.com/TEAMMATES/teammates/pull/13998), a merged contribution to TEAMMATES, a free open-source education platform for peer feedback.
 
-PR Dashboard surfaced [issue #13997](https://github.com/TEAMMATES/teammates/issues/13997), helped me evaluate whether it was a good fit, and supported the workflow from issue discovery through local verification, CI, review feedback, and merge.
+PR Dashboard surfaced [TEAMMATES/teammates#13997](https://github.com/TEAMMATES/teammates/issues/13997), helped me evaluate whether it was a good fit, and supported the workflow from issue discovery through local verification, CI, review feedback, and merge.
 
 That is the workflow PR Dashboard is designed to make easier:
 
 **discovery → confidence → action → contribution**
 
 This is not an endorsement, partnership, or affiliation with TEAMMATES. It is a real example of PR Dashboard helping turn zero prior context into a useful open-source contribution.
+
+## Product Tour
+
+| Find Contributions | Board workflow |
+| --- | --- |
+| <img src="qa_screenshots/readme/hero-find-contributions-1920x1080.png" alt="Find Contributions results showing scored TEAMMATES issue candidates" width="430"> | <img src="qa_screenshots/readme/board-workflow-1920x1080.png" alt="Contribution Board with active workflow lanes and a merged TEAMMATES proof card" width="430"> |
+| Score and compare real public issues with transparent fit signals before saving one to the Board. | Move candidates through local review lanes, track checklist progress, and keep completed work separate. |
+
+| Proof Log and reminders | API limits |
+| --- | --- |
+| <img src="qa_screenshots/readme/profile-proof-log-1920x1080.png" alt="Profile view with Proof Log and Review reminders for a merged TEAMMATES contribution" width="430"> | <img src="qa_screenshots/readme/api-limits-popover-1920x1080.png" alt="Dashboard API limits popover showing REST core and Search buckets" width="430"> |
+| Keep local completion history and review reminders without a backend account or remote sync. | See primary REST/core and Search rate-limit buckets from response headers or a manual check. |
 
 ## Highlights
 
@@ -44,8 +56,9 @@ This is not an endorsement, partnership, or affiliation with TEAMMATES. It is a 
 - **Hidden Results** lets you hide noisy issues or repos locally, then review or unhide them in Settings.
 - **Board flow** saves candidates into a local Board for follow-up.
 - **Proof Log** preserves completed local contribution history when board cards move to Merged.
-- **Profile and Review reminders** summarize Proof Log records, Board health, profile avatar, and follow-up reminders without a backend.
+- **Profile and Review reminders** summarize Proof Log records, Board health, profile avatar, GitHub activity, and follow-up reminders without a backend.
 - **Export/Import Local Data** moves board, hidden, profile, and Proof Log data between browsers without exporting tokens.
+- **API limits** shows primary REST/core and Search buckets so Lookup, refresh, and Find Contributions limits are easier to reason about.
 - **Optional GitHub token** increases rate limits while staying browser-local unless you choose remember mode.
 
 ## v1 Local-First Scope
@@ -66,6 +79,7 @@ Useful commands:
 ```bash
 npm test
 npm run build
+npm run test:readme-screenshots
 ```
 
 ## How It Handles Data
@@ -75,6 +89,7 @@ PR Dashboard talks directly to the GitHub REST API from your browser.
 - Public searches work without a token.
 - Tokens are optional and only used for GitHub API requests.
 - Find Contributions uses GitHub Search API limits. Exact Lookup and saved-card refresh use normal REST/core issue endpoints; see [GitHub REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [GitHub Search API limits](https://docs.github.com/en/rest/search/search?apiVersion=2026-03-10).
+- API limits are tracked from response headers when possible. The manual `Check limits` action calls GitHub's rate-limit endpoint and shows the primary `core` and `search` buckets.
 - Remembering a token is opt-in and uses browser `localStorage`.
 - Saved board cards stay local to your browser.
 - Proof Log entries, profile metadata, Hidden Results keys, and board-derived reminder data stay local to your browser.
@@ -92,8 +107,16 @@ Read the full security notes in [docs/SECURITY.md](docs/SECURITY.md).
 src/
   api/                 GitHub API and repo metadata helpers
   state/               Local app store
+  boardConstants.js    Board lane and refresh constants
+  boardModel.js        Board storage, migration, and movement helpers
+  boardRefresh.js      Saved-card refresh orchestration
   contributionBrief.js Rules-based contribution guidance
+  dashboardHero.js     Dashboard next-action recommendation logic
+  dashboardMetrics.js  Local dashboard metric summaries
+  dashboardReviewFlow.js Local review-flow summaries
+  githubActivity.js    Saved-card activity comparison helpers
   hiddenItems.js       Local hidden issue/repo storage
+  issueKeys.js         Canonical issue and pull request keys
   proofLog.js          Local completed-contribution history
   profile.js           Local non-secret profile metadata
   localData.js         Local export/import helpers
@@ -101,6 +124,10 @@ src/
   lookup.js            Exact Lookup parsing
   main.js              SPA rendering and UI bindings
   matchScore.js        Match/Fit Score logic
+  routing.js           Hash route parsing
+  searchInteractions.js Filter and preset interactions
+  security.js          Escaping and GitHub URL validation
+  styles.css           Tailwind component layer and app CSS
 test/                  Node test suite
 docs/SECURITY.md       Security and token handling notes
 ```

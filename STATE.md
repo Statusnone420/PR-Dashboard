@@ -1,5 +1,13 @@
 # PR Dashboard State
 
+## 2026-05-23 README Gallery And Docs Sweep
+
+- Refreshed the README hero and added a compact Product Tour gallery under `qa_screenshots/readme/`, using deterministic TEAMMATES public GitHub snapshots for `#13997`, `#13998`, `#14005`, `#13698`, `#13944`, and `#14003`.
+- Added README gallery verification: `test/readme-gallery.test.js` checks local README image/link targets and showcase copy, while `test/readme-gallery.spec.cjs` seeds curated board/profile/proof/reminder state, mocks public GitHub API responses, asserts no banned mock/slop terms, checks console/page health and horizontal overflow, and captures four 1920x1080 README screenshots.
+- Swept README, `docs/SECURITY.md`, and `docs/DATA_MODEL.md` for current v1 local-first behavior, GitHub API limit wording, token handling, avatar privacy handling, local export/import, and active-board refresh boundaries. `LICENSE` was checked and left unchanged.
+- Verification on 2026-05-23: `npm test` passed 163/163, `npm run build` passed, `npm run test:readme-screenshots` passed 4/4, and `git diff --check` passed.
+- Remaining risk: screenshot data is deterministic and based on public GitHub snapshots captured for the README showcase; live GitHub issue status, repository statistics, and API limit policy can still change after the screenshots are committed. Visual smoke was Chromium-only and uses mocked public API responses, no real PAT.
+
 ## 2026-05-23 API Limits Tracker Review Fixes
 
 - Addressed PR #6 Codex review findings: successful GitHub response-header limit updates now clear stale manual `Check limits` error state, and unsaved Settings token tests no longer mutate the active-session API limits tracker.

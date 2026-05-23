@@ -8,6 +8,7 @@
     "build": "vite build",
     "test": "node --test test/*.test.js",
     "test:layout": "playwright test test/board-layout-a1.spec.cjs --config test/playwright-layout.config.cjs --browser=chromium --reporter=line",
+    "test:readme-screenshots": "playwright test test/readme-gallery.spec.cjs --config test/playwright-readme.config.cjs --browser=chromium --reporter=line",
     "preview": "vite preview"
   },
   "devDependencies": {

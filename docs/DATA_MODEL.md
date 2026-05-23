@@ -22,6 +22,8 @@ The board starts empty in normal app startup. It is not seeded with fake/demo ca
 
 Mock issue data may exist in source files for tests, screenshots, or future explicit Demo Mode only. It must not be loaded into the production board during normal startup.
 
+README screenshots use curated public GitHub snapshots for deterministic rendering. Screenshot fixtures must keep public issue titles, numbers, labels, assignment state, comment counts, and URLs coherent, and must not mix invented issue content with real GitHub URLs.
+
 Old seeded board cards are detected by their known mock repository/issue signatures and removed during migration. The migration writes `pr_dashboard_board_migration_v1=seeded-mock-cards-removed` so the app can record that cleanup occurred.
 
 The app must never combine fake issue titles/bodies/states/dates with real GitHub URLs.
@@ -30,7 +32,9 @@ The app must never combine fake issue titles/bodies/states/dates with real GitHu
 
 Saved cards can become stale because GitHub issues can be renamed, closed, relabeled, reassigned, or updated after saving.
 
-The board's "Refresh saved issues" action fetches current issue metadata with `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` and updates:
+Manual saved-card refresh actions fetch current issue metadata with `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}`. `Refresh stale cards` selects stale cards in active workflow lanes and caps the primary batch at 10 requests. `Refresh all active cards` covers active workflow lanes only. `Merged` and `Passed` are completed local outcomes and are excluded from active-board refresh.
+
+Saved-card refresh updates:
 
 - title
 - state
@@ -43,7 +47,7 @@ The board's "Refresh saved issues" action fetches current issue metadata with `G
 - html_url
 - repository identity
 
-Local workflow data such as checklist progress and board column is preserved. Closed issues are shown with a warning and can be moved to Passed.
+Local workflow data such as checklist progress and board column is preserved. Closed issues in active lanes are shown with a warning and can be moved to Passed or Merged locally.
 
 ## Proof Log
 

@@ -21,7 +21,7 @@
 - Find Contributions uses `GET https://api.github.com/search/issues`, which is governed by GitHub Search API limits: 10 requests per minute without a token and 30 requests per minute with authentication.
 - Exact Lookup and saved-card refresh use `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}`, which uses the normal REST/core primary rate limit: 60 requests per hour without a token and 5,000 requests per hour with a user/PAT token.
 - Repository metadata hydration and Settings "Test Connection" also use normal REST/core requests.
-- The app uses response rate-limit headers instead of calling `/rate_limit` for normal operation. See GitHub's [REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [Search API limits](https://docs.github.com/en/rest/search/search?apiVersion=2026-03-10).
+- The app uses response rate-limit headers for normal operation. The manual "Check limits" action calls `GET https://api.github.com/rate_limit` and shows the primary `core` and `search` buckets. GitHub does not expose a direct secondary-limit status bucket. See GitHub's [REST API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10) and [rate-limit endpoint notes](https://docs.github.com/en/rest/rate-limit/rate-limit?apiVersion=2026-03-10).
 
 ## Token Storage
 
@@ -36,14 +36,14 @@
 - No token is recommended for normal public issue search unless GitHub rate limits get in the way.
 - If you use a fine-grained token, keep it limited to public repositories and read-only metadata/content access.
 - If you use a classic token, avoid private repository and write scopes. `public_repo` is the broadest scope that should be considered for public-only workflows.
-- Do not grant workflow, admin, package, deployment, organization, or private repository scopes for v0.1.
+- Do not grant workflow, admin, package, deployment, organization, or private repository scopes for v1.
 
 ## Data Sent To GitHub
 
 - Public issue searches send the GitHub search query and selected filters to `https://api.github.com/search/issues`.
 - Exact Lookup sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests after local input validation.
 - Finder v2 hydrates repository metadata with read-only `GET https://api.github.com/repos/{owner}/{repo}` requests so stars/forks and local stars filtering can work from non-secret repo data.
-- Saved issue refresh sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests.
+- Manual saved-card refresh sends read-only `GET https://api.github.com/repos/{owner}/{repo}/issues/{number}` requests for active board cards. Completed `Merged` and `Passed` lanes are excluded from active-board refresh.
 - Settings "Test Connection" sends a read-only `GET https://api.github.com/user` request with the entered token.
 - The app does not have a backend and does not send tokens, board data, or settings to any app-owned server.
 - Board cards, hidden result keys, and non-secret UI state are stored locally in the browser.
