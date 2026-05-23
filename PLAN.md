@@ -1,338 +1,509 @@
 # PR Dashboard UX Fix Plan
 
 ## Summary
-PR Dashboard has a strong product concept and a polished dark visual language, but the current UI asks users to process too many sections, badges, counters, and empty containers before they know what to do. The existing scorecard is directionally correct: scoring, contribution briefs, action plans, Help, and rate-limit tracking are strong; density, inspector overload, chip noise, empty board lanes, profile scope creep, and heavy Find Contributions chrome are the main blockers. This plan keeps the core primitives and rebuilds the app around faster contribution decisions: compressed search results, a tabbed inspector, consistent state, clearer scoring language, and quieter secondary pages.
+PR Dashboard already has a strong contribution-finding idea, a coherent dark theme, and unusually useful scoring/explainability, but the product currently makes the user work too hard to decide what to do next. This updated plan replaces the earlier React/TSX assumptions with the actual vanilla JS + Tailwind architecture, folds in the premium micro-interactions, and keeps the work focused on one outcome: faster, calmer contribution decisions.
 
-Screen audit scores used for prioritization:
+Top production risks to fix first: inspector overload, inconsistent local-state counts, chip-heavy cards, excessive Find Contributions header chrome, empty-board dead space, and Profile/Settings scope creep. The Sonnet micro-interactions are worth adding, but they should support the simplified decision flow rather than decorate the current dense layout.
+
+Audit baseline used for prioritization:
 
 | Screen | Score | Reason |
 |---|---:|---|
-| Find Contributions — main search/results | 6.8/10 | Core flow is clear, but H1 + tabs + search + query preview + presets + filters create too much pre-result chrome. |
-| Find Contributions — scrolled result grid | 6.4/10 | Useful results, but cards are visually similar, chip-heavy, and hard to scan after the first row. |
-| Find Contributions — rate-limit popover | 7.0/10 | Useful power-user feature; needs cleaner anchoring, lighter placement, and a clearer depleted-state path. |
-| Find Contributions — review reminders popover | 6.5/10 | Useful concept, but the empty popover feels detached from the flow and wastes a top-right overlay. |
-| Settings — GitHub token setup | 7.2/10 | Security copy is good; persistence wording is conflicting and the form is larger than the decision requires. |
-| Settings — hidden results / danger zone | 6.6/10 | Complete, but import/export is duplicated elsewhere and destructive actions need stronger hierarchy. |
-| Profile — top / preferences | 6.4/10 | Preferences are useful, but Profile is carrying settings, stats, learned feedback, proof log, and reminders. |
-| Profile — lower / proof log / reminders | 6.2/10 | Several empty sections stacked together make the page feel unfinished and heavier than it is. |
-| Dashboard overview | 7.0/10 | Good first-run direction and card layout; state appears inconsistent with Board/Profile and empty states are too generic. |
-| Find Contributions — saved item state | 6.7/10 | “View on board” is helpful; chips and actions still compete for attention. |
-| Board / Kanban | 5.9/10 | One saved card is lost in a huge empty seven-lane layout; empty columns dominate the screen. |
-| Inspector — action center / issue description | 6.1/10 | Valuable content, but the drawer exposes too much raw issue text and too many sections at once. |
-| Inspector — score diagnostics / contribution brief | 6.2/10 | The scoring model is strong; its presentation competes with the actual recommendation. |
-| Inspector — why score / action plan | 6.0/10 | Action checklist is useful; scroll position, density, and split panels make the decision feel like work. |
-| Help | 8.1/10 | Clear, compact, and well structured. Treat as the model for secondary pages. |
-| Feedback | 7.8/10 | Direct and functional. Minor polish: prefilled issue body, stronger keyboard behavior, and clearer CTA feedback. |
+| Dashboard overview | 7.0/10 | Strong first-run direction, but saved/active/proof counts must use the same state source as Board/Profile. |
+| Find Contributions — main search/results | 6.8/10 | Core flow is clear; H1, mode tabs, search, query preview, presets, filters, and sort create too much pre-result chrome. |
+| Find Contributions — scrolled result grid | 6.4/10 | Useful candidates, but cards are too similar and chip-heavy after the first row. |
+| Find Contributions — saved-card state | 6.7/10 | “View on board” is useful; action and chip hierarchy still compete. |
+| Find Contributions — rate-limit popover | 7.0/10 | Practical power-user feature; needs better anchoring, Escape behavior, and low-limit guidance. |
+| Find Contributions — review reminders popover | 6.5/10 | Useful concept, weak empty state, and too much overlay for “nothing right now.” |
+| Inspector — action center / issue description | 6.1/10 | Valuable content, but it exposes too much raw issue text and internal context at once. |
+| Inspector — score diagnostics / contribution brief | 6.2/10 | The scoring model is strong; the presentation competes with the recommendation. |
+| Inspector — why score / action plan | 6.0/10 | Action checklist is useful; density and scroll sequencing make the decision feel like work. |
+| Board / Kanban | 5.9/10 | One saved card is lost inside seven mostly empty lanes. |
+| Profile — top / preferences | 6.4/10 | Preferences are useful; Profile is carrying settings, stats, learned feedback, proof log, and reminders. |
+| Profile — proof log / reminders | 6.2/10 | Multiple empty sections make the page feel unfinished. |
+| Settings — GitHub token setup | 7.2/10 | Security posture is good; persistence wording is muddled. |
+| Settings — hidden results / danger zone | 6.6/10 | Complete, but destructive actions are repetitive and insufficiently distinguished. |
+| Help | 8.1/10 | Compact, readable, and already close to the right density. |
+| Feedback | 7.8/10 | Clear and functional; needs sanitized diagnostic prefill and better CTA feedback. |
 
 ## Priority fixes (sorted Critical → Low)
 
-### Critical — Rebuild the inspector as a decision drawer, not a document dump
-- **Problem:** The inspector is the biggest UX failure. It stacks header metadata, action center, comments, advanced context, full issue description, score diagnostics, mini-scores, contribution brief, risk, “why this score,” and an action plan into one long scrollable drawer. This matches the existing feedback that the inspector is doing too much, but the deeper issue is decision sequencing: the user sees evidence, raw issue text, and actions in no stable priority order.
-- **Screen(s) affected:** Inspector drawer states, Find Contributions with drawer open.
-- **Files likely involved:** `src/components/IssueInspector.tsx`, `src/components/ScoreDiagnostics.tsx`, `src/components/ContributionBrief.tsx`, `src/components/ActionPlan.tsx`, `src/components/IssueDescription.tsx`, `src/components/InspectorHeader.tsx`, `src/styles/inspector.css`, `src/lib/score.ts`.
-- **Implementation:** Replace the single long drawer with three tabs: `Overview`, `Evidence`, and `Action`. Make `Overview` the default and show only: verdict, match strength, confidence, first move, top 3 reasons, top risk, and primary actions. Move score breakdown, mini-scores, comments, advanced context, repo history, and setup context into `Evidence`. Move checklist, full issue body, GitHub open action, and saved/board actions into `Action`. Keep the title/header sticky and keep the current tab state in URL search params so reload/back works.
+### Critical — Convert the plan and implementation target to the real vanilla-JS architecture
+- **Problem:** The earlier `PLAN.md` pointed Codex at React/TSX components that do not exist in this repo. That will waste implementation time and produce the wrong patches. This project should be treated as a Vite app using vanilla JavaScript, Tailwind utility classes in templates, and shared CSS in `src/styles.css`.
+- **Screen(s) affected:** All screens; this is the implementation prerequisite for the whole sweep.
+- **Files likely involved:** `PLAN.md`, `STATE.md`, `test/docs-contract.test.js`, `src/main.js`, `src/styles.css`, plus any existing local store/router helpers found by searching for `openInspector`, `renderIssueCardsList`, `bindIssueCardListEvents`, `renderDashboard`, `renderBoard`, `renderProfile`, `renderSettings`, `renderHelp`, and `renderFeedback`.
+- **Implementation:** Treat this `PLAN.md` as the active UX sweep plan. Update `test/docs-contract.test.js` so it validates that the active plan is a combined UX sweep, not a reset/ready-state plan. Do not add React, component libraries, animation libraries, or state-management dependencies. Keep the work in plain JS modules and CSS.
 
-  Code hint:
+  Codex implementation guardrails:
 
-  ```tsx
-  const INSPECTOR_TABS = ["overview", "evidence", "action"] as const;
-  type InspectorTab = (typeof INSPECTOR_TABS)[number];
+  ```text
+  No new dependencies.
+  Do not introduce React/TSX.
+  Prefer small helper modules over one giant main.js patch.
+  Keep existing localStorage/export/import schema compatible.
+  After each phase: npm test, npm run build, git diff --check.
+  Update STATE.md with completed changes, verification, and remaining risk.
+  ```
+- **Acceptance criteria:** `PLAN.md` reflects the actual codebase. Docs-contract tests intentionally accept this active UX plan. `npm test`, `npm run build`, and `git diff --check` pass after the sweep, except for any explicitly documented pre-existing failure that Codex confirms before changing code.
 
-  function IssueInspector({ issue }: { issue: IssueCandidate }) {
-    const [tab, setTab] = useQueryState<InspectorTab>("inspectorTab", "overview");
+### Critical — Rebuild the inspector as a decision drawer with Overview / Evidence / Action tabs
+- **Problem:** The inspector is the main UX failure. It currently mixes score diagnostics, mini-scores, confidence, contribution brief, risks, first move, action plan, comments, advanced context, and raw issue description in one long scrollable drawer. The user should not need to scroll through a document dump to decide whether to save, hide, pass, or open the issue.
+- **Screen(s) affected:** Inspector drawer, Find Contributions with inspector open, saved-card inspector states.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `openInspector`, `renderScoreDiagnostics`, `renderContributionBrief`, `renderActionPlan`, `renderIssueDescription`, `inspector-save-issue-btn`, and drawer close/bind logic.
+- **Implementation:** Refactor `openInspector(issue)` so it renders three tabs. Keep the drawer shell and sticky header, but move content into deliberate decision layers.
 
-    return (
-      <aside className="inspector" aria-label="Issue inspector">
-        <InspectorHeader issue={issue} />
-        <InspectorTabs value={tab} onChange={setTab} />
-        {tab === "overview" && <InspectorOverview issue={issue} />}
-        {tab === "evidence" && <InspectorEvidence issue={issue} />}
-        {tab === "action" && <InspectorAction issue={issue} />}
-      </aside>
-    );
+  Required tab structure:
+
+  ```text
+  Overview
+  - Verdict
+  - Match strength label
+  - Confidence
+  - First Move
+  - Top 3 reasons
+  - Top risk
+  - Primary actions: Save/View on board, Hide, Open on GitHub
+
+  Evidence
+  - Exact numeric score
+  - Why this score? +/- factors
+  - Mini-scores
+  - Confidence caps
+  - Comments inspected
+  - Advanced context
+
+  Action
+  - Action plan checklist
+  - Full issue description
+  - Setup / README / CONTRIBUTING hints
+  - GitHub link
+  - Board transition actions
+  ```
+
+  Vanilla JS sketch:
+
+  ```js
+  const INSPECTOR_TABS = ['overview', 'evidence', 'action'];
+
+  function openInspector(issue) {
+    const panel = document.querySelector('#issue-inspector');
+    if (!panel) return;
+
+    const activeTab = 'overview';
+    panel.innerHTML = renderInspectorShell(issue, activeTab);
+    panel.style.display = 'flex';
+    requestAnimationFrame(() => panel.classList.remove('translate-x-full'));
+
+    bindInspectorTabs(panel, issue);
+    bindInspectorActions(panel, issue);
+    runInspectorEntryEffects(panel);
+  }
+
+  function bindInspectorTabs(panel, issue) {
+    panel.querySelectorAll('[data-inspector-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const tab = button.dataset.inspectorTab;
+        panel.querySelector('[data-inspector-body]').innerHTML = renderInspectorTab(issue, tab);
+        updateInspectorTabState(panel, tab);
+      });
+    });
   }
   ```
 
-  Use Impeccable for this pass: run a polish pass on the rebuilt drawer after the tab split, specifically asking it to reduce nested cards, tighten section hierarchy, and preserve the “First Move” clarity.
-- **Acceptance criteria:** A user can open an issue and decide “save, hide, open on GitHub, or pass” without scrolling. `Overview` fits above the fold at 1440px wide. The full raw issue description is not visible until the user selects `Action` or expands “Issue details.” The drawer has one primary action, one secondary action group, and no duplicated confidence badges.
+  Use Impeccable after the tab split, not before. The prompt should be narrow: polish the drawer hierarchy, reduce nested cards, preserve the current dark/purple visual language, and keep `First Move` visible above the fold.
+- **Acceptance criteria:** Opening an issue shows a complete decision summary without scrolling at a 1440px desktop width. Raw issue description is not visible on the default tab. The user can save/view on board, hide, open GitHub, or pass from the top section. Score diagnostics remain available, but only in `Evidence`. Drawer tabs are keyboard reachable, have visible focus states, and Escape closes the drawer.
 
-### Critical — Fix local state consistency across Dashboard, Board, Profile, and search cards
-- **Problem:** The screenshots show inconsistent state language and counts: Board has a saved card, Find Contributions can show “View on board,” learned feedback says “Saved to board 1,” while Dashboard/Profile counters can still show zero saved candidates. Even if this is caused by screenshot timing, the product needs a single source of truth for saved candidates, active board work, proof log, hidden items, and learned feedback. Mismatched local state destroys trust faster than visual density.
-- **Screen(s) affected:** Dashboard, Board, Profile, Settings hidden results, Find Contributions result cards, inspector action center.
-- **Files likely involved:** `src/lib/localStore.ts`, `src/lib/boardStore.ts`, `src/lib/profileStore.ts`, `src/lib/selectors.ts`, `src/pages/Dashboard.tsx`, `src/pages/Profile.tsx`, `src/pages/Board.tsx`, `src/components/IssueCard.tsx`, `src/components/IssueInspector.tsx`.
-- **Implementation:** Create canonical selectors for all local state metrics and use them everywhere. Do not compute counts independently inside page components. Define clear terms: `savedCandidates` should mean all saved board cards, `activeBoardWork` should mean saved cards in active lanes, `proofLogEntries` should mean completed/merged/pass records, and `hiddenResults` should mean hidden issues + hidden repos.
+### Critical — Fix local-state consistency across Dashboard, Board, Profile, Settings, cards, and inspector
+- **Problem:** The screenshots show state drift: a saved card can exist on Board and in learned feedback while Dashboard/Profile counters still show zero. Even when this is caused by screenshot timing, the app needs one canonical local-state summary. Count drift makes users doubt whether saves, hides, and completed work are real.
+- **Screen(s) affected:** Dashboard, Find Contributions cards, Inspector, Board, Profile, Activity, Settings hidden results, import/export.
+- **Files likely involved:** `src/main.js`, `src/store.js`, `src/storage.js`, `src/localStore.js`, or whatever file currently owns localStorage reads/writes. Add `src/appMetrics.js` if there is no existing selector module.
+- **Implementation:** Add a shared metrics helper and use it everywhere instead of recomputing counts per screen. Keep localStorage keys and export/import schema compatible.
 
-  Code hint:
+  Suggested helper:
 
-  ```ts
-  export function selectDashboardMetrics(state: LocalAppState) {
-    const boardCards = Object.values(state.board.cardsById ?? {});
-    const activeCards = boardCards.filter(card => ACTIVE_LANES.includes(card.status));
-    const completedCards = boardCards.filter(card => COMPLETED_LANES.includes(card.status));
+  ```js
+  const ACTIVE_BOARD_STATES = ['considering', 'read-docs', 'asked-maintainer', 'working', 'pr-open'];
+  const DONE_BOARD_STATES = ['merged', 'passed'];
+
+  export function summarizeAppMetrics({
+    boardCards = [],
+    hiddenIssues = [],
+    hiddenRepos = [],
+    proofEntries = [],
+    reviewReminders = [],
+  } = {}) {
+    const activeBoardWork = boardCards.filter((card) => ACTIVE_BOARD_STATES.includes(card.status)).length;
+    const resolvedOrPassed = boardCards.filter((card) => DONE_BOARD_STATES.includes(card.status)).length;
 
     return {
       savedCandidates: boardCards.length,
-      activeBoardWork: activeCards.length,
-      resolvedOrPassed: completedCards.length,
-      hiddenIssues: state.hidden.issues.length,
-      hiddenRepos: state.hidden.repos.length,
-      proofLogEntries: state.proofLog.entries.length,
-      reviewReminders: state.reviewReminders.length,
+      activeBoardWork,
+      resolvedOrPassed,
+      hiddenIssues: hiddenIssues.length,
+      hiddenRepos: hiddenRepos.length,
+      hiddenResults: hiddenIssues.length + hiddenRepos.length,
+      proofLogEntries: proofEntries.length,
+      reviewReminders: reviewReminders.length,
     };
   }
   ```
 
-  Add a simple reducer or Zustand/Context store test suite around these selectors. Any save/hide/move/import/clear action should update visible counts in all affected pages without refresh.
-- **Acceptance criteria:** Saving one issue changes Dashboard saved candidates, Board lane count, Profile saved candidates, and result-card state consistently. Hiding one issue changes Dashboard hidden results and Settings hidden issue count consistently. Import/export round-trips without count drift. Add unit tests for save, unsave, hide, unhide, move, merge, pass, clear board, and clear all app data.
+  Use this helper in `renderDashboard`, `renderProfile`, `renderSettings`, `renderBoard`, card button state, and inspector action state. After save/hide/move/import/clear actions, re-render affected regions or dispatch a small custom event such as `app:local-state-changed`.
+- **Acceptance criteria:** Saving one issue updates result card state, inspector state, Board lane count, Dashboard saved candidates, and Profile saved candidates without a full refresh. Hiding one issue updates Settings hidden issue count and Dashboard hidden result count. Import/export round-trips counts. Tests cover save, hide, unhide, move, merge, pass, clear board, clear hidden items, and clear all app data.
 
-### High — Compress issue cards into scannable decision units
-- **Problem:** Result cards carry too many chips: GitHub labels, match percentage, fit, confidence, and sometimes additional state labels. This matches the existing feedback that cards have 5–6 chips each, but the implementation fix should be stricter: default cards should show only the information needed to decide whether to inspect.
-- **Screen(s) affected:** Find Contributions result list/grid, saved cards on Board, Dashboard saved candidates module, inspector background list.
-- **Files likely involved:** `src/components/IssueCard.tsx`, `src/components/IssueCardMeta.tsx`, `src/components/ScoreBadge.tsx`, `src/components/LabelChips.tsx`, `src/components/Button.tsx`, `src/styles/cards.css`, `src/lib/score.ts`.
-- **Implementation:** Make card hierarchy: repository + issue number, title, one-line summary, top reason, score row, action row. Show at most two default chips: match strength and confidence. Collapse GitHub labels into `+N labels` unless there is one highly meaningful label such as `good first issue` or `help wanted`. Move stars/forks/comments/assignee into a quiet metadata row. Standardize card height within each layout. Use either a full-width list or a true grid, not a hero card plus mixed grid unless the hero card has explicit “Top pick” treatment.
+### High — Compress issue cards and switch to strength-first score language
+- **Problem:** Search cards are badge walls. GitHub labels, `100% Match`, `Fit`, `Confidence`, state badges, stars, forks, comments, assignee state, and action buttons all compete at the same level. Also, raw 99–100% match labels imply false precision and make many cards look equally perfect.
+- **Screen(s) affected:** Find Contributions result list/grid, saved-card states, Dashboard saved candidates, Board cards, inspector background cards.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; add `src/matchScore.js` if there is no existing scoring presentation helper. Search for `renderIssueCardsList`, `fitObj.score`, `Confidence:`, `Fit:`, `good first issue`, `help wanted`, and card action templates.
+- **Implementation:** Make cards decision units, not metadata dumps. Default card hierarchy should be: repository + issue number, title, one-line summary, one top reason, match strength, confidence, quiet metadata, actions.
 
-  Code hint:
+  Add a score-presentation helper:
 
-  ```tsx
-  const visibleLabels = pickPrimaryLabels(issue.labels, ["good first issue", "help wanted"]);
-  const hiddenLabelCount = issue.labels.length - visibleLabels.length;
-
-  <IssueCard>
-    <IssueCardHeader repo={issue.repo} number={issue.number} updatedAt={issue.updatedAt} />
-    <IssueTitle>{issue.title}</IssueTitle>
-    <IssueSummary>{issue.summary}</IssueSummary>
-    <TopReason>{issue.score.topReason}</TopReason>
-    <ScoreRow>
-      <MatchBadge score={issue.score.match} />
-      <ConfidenceBadge value={issue.score.confidence} />
-      {visibleLabels.map(label => <LabelChip key={label}>{label}</LabelChip>)}
-      {hiddenLabelCount > 0 && <MutedChip>+{hiddenLabelCount} labels</MutedChip>}
-    </ScoreRow>
-    <IssueActions issue={issue} />
-  </IssueCard>
-  ```
-
-  Use Impeccable to polish the card component once in isolation before touching the whole results page. Ask for better vertical rhythm, fewer badge colors, and stronger title/body contrast.
-- **Acceptance criteria:** Default issue cards never show more than four chips total, including hidden label count. At 1440px width, a user can scan five cards without seeing repeated badge clutter. Cards have a consistent title/body/action structure across Find Contributions, Dashboard, and Board.
-
-### High — Calibrate match scoring language so it feels trustworthy
-- **Problem:** “100% Match,” “99% Match,” and repeated “Confidence: High” badges overstate precision and compete with the more useful “Verdict” and “First Move.” The product’s scoring is a differentiator, but the current presentation makes it feel algorithmically overconfident. Existing feedback praised the score system; the missed issue is trust calibration.
-- **Screen(s) affected:** Find Contributions cards, inspector score diagnostics, contribution brief, Dashboard recommendations.
-- **Files likely involved:** `src/lib/score.ts`, `src/lib/scoreLabels.ts`, `src/components/MatchBadge.tsx`, `src/components/ScoreDiagnostics.tsx`, `src/components/ContributionBrief.tsx`, `src/components/IssueCard.tsx`.
-- **Implementation:** Replace raw percent-first language with strength-first language. Keep the numeric score available in diagnostics, but show cards as `Strong match`, `Good match`, `Possible match`, or `Skip`. In the inspector, show “94% match score” as supporting evidence, not the headline. Add visible cap reasons such as `Confidence capped: medium because comment thread may indicate active work`.
-
-  Code hint:
-
-  ```ts
-  export function getMatchLabel(score: number) {
-    if (score >= 90) return "Strong match";
-    if (score >= 75) return "Good match";
-    if (score >= 55) return "Possible match";
-    return "Skip";
+  ```js
+  export function getMatchStrength(score) {
+    if (score >= 90) return { label: 'Strong match', tone: 'strong' };
+    if (score >= 75) return { label: 'Good match', tone: 'good' };
+    if (score >= 55) return { label: 'Possible match', tone: 'possible' };
+    return { label: 'Skip', tone: 'skip' };
   }
 
-  export function getConfidenceExplanation(candidate: CandidateScore) {
-    return candidate.caps.length
-      ? `Confidence capped: ${candidate.caps[0].reason}`
-      : "No confidence caps found";
+  export function renderMatchChip(score, { showExact = false, animate = false } = {}) {
+    const strength = getMatchStrength(score);
+    const text = showExact ? `${score}% Match` : strength.label;
+    return `<span class="score-chip score-chip--${strength.tone}" data-score-value="${score}" ${animate ? 'data-animate-score="true"' : ''}>${text}</span>`;
   }
   ```
 
-  Show the top negative factor on cards only when it materially changes action, for example `Risk: possible active work`.
-- **Acceptance criteria:** Search cards do not display raw 99–100% as the dominant badge. The inspector still exposes exact scoring in `Evidence`. Every confidence cap has a human-readable explanation. Users can tell the difference between “high score” and “safe to start.”
+  Card rules:
+  - Show at most two primary chips by default: match strength and confidence.
+  - Show only one meaningful GitHub label if it strongly explains the candidate, such as `good first issue` or `help wanted`.
+  - Collapse the rest behind `+N labels` or move them to inspector Evidence.
+  - Move stars/forks/comments/assignee into a lower-contrast metadata row.
+  - Use exact numeric score on cards only in `title`, `aria-label`, or inspector Evidence; do not let `99%`/`100%` dominate cards.
+- **Acceptance criteria:** Default result cards show no more than two prominent chips. Raw percentages are not the main card label. Cards remain scannable after scrolling. Exact score is still available in inspector Evidence and in `data-score-value` for controlled animation/diagnostics. Users can distinguish “high score” from “safe to start.”
 
-### High — Simplify Find Contributions header and filter architecture
-- **Problem:** The Find Contributions screen has five rows before results: page title, mode tabs, search input, GitHub query preview, and preset buttons. Then a second filter system appears in the left column. This matches the existing feedback that the header chrome is heavy. The deeper IA issue is that query controls, filters, presets, and sort are spread across too many places.
-- **Screen(s) affected:** Find Contributions, global top bar, result toolbar, filter sidebar.
-- **Files likely involved:** `src/pages/FindContributions.tsx`, `src/components/SearchHero.tsx`, `src/components/GlobalSearch.tsx`, `src/components/FilterSidebar.tsx`, `src/components/QueryPreview.tsx`, `src/components/PresetButtons.tsx`, `src/components/ResultsToolbar.tsx`, `src/styles/search.css`.
-- **Implementation:** On the Find Contributions route, hide or demote the global top search so there is one obvious search input. Move preset buttons into the filter sidebar as `Quick filters`. Collapse GitHub Query Preview into a `View GitHub query` disclosure in the result toolbar. Put active filters as removable chips above results, not as a tiny “Applied” pill next to the filter heading. Make filters live-update if API cost is low; otherwise keep `Apply Filters` but add `Reset` and a dirty-state indicator.
+### High — Simplify Find Contributions search, filter, and result architecture
+- **Problem:** Find Contributions has too much chrome before the first result: page title, tabs, search input, GitHub query preview, quick-preset buttons, filter rail, sort, and result count. The user’s eye should land on the search box and then the results, not on five separate control rows.
+- **Screen(s) affected:** Find Contributions, global top bar, filter sidebar, result toolbar.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `Find your next contribution`, `GitHub Query Preview`, `Starter Picks`, `Deep Dives`, `Documentation Only`, `Low Noise`, `Apply Filters`, and `Sort by`.
+- **Implementation:** Keep one primary search input on the page. On the Find Contributions route, demote or hide the global top search to avoid duplicate search affordances. Move preset buttons into the filter rail under `Quick filters`. Collapse GitHub Query Preview behind a `View GitHub query` disclosure in the result toolbar. Add active filter chips above results with individual remove controls and a `Reset filters` action when filters are dirty.
 
-  Proposed layout:
+  Target layout:
 
   ```text
   [Find your next contribution]
-  [Search input.....................................][Search]
+  [Search issues, labels, or repositories..................][Search]
 
-  [24 open issues] [Active filter chips...]                 [Sort]
-  [Left filter rail] [Consistent result list/grid]
+  [24 open issues] [good first issue ×] [bug ×] [Reset]       [Sort]
+  [Filter rail with Quick filters] [Result cards]
   ```
 
-  Use Superpower to store a repeatable prompt chain for “Find Contributions before/after critique” so each iteration gets checked for header height, filter clarity, and card density.
-- **Acceptance criteria:** Results begin at least 120px higher on the page at 1440px width. The query preview is hidden by default. Presets are grouped with filters. There is only one primary search input on the page.
+  Use Superpower to save a repeatable review prompt for this screen: verify header height, first-result position, active filter clarity, card density, and empty/error states after each Codex pass.
+- **Acceptance criteria:** Results begin at least 120px higher than the current layout at desktop width. Query preview is hidden by default. Quick presets live with filters. Only one primary search field is visually dominant. Dirty filters are obvious and resettable.
 
-### High — Make the Board useful when it is nearly empty
-- **Problem:** The Board screen shows five active lanes plus two completed lanes, but with one card the UI is mostly empty vertical columns. Existing feedback says the board feels dead when empty; the stronger fix is to design an early-state board, not just a full kanban board with empty containers.
-- **Screen(s) affected:** Board/Kanban, Dashboard active board module, Help board workflow copy.
-- **Files likely involved:** `src/pages/Board.tsx`, `src/components/KanbanBoard.tsx`, `src/components/KanbanColumn.tsx`, `src/components/BoardCard.tsx`, `src/components/BoardEmptyState.tsx`, `src/styles/board.css`.
-- **Implementation:** Add two board modes: `compact` for 0–3 active cards and `kanban` for 4+ active cards or user-selected expanded view. In compact mode, show a focused workflow rail: current cards first, collapsed empty lanes below, and a visible “Next stage” control on each card. Empty lanes should be 48–64px high with counts, not full-height columns. Add lane-level empty copy only when useful: `Read docs: move a card here after opening README/CONTRIBUTING`.
+### High — Add premium micro-interactions without masking structural problems
+- **Problem:** The proposed premium interactions are good, but they must be restrained. A score counter, inspector stagger, and save pop will make the app feel more polished only after the inspector/card hierarchy is simplified. If added to the current dense UI without guardrails, they become motion noise.
+- **Screen(s) affected:** Inspector, Find Contributions cards, Board/saved cards if they use the same save action, reduced-motion users.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `openInspector`, `renderIssueCardsList`, `bindIssueCardListEvents`, `store.saveIssueToBoard`, and `inspector-save-issue-btn`.
+- **Implementation:** Add the three micro-interactions, but with stronger production rules than the original snippet.
 
-  Code hint:
+  **1. Inspector score counter**
 
-  ```tsx
-  const activeCount = boardCards.filter(card => ACTIVE_LANES.includes(card.status)).length;
-  const boardMode = userBoardMode ?? (activeCount <= 3 ? "compact" : "kanban");
+  Use `data-score-value` for exact score values and `data-animate-score="true"` only on the inspector score element that should animate. Do not animate every score chip on the page. Use `requestAnimationFrame`, guard against repeated enrichment re-renders, and respect `prefers-reduced-motion`.
+
+  ```js
+  function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function animateScoreCounter(el) {
+    if (!el || prefersReducedMotion() || el.dataset.scoreAnimated === 'true') return;
+
+    const target = Number.parseInt(el.dataset.scoreValue, 10);
+    if (!Number.isFinite(target)) return;
+
+    el.dataset.scoreAnimated = 'true';
+    const duration = 600;
+    const start = performance.now();
+
+    function tick(now) {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(target * eased);
+      el.textContent = `${value}% Match`;
+
+      if (progress < 1) requestAnimationFrame(tick);
+      else el.textContent = `${target}% Match`;
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  function runInspectorEntryEffects(panel) {
+    window.setTimeout(() => {
+      animateScoreCounter(panel.querySelector('[data-animate-score="true"][data-score-value]'));
+    }, 20);
+  }
   ```
 
-  Use Impeccable to polish compact board empty states. This is a good candidate for visual-system refinement because empty-state hierarchy is mostly spacing, copy, and contrast.
-- **Acceptance criteria:** With one saved card, the saved card is visually dominant, not a tiny object inside a large empty canvas. Empty lanes collapse in compact mode. Users can move a card to the next stage without opening a large inspector.
+  **2. Inspector content stagger**
+
+  Add `inspector-section` only to the direct major sections inside the active tab, not every nested card. Use `nth-of-type` or explicit delay variables so DOM wrappers do not break the timing.
+
+  ```css
+  @keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .inspector-section {
+    opacity: 0;
+    animation: fadeSlideUp 0.3s ease-out forwards;
+    animation-delay: var(--inspector-section-delay, 0ms);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inspector-section {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+  }
+  ```
+
+  In `openInspector()` / `renderInspectorTab()`, apply delays inline or through utility classes:
+
+  ```html
+  <section class="inspector-section" style="--inspector-section-delay: 50ms">...</section>
+  <section class="inspector-section" style="--inspector-section-delay: 100ms">...</section>
+  <section class="inspector-section" style="--inspector-section-delay: 150ms">...</section>
+  ```
+
+  **3. Save button pop**
+
+  Use the pop only after a successful save. Apply it to both card save buttons and the inspector save button.
+
+  ```css
+  @keyframes savePop {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.92); }
+    70% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+
+  .save-pop {
+    animation: savePop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .save-pop { animation: none; }
+  }
+  ```
+
+  ```js
+  function runSavePop(button) {
+    if (!button || prefersReducedMotion()) return;
+    button.classList.remove('save-pop');
+    // Force restart if the same button is saved twice.
+    void button.offsetWidth;
+    button.classList.add('save-pop');
+    button.addEventListener('animationend', () => button.classList.remove('save-pop'), { once: true });
+  }
+  ```
+
+  Wire `runSavePop(btn)` after `store.saveIssueToBoard(issue)` succeeds in both `bindIssueCardListEvents()` and the inspector save handler.
+- **Acceptance criteria:** Inspector score counts from 0 to target only on initial open, not on every content refresh. Inspector sections cascade once and do not animate under reduced-motion settings. Save buttons pop only after successful save. No animation breaks keyboard focus, screen-reader labeling, or strength-first card copy.
+
+### High — Make the Board useful when it has 0–3 active cards
+- **Problem:** The current Board uses a full kanban layout even when there is only one saved card. Five active columns plus two completed columns create a giant empty canvas, making the saved candidate feel less important than the empty lanes.
+- **Screen(s) affected:** Board, Dashboard active-board module, saved-card movement controls.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `renderBoard`, `Kanban`, `CONSIDERING`, `READ DOCS`, `ASKED MAINTAINER`, `WORKING`, `PR OPEN`, `MERGED`, and `PASSED`.
+- **Implementation:** Add two board modes: compact for 0–3 active cards and full kanban for 4+ active cards or when the user manually expands. Compact mode should show current cards first, collapsed empty lanes, and next-stage controls directly on each card.
+
+  Vanilla JS sketch:
+
+  ```js
+  function getBoardMode(boardCards, userMode) {
+    if (userMode === 'kanban' || userMode === 'compact') return userMode;
+    const activeCount = boardCards.filter((card) => ACTIVE_BOARD_STATES.includes(card.status)).length;
+    return activeCount <= 3 ? 'compact' : 'kanban';
+  }
+  ```
+
+  Compact board requirements:
+  - Current saved cards are the visual focus.
+  - Empty lanes collapse to 48–64px rows with label + count.
+  - Each card exposes `Move to Read Docs`, `Move to Working`, or next logical stage.
+  - Completed lanes remain compact unless they contain cards.
+
+  Use Impeccable to polish compact board empty states after the logic is implemented. This is mostly spacing, hierarchy, and copy.
+- **Acceptance criteria:** With one saved card, that card dominates the screen. Empty columns do not consume most of the viewport. Users can move a card to the next stage without opening a huge drawer. Full kanban remains available for heavier usage.
 
 ### High — Split Profile, Activity, and Settings responsibilities
-- **Problem:** Profile is doing too much: user identity, stats, contribution preferences, learned feedback, proof log, review reminders, export/import copy, and reset actions. Existing feedback correctly calls this profile scope creep. The missed issue is duplication: export/import appears in both Profile and Settings, and learned feedback sounds like system internals rather than user profile.
-- **Screen(s) affected:** Profile, Settings, Dashboard, sidebar navigation.
-- **Files likely involved:** `src/pages/Profile.tsx`, `src/pages/Settings.tsx`, `src/pages/Activity.tsx`, `src/components/ProfilePreferences.tsx`, `src/components/LearnedFeedback.tsx`, `src/components/ProofLog.tsx`, `src/components/ReviewReminders.tsx`, `src/components/LocalDataPanel.tsx`, `src/components/Sidebar.tsx`.
-- **Implementation:** Make Profile only about identity, contribution preferences, and high-level stats. Move `Export Local Data`, `Import Local Data`, hidden results, token setup, and danger zone exclusively to Settings. Move `Learned feedback`, `Proof Log`, and `Review reminders` into either a new `Activity` route or a tab inside Profile labeled `Activity`. Rename “Learned feedback” to “Personal scoring signals” if it remains visible; otherwise collapse it behind an advanced disclosure.
+- **Problem:** Profile is doing too much. It contains identity, preferences, stats, learned feedback, proof log, review reminders, and import/export-adjacent concepts. Settings also contains hidden results, import/export, token setup, and danger actions. The app needs clearer ownership.
+- **Screen(s) affected:** Profile, Activity, Settings, Dashboard, sidebar navigation.
+- **Files likely involved:** `src/main.js`, `src/styles.css`, any router/nav constants; search for `renderProfile`, `renderSettings`, `Proof Log`, `Review reminders`, `Learned feedback`, `Export Local Data`, and sidebar route definitions.
+- **Implementation:** Add an `Activity` route/hash and sidebar nav item. Keep Profile focused on identity, contribution preferences, and high-level stats. Move proof log, review reminders, and learned feedback/personal scoring signals to Activity. Keep token setup, hidden results, import/export, and danger zone only in Settings.
 
-  Proposed IA:
+  Target IA:
 
   ```text
   Dashboard
   Find Contributions
   Board
-  Profile
-    - Preferences
-    - Personal fit summary
   Activity
-    - Proof log
-    - Review reminders
-    - Scoring signals
+    - Proof Log
+    - Review Reminders
+    - Personal Scoring Signals
+  Profile
+    - Identity
+    - Contribution Preferences
+    - Personal Fit Summary
   Settings
-    - GitHub token
-    - Hidden results
-    - Import/export
-    - Danger zone
+    - GitHub Token
+    - Hidden Results
+    - Export / Import Local Data
+    - Danger Zone
   Help
   Feedback
   ```
 
-  Use Superpower to save a reusable “IA regression checklist” prompt: verify one owner for each concept, no duplicate import/export, and no settings-only controls on profile.
-- **Acceptance criteria:** Import/export controls exist in one place. Profile fits into one vertical screen at 1440px after preferences are saved. Proof Log and Review Reminders are not empty blocks stacked under Profile by default. Sidebar labels map to user mental models, not implementation concepts.
+  Rename “Learned feedback” to “Personal scoring signals” if it remains user-visible. The current label sounds like implementation internals.
+- **Acceptance criteria:** Import/export appears in one place: Settings. Profile fits into one vertical screen at desktop width after preferences are saved. Proof Log and Review Reminders are not empty blocks stacked under Profile. Activity route/nav works and uses the shared metrics helper.
 
-### Medium — Create a visual-density system instead of one-off card tweaks
-- **Problem:** The app is visually consistent but dense. The issue is not just “too much text”; it is uneven type scale, too many bordered containers, nested cards, repeated badges, and low-contrast metadata competing with primary labels. The existing scorecard gave clarity/density the lowest score; this fix turns that feedback into a reusable system.
+### Medium — Create a visual-density and interaction system in CSS
+- **Problem:** The app is visually consistent, but it is still dense: many bordered boxes, small type, repeated chips, nested panels, and metadata that competes with titles. One-off tweaks will not hold unless density is encoded into reusable CSS classes.
 - **Screen(s) affected:** All screens, especially Find Contributions, Inspector, Profile, Settings, and Board.
-- **Files likely involved:** `src/styles/tokens.css`, `src/styles/theme.css`, `src/components/ui/Card.tsx`, `src/components/ui/Badge.tsx`, `src/components/ui/Button.tsx`, `src/components/ui/Section.tsx`, `src/components/ui/EmptyState.tsx`, `src/components/ui/FormField.tsx`.
-- **Implementation:** Define density tokens and enforce them through shared components. Use one default card padding, one compact card padding, one section gap scale, and one badge height scale. Reduce bordered boxes inside bordered boxes. Limit accent color usage to active navigation, primary CTA, match/confidence, and destructive states. Treat green as confirmation/success only; do not use green for every “good” informational thing.
+- **Files likely involved:** `src/styles.css`, `src/main.js`; search for repeated card, badge, chip, empty-state, button, and section utility patterns in template strings.
+- **Implementation:** Add shared classes for page sections, compact cards, score chips, metadata rows, empty states, danger actions, focus rings, and motion utilities. Keep Tailwind utilities where they are already useful, but stop hand-rolling slightly different card/chip structures in every template string.
 
-  Code hint:
+  Suggested CSS layer:
 
   ```css
   :root {
-    --space-section: 24px;
-    --space-card: 16px;
-    --space-card-compact: 12px;
-    --radius-card: 12px;
-    --font-size-body: 14px;
-    --font-size-meta: 12px;
-    --line-height-body: 1.45;
-    --border-subtle: color-mix(in srgb, var(--color-border) 70%, transparent);
+    --space-section: 1.5rem;
+    --space-card: 1rem;
+    --space-card-compact: 0.75rem;
+    --radius-card: 0.75rem;
+    --font-body: 0.875rem;
+    --font-meta: 0.75rem;
+    --line-body: 1.45;
   }
 
-  .card { padding: var(--space-card); border-radius: var(--radius-card); }
-  .card--compact { padding: var(--space-card-compact); }
-  .section + .section { margin-top: var(--space-section); }
-  ```
+  .app-section + .app-section { margin-top: var(--space-section); }
+  .app-card { padding: var(--space-card); border-radius: var(--radius-card); }
+  .app-card--compact { padding: var(--space-card-compact); }
+  .meta-row { font-size: var(--font-meta); line-height: 1.35; opacity: 0.72; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 0.375rem; }
 
-  Use Impeccable after token cleanup, not before. First teach/document the visual system, then run polish passes on Find Contributions, Inspector, Board, and Profile one at a time.
-- **Acceptance criteria:** Shared components own spacing and density. No page uses custom ad-hoc card padding unless justified. Card interiors have fewer nested borders. Metadata is visually quieter than titles and actions. A screenshot contact sheet should show calmer hierarchy without reducing feature depth.
-
-### Medium — Improve accessibility, keyboard flow, and readable contrast
-- **Problem:** The dark theme is polished, but many labels, chips, counts, and metadata appear very small. Drawer and popover interactions also need explicit keyboard behavior. This was not emphasized enough in the existing feedback and should be fixed before the app grows.
-- **Screen(s) affected:** All screens; highest risk in Inspector, Find Contributions cards, Settings token field, Board columns, popovers.
-- **Files likely involved:** `src/components/ui/*`, `src/components/IssueInspector.tsx`, `src/components/Popover.tsx`, `src/components/Dialog.tsx`, `src/styles/a11y.css`, `src/styles/tokens.css`, `src/tests/a11y/*`.
-- **Implementation:** Increase default body text to at least 14px and set line-height around 1.45. Keep metadata at 12px but avoid long metadata sentences at 12px. Add visible focus rings for buttons, chips, links, checkboxes, drawer close, and popover controls. Add focus trap and Escape close for inspector drawer and popovers. Ensure destructive buttons announce confirmation dialogs. Run axe or Testing Library accessibility checks for top routes.
-
-  Code hint:
-
-  ```css
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent, #a78bfa);
     outline-offset: 2px;
   }
-
-  .text-body { font-size: 14px; line-height: 1.45; }
-  .text-meta { font-size: 12px; line-height: 1.35; color: var(--color-text-muted); }
   ```
 
-- **Acceptance criteria:** All interactive controls are keyboard reachable. Inspector and popovers trap focus and close with Escape. Text-heavy cards pass contrast checks. The app remains usable at browser zoom 125% without horizontal clipping in the main workflow.
+  Use Impeccable in two steps: first document the existing dark theme and spacing primitives, then run targeted polish on Find Contributions, Inspector, Board compact mode, and Settings danger zone. Do not ask it to redesign the whole app at once.
+- **Acceptance criteria:** Shared classes own card spacing, chip layout, metadata tone, focus rings, and empty-state layout. Cards have fewer nested borders. Metadata is visually quieter than titles and actions. Screens look calmer without removing functionality.
 
-### Medium — Clarify token persistence and security copy
-- **Problem:** Settings says local session storage is default, warns that localStorage is not secure for secrets, then offers “Remember token locally.” The logic is understandable to the builder, but the user-facing model is muddled: session-only vs persistent browser storage must be explicit.
-- **Screen(s) affected:** Settings GitHub token setup, Help privacy card, Feedback warning copy if token-related bug reports are filed.
-- **Files likely involved:** `src/pages/Settings.tsx`, `src/components/GitHubTokenSettings.tsx`, `src/components/SecurityNotice.tsx`, `src/lib/tokenStorage.ts`, `src/lib/github.ts`.
-- **Implementation:** Rename the checkbox to `Persist token in this browser`. Add a short helper: `Off: token clears when this browser session ends. On: token is stored in localStorage on this machine.` Only show the red localStorage warning when the persistent option is enabled, or clearly label it as applying only to persistence. Add a small “Recommended” label to session-only mode. Keep the “No private scopes needed” card.
+### Medium — Clarify token persistence and redesign destructive settings actions
+- **Problem:** The token copy says local session storage is default, warns about localStorage, and then labels the checkbox “Remember token locally.” That is too ambiguous. The danger zone also uses repeated red rows that make small and severe resets feel similar.
+- **Screen(s) affected:** Settings GitHub token setup, Settings hidden results, Settings danger zone, Help privacy card.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `Remember token locally`, `Local Browser Security Warning`, `Clear GitHub Token`, `Clear Board`, `Clear Hidden`, and `Clear All`.
+- **Implementation:** Rename the checkbox to `Persist token in this browser`. Add helper copy: `Off: token clears when this browser session ends. On: token is stored in localStorage on this machine.` Show the red localStorage warning only when persistence is enabled, or clearly label it as applying only to persistence.
 
-  Code hint:
+  For danger actions, replace four similar red rows with a reusable confirmation dialog. Use neutral rows until the user arms an action. Require typed confirmation for `Clear all app data`.
 
-  ```tsx
-  <CheckboxField
-    checked={persistToken}
-    onChange={setPersistToken}
-    label="Persist token in this browser"
-    description="Off clears the token at the end of this browser session. On stores it in localStorage on this machine."
-  />
-  {persistToken && <SecurityWarning variant="danger" />}
+  Dialog sketch:
+
+  ```js
+  function openConfirmDialog({ title, body, consequences = [], requirePhrase, onConfirm }) {
+    // Render modal with focus trap, Escape close, Cancel, Confirm.
+    // Disable Confirm until phrase matches when requirePhrase is provided.
+  }
   ```
 
-- **Acceptance criteria:** A user can explain where the token lives in one sentence. The warning does not appear to contradict the default storage behavior. The token field, reveal button, save button, and test connection state are keyboard accessible.
+  Consequence copy must explicitly say what is removed and what is kept.
+- **Acceptance criteria:** A user can explain token storage in one sentence. The warning no longer appears to contradict default session behavior. `Clear all app data` requires typed confirmation. Smaller resets are visually distinct from full reset. Confirmation dialogs trap focus and close with Escape.
 
-### Medium — Redesign Settings danger zone for safer destructive actions
-- **Problem:** The danger zone is complete but visually repetitive: four red bordered rows with similar button placement. It is easy to scan past the difference between clearing a token, clearing board data, clearing hidden items, and clearing everything. Destructive actions should be rarer, clearer, and harder to misfire.
-- **Screen(s) affected:** Settings lower screen.
-- **Files likely involved:** `src/components/SettingsDangerZone.tsx`, `src/components/ConfirmDialog.tsx`, `src/lib/localStore.ts`, `src/styles/settings.css`.
-- **Implementation:** Group danger actions into two levels: common resets and irreversible full reset. Use neutral rows until the user opens/arms a destructive action; reserve red fill/border for the armed state and confirmation dialog. Require typed confirmation for `Clear all app data`. Add exact consequences in each modal. Keep `Clear hidden items` outside the most severe group because it is reversible in spirit and less dangerous.
+### Medium — Improve popovers, accessibility, and keyboard flow
+- **Problem:** Popovers currently compete with the workflow, and keyboard behavior is not explicit enough. Dark UI polish does not matter if focus handling, Escape close, readable text size, and contrast are weak.
+- **Screen(s) affected:** Header rate-limit popover, review reminders popover, Inspector drawer, Settings dialogs, cards, Board columns, Feedback form.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for header popover handlers, reminder popover handlers, drawer close handlers, modal/dialog logic, and button templates.
+- **Implementation:** Add shared close behavior for drawer/popovers/dialogs. Escape closes the topmost overlay. Clicking outside closes popovers but not destructive dialogs. Focus moves into the drawer/dialog on open and returns to the trigger on close. Increase long body copy to at least 14px with 1.45 line-height; keep metadata at 12px only for short labels.
 
-  Code hint:
+  Popover changes:
+  - Rate-limit popover should answer: remaining calls, reset time, what to do if low.
+  - Empty reminders popover should be compact and link to Board/Activity, not a large floating panel.
+  - Popovers should not cover primary result-card actions at common desktop widths.
 
-  ```tsx
-  <DangerAction
-    severity="critical"
-    label="Clear all app data"
-    requirePhrase="CLEAR ALL"
-    consequences={["Removes GitHub token settings", "Removes board cards", "Removes profile preferences", "Removes proof log"]}
-  />
+  Accessibility helpers:
+
+  ```js
+  function bindEscapeToClose(closeFn) {
+    function onKeyDown(event) {
+      if (event.key === 'Escape') closeFn();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }
   ```
-
-- **Acceptance criteria:** `Clear all app data` requires typed confirmation. Less destructive actions are visually distinct from total reset. Each confirmation modal states what is kept and what is removed.
-
-### Medium — Make popovers useful without obscuring the workflow
-- **Problem:** The rate-limit and review-reminders popovers are useful ideas, but they appear as floating panels in the top-right and compete with the main result list. The empty review-reminders popover is especially weak because it consumes attention to say nothing is happening.
-- **Screen(s) affected:** Header rate limits, review reminders popover, Dashboard review reminder card, Profile/Activity review reminders.
-- **Files likely involved:** `src/components/Header.tsx`, `src/components/RateLimitPopover.tsx`, `src/components/ReviewRemindersPopover.tsx`, `src/components/Popover.tsx`, `src/lib/githubRateLimit.ts`, `src/lib/reviewReminders.ts`.
-- **Implementation:** Anchor popovers to their trigger with collision-aware positioning. For empty reminders, use a compact empty state with one sentence and one link to Board or Activity; do not show a large panel. For rate limits, show a compact badge in the header (`Search 26 left`) and make the popover focus on “what happens next” if low: reset time, reduce calls, or refresh from Board only.
-- **Acceptance criteria:** Popovers do not cover primary result actions at common desktop widths. Empty reminder state is compact. Escape closes popovers. Rate limit low/depleted states have actionable copy.
+- **Acceptance criteria:** All main controls are keyboard reachable. Inspector, popovers, and dialogs close with Escape. Focus returns to the trigger after close. Text-heavy cards and inspector sections remain readable at 125% browser zoom. No important action is hidden behind hover-only behavior.
 
 ### Low — Keep Help and Feedback simple, but wire them into the workflow
-- **Problem:** Help and Feedback are among the cleanest screens. They do not need redesign. They need small integration improvements so they support the main workflow without becoming documentation dumps.
-- **Screen(s) affected:** Help, Feedback, footer sidebar links, inspector feedback path.
-- **Files likely involved:** `src/pages/Help.tsx`, `src/pages/Feedback.tsx`, `src/components/FeedbackChecklist.tsx`, `src/lib/githubIssuePrefill.ts`, `src/components/Sidebar.tsx`.
-- **Implementation:** Keep Help as four compact cards. Add one “Start with Find Contributions” CTA only if the user has zero saved cards. On Feedback, make each checklist item copyable into the prefilled GitHub issue body. Include browser/viewport automatically when possible, but never include token or private data. Add a “Copy diagnostic summary” button with sanitized app version, route, viewport, and local-state counts.
-- **Acceptance criteria:** Help remains one screen with four cards. Feedback opens a GitHub issue with a structured body. No token value, raw Authorization header, or private repo metadata appears in copied diagnostics.
+- **Problem:** Help and Feedback are already among the clearest screens. They should not be redesigned into heavier pages. They only need better integration with real user workflows.
+- **Screen(s) affected:** Help, Feedback, inspector feedback path, sidebar footer links.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `renderHelp`, `renderFeedback`, `Open GitHub issue`, `Feedback checklist`, and any GitHub issue URL builder.
+- **Implementation:** Keep Help as four compact cards. Add a `Start with Find Contributions` CTA only for first-run users with zero saved cards. On Feedback, generate a sanitized issue body from the checklist fields plus app route, viewport, user agent, and local-state counts. Never include token values, Authorization headers, private repo metadata, or raw localStorage.
 
-### Low — Tighten empty states across Dashboard, Profile, Board, and Activity
-- **Problem:** Empty sections often say “nothing yet,” but they do not always tell the user the next useful action. The Dashboard is close; Profile and Board need more specific empty states.
-- **Screen(s) affected:** Dashboard, Profile, Board, Activity/Proof Log, Review Reminders.
-- **Files likely involved:** `src/components/EmptyState.tsx`, `src/pages/Dashboard.tsx`, `src/pages/Profile.tsx`, `src/pages/Board.tsx`, `src/pages/Activity.tsx`.
-- **Implementation:** Create a shared `EmptyState` component with `title`, `body`, optional `primaryAction`, optional `secondaryAction`, and `variant`. Use route-specific copy. Avoid stacking multiple large empty boxes on the same page; collapse secondary empty sections into small rows.
+  Suggested sanitized diagnostic shape:
 
-  Code hint:
+  ```js
+  function buildFeedbackDiagnostics() {
+    return {
+      route: window.location.hash || window.location.pathname,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+      savedCandidates: summarizeAppMetrics(readLocalState()).savedCandidates,
+      hiddenResults: summarizeAppMetrics(readLocalState()).hiddenResults,
+    };
+  }
+  ```
+- **Acceptance criteria:** Help remains one compact screen. Feedback opens a prefilled GitHub issue with structured, sanitized content. The page warns users not to paste tokens or private data. CTA feedback is visible after clicking/opening.
 
-  ```tsx
-  <EmptyState
-    title="No proof log entries yet"
-    body="Move a board card to Merged to preserve completed work."
-    primaryAction={{ label: "View board", href: "/board" }}
-    variant="compact"
-  />
+### Low — Standardize empty states and copy across the app
+- **Problem:** Several screens say “nothing yet” without explaining what creates the first item. Empty Dashboard/Profile/Board/Activity sections should guide action without stacking large blank boxes.
+- **Screen(s) affected:** Dashboard, Board, Profile, Activity, Settings hidden results, Review reminders, Proof Log.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; add a small `renderEmptyState()` helper if none exists.
+- **Implementation:** Create one compact empty-state renderer with `title`, `body`, optional `primaryAction`, optional `secondaryAction`, and `variant`. Use one large empty state per page max; secondary empty sections should be compact rows.
+
+  Vanilla JS helper:
+
+  ```js
+  function renderEmptyState({ title, body, primaryAction, secondaryAction, variant = 'default' }) {
+    return `
+      <div class="empty-state empty-state--${variant}">
+        <p class="empty-state__title">${escapeHtml(title)}</p>
+        <p class="empty-state__body">${escapeHtml(body)}</p>
+        ${primaryAction ? renderButtonLink(primaryAction) : ''}
+        ${secondaryAction ? renderButtonLink(secondaryAction, 'secondary') : ''}
+      </div>
+    `;
+  }
   ```
 
-- **Acceptance criteria:** No page shows more than one large empty-state box at a time. Each empty state tells the user what creates the first item. Dashboard, Profile, Board, and Activity use the same component.
+  Example copy:
+  - Board: `Save a candidate from Find Contributions to start tracking it.`
+  - Proof Log: `Move a board card to Merged to preserve completed work.`
+  - Review Reminders: `Cards in Working or PR Open can generate reminders after refresh.`
+- **Acceptance criteria:** No page shows more than one large empty-state box. Every empty state tells the user what action creates the first item. Empty sections use shared styling and copy patterns.
 
 ## What NOT to change
-- Keep the dark theme and purple accent. They are coherent and give the app a distinct product feel.
-- Keep the scoring model and explainability. “Why this score?” with positive and negative factors is a real differentiator; just move it into a calmer evidence layer.
-- Keep the Contribution Brief, especially `Verdict` and `First Move`. That is the clearest product insight in the app.
-- Keep the Action Plan checklist. It turns browsing into execution and should remain visible in the inspector, just not buried in a long scroll.
-- Keep the API rate-limit tracker. It is practical and makes the app feel honest about GitHub constraints.
-- Keep the Help page’s compact four-card structure. It is the clearest secondary screen and should be the reference for future support content.
-- Keep local-first privacy posture. The product benefits from being explicit that board cards, hidden results, preferences, learned feedback, and proof log are local.
-- Keep the Feedback checklist concept. It is simple and actionable; only improve the prefill and sanitized diagnostic support.
+- Keep the dark theme and purple accent. They are coherent and already give the app a distinct product feel.
+- Keep the score model and explainability. “Why this score?” with positive and negative factors is a differentiator; move it into a calmer Evidence layer instead of removing it.
+- Keep `Contribution Brief`, especially `Verdict` and `First Move`. `First Move` is the clearest single UX element in the app.
+- Keep the Action Plan checklist. It turns browsing into execution; it just belongs in a clearer Action layer.
+- Keep the API rate-limit tracker. It is practical, honest, and useful for power users.
+- Keep the Help page’s compact four-card structure. It is the density model for secondary pages.
+- Keep local-first privacy. Board cards, hidden results, preferences, scoring signals, and proof log should stay local unless the user explicitly exports them.
+- Keep the Feedback checklist concept. Improve prefill and sanitized diagnostics, but do not turn it into a heavy support form.
+- Do not add dependencies for these fixes. The premium polish should be CSS + vanilla JS only.
+- Do not let animations override accessibility. Respect `prefers-reduced-motion`, preserve focus, and avoid screen-reader noise from animated score text.
