@@ -775,6 +775,112 @@
     @apply rounded-lg border border-outline-variant;
   }
 
+  .advanced-context-card {
+    min-height: 94px;
+  }
+
+  @media (min-width: 1024px) {
+    .advanced-context-card {
+      min-height: 152px;
+    }
+  }
+
+  .advanced-context-card-loading {
+    position: relative;
+    overflow: hidden;
+    background: #0d1117;
+    border-color: #1a2332;
+  }
+
+  .advanced-context-loading-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .advanced-context-scan-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -2px;
+    height: 1px;
+    background: #378ADD;
+    animation: scanLine 2s ease-in-out infinite;
+    animation-delay: var(--advanced-context-scan-delay, 0s);
+    will-change: top, opacity;
+  }
+
+  .advanced-context-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .advanced-context-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 9999px;
+    background: #378ADD;
+    animation: scanPulse 1.2s infinite;
+  }
+
+  .advanced-context-dot:nth-child(2) {
+    background: #534AB7;
+    animation-delay: 0.2s;
+  }
+
+  .advanced-context-dot:nth-child(3) {
+    background: #5DCAA5;
+    animation-delay: 0.4s;
+  }
+
+  .advanced-context-loading-label {
+    margin-bottom: 8px;
+    color: #378ADD;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+
+  .advanced-context-skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .advanced-context-skeleton-line {
+    height: 8px;
+    border-radius: 3px;
+    background: #1a2332;
+    animation: scanPulse 1.4s infinite;
+  }
+
+  .advanced-context-skeleton-line:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+
+  .advanced-context-skeleton-line:nth-child(3) {
+    animation-delay: 0.2s;
+  }
+
+  .advanced-context-skeleton-line-wide {
+    width: 82%;
+  }
+
+  .advanced-context-skeleton-line-mid {
+    width: 64%;
+  }
+
+  .advanced-context-skeleton-line-short {
+    width: 44%;
+  }
+
+  .advanced-context-card-loaded {
+    animation: fadeUp 220ms ease-out both;
+    animation-delay: var(--advanced-context-fade-delay, 0s);
+  }
+
   .preset-badge {
     transition: background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
   }
@@ -831,4 +937,21 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes scanLine {
+  0% { top: -2px; opacity: 0 }
+  5% { opacity: 1 }
+  90% { opacity: .8 }
+  100% { top: 100%; opacity: 0 }
+}
+
+@keyframes scanPulse {
+  0%, 100% { opacity: .3 }
+  50% { opacity: 1 }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(4px) }
+  to { opacity: 1; transform: translateY(0) }
 }

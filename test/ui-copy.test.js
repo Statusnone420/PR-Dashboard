@@ -205,9 +205,19 @@ test('inspector advanced enrichment stays off result cards', () => {
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
 
   assert.match(mainJs, /Advanced context/);
+  assert.match(mainJs, /Fetching timeline/);
+  assert.match(mainJs, /Scanning setup files/);
+  assert.match(mainJs, /Reading repo history/);
+  assert.match(mainJs, /ADVANCED_CONTEXT_MIN_LOADING_MS\s*=\s*300/);
   assert.match(mainJs, /Timeline inspected/);
   assert.match(mainJs, /Setup files inspected/);
   assert.match(mainJs, /Repo history inspected/);
+  assert.match(mainJs, /scanDelay:\s*'0s'/);
+  assert.match(mainJs, /scanDelay:\s*'0\.4s'/);
+  assert.match(mainJs, /scanDelay:\s*'0\.8s'/);
+  assert.match(mainJs, /fadeDelay:\s*'0s'/);
+  assert.match(mainJs, /fadeDelay:\s*'0\.1s'/);
+  assert.match(mainJs, /fadeDelay:\s*'0\.2s'/);
   assert.match(inspector, /advancedEnrichmentHTML/);
   assert.doesNotMatch(resultCards, /fetchIssueTimelineEnrichment|fetchRepoSetupEnrichment|fetchRepoHistoryEnrichment|Advanced context/);
 });

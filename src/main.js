@@ -7,9 +7,9 @@ import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from '.
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { fetchIssueCommentsEnrichment, getCachedIssueCommentEnrichment, getIssueCommentsCacheKey } from './api/issueComments.js';
-import { fetchIssueTimelineEnrichment, getCachedIssueTimelineEnrichment } from './api/issueTimeline.js';
-import { fetchRepoSetupEnrichment, getCachedRepoSetupEnrichment } from './api/repoSetup.js';
-import { fetchRepoHistoryEnrichment, getCachedRepoHistoryEnrichment } from './api/repoHistory.js';
+import { fetchIssueTimelineEnrichment } from './api/issueTimeline.js';
+import { fetchRepoSetupEnrichment } from './api/repoSetup.js';
+import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { summarizeDashboardMetrics } from './dashboardMetrics.js';
@@ -43,6 +43,8 @@ const inspectorCommentEnrichmentStates = new Map();
 const inspectorTimelineEnrichmentStates = new Map();
 const inspectorRepoSetupEnrichmentStates = new Map();
 const inspectorRepoHistoryEnrichmentStates = new Map();
+const ADVANCED_CONTEXT_MIN_LOADING_MS = 300;
+let activeAdvancedContextIssueKey = '';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -298,7 +300,7 @@ function getInspectorCommentEnrichmentState(issue) {
   return loading;
 }
 
-function getInspectorAdvancedEnrichmentState(issue, stateMap, getCached, invalidMessage) {
+function getInspectorAdvancedEnrichmentState(issue, stateMap, invalidMessage) {
   const key = getIssueCommentsCacheKey(issue);
   if (!key) {
     return {
@@ -310,13 +312,6 @@ function getInspectorAdvancedEnrichmentState(issue, stateMap, getCached, invalid
   const existing = stateMap.get(key);
   if (existing) return existing;
 
-  const cached = getCached(issue, localStorage);
-  if (cached?.summary) {
-    const loaded = { status: 'loaded', summary: cached.summary, fromCache: true };
-    stateMap.set(key, loaded);
-    return loaded;
-  }
-
   const loading = { status: 'loading', started: false };
   stateMap.set(key, loading);
   return loading;
@@ -326,7 +321,6 @@ function getInspectorTimelineEnrichmentState(issue) {
   return getInspectorAdvancedEnrichmentState(
     issue,
     inspectorTimelineEnrichmentStates,
-    getCachedIssueTimelineEnrichment,
     'Valid GitHub issue reference required for timeline enrichment.'
   );
 }
@@ -335,7 +329,6 @@ function getInspectorRepoSetupEnrichmentState(issue) {
   return getInspectorAdvancedEnrichmentState(
     issue,
     inspectorRepoSetupEnrichmentStates,
-    getCachedRepoSetupEnrichment,
     'Valid GitHub issue reference required for repo setup enrichment.'
   );
 }
@@ -344,9 +337,26 @@ function getInspectorRepoHistoryEnrichmentState(issue) {
   return getInspectorAdvancedEnrichmentState(
     issue,
     inspectorRepoHistoryEnrichmentStates,
-    getCachedRepoHistoryEnrichment,
     'Valid GitHub issue reference and label required for repo history enrichment.'
   );
+}
+
+function resetAdvancedContextLoadingForIssue(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) {
+    activeAdvancedContextIssueKey = '';
+    return;
+  }
+  if (activeAdvancedContextIssueKey === key) return;
+
+  activeAdvancedContextIssueKey = key;
+  [
+    inspectorTimelineEnrichmentStates,
+    inspectorRepoSetupEnrichmentStates,
+    inspectorRepoHistoryEnrichmentStates
+  ].forEach(stateMap => {
+    stateMap.set(key, { status: 'loading', started: false });
+  });
 }
 
 function clearInspectorEnrichmentStates() {
@@ -354,6 +364,7 @@ function clearInspectorEnrichmentStates() {
   inspectorTimelineEnrichmentStates.clear();
   inspectorRepoSetupEnrichmentStates.clear();
   inspectorRepoHistoryEnrichmentStates.clear();
+  activeAdvancedContextIssueKey = '';
 }
 
 function getInspectorEnrichmentForScore(states = {}) {
@@ -422,14 +433,14 @@ function getAdvancedContextMeta(kind, summary = {}) {
   return '';
 }
 
-function renderAdvancedContextRow({ kind, label, state, loadedLabel, loadingLabel, unavailableLabel }) {
+function renderAdvancedContextRow({ kind, state, loadedLabel, loadingLabel, unavailableLabel, scanDelay, fadeDelay }) {
   if (state?.status === 'loaded') {
     const reasons = Array.isArray(state.summary?.reasons) && state.summary.reasons.length
       ? state.summary.reasons.slice(0, 2)
       : ['No strong signals found'];
     const meta = getAdvancedContextMeta(kind, state.summary);
     return `
-      <div class="rounded border border-outline-variant bg-surface-container-lowest p-3">
+      <div class="advanced-context-card advanced-context-card-loaded rounded border border-outline-variant bg-surface-container-lowest p-3" style="--advanced-context-fade-delay: ${escapeHTML(fadeDelay)};">
         <div class="mb-2 flex items-center justify-between gap-2">
           <span class="text-xs font-semibold text-on-surface">${escapeHTML(loadedLabel)}</span>
           ${meta ? `<span class="shrink-0 rounded border border-tertiary/25 px-2 py-0.5 text-[11px] text-tertiary">${escapeHTML(meta)}</span>` : ''}
@@ -443,7 +454,7 @@ function renderAdvancedContextRow({ kind, label, state, loadedLabel, loadingLabe
 
   if (state?.status === 'error') {
     return `
-      <div class="rounded border border-error/25 bg-error-container/10 p-3">
+      <div class="advanced-context-card rounded border border-error/25 bg-error-container/10 p-3">
         <div class="mb-1 flex items-center gap-2">
           <span class="material-symbols-outlined text-error text-[16px]">error</span>
           <span class="text-xs font-semibold text-error">${escapeHTML(unavailableLabel)}</span>
@@ -454,12 +465,21 @@ function renderAdvancedContextRow({ kind, label, state, loadedLabel, loadingLabe
   }
 
   return `
-    <div class="rounded border border-primary/20 bg-primary/10 p-3">
-      <div class="mb-1 flex items-center gap-2">
-        <span class="material-symbols-outlined text-primary text-[16px]">hourglass_empty</span>
-        <span class="text-xs font-semibold text-primary">${escapeHTML(loadingLabel)}</span>
+    <div class="advanced-context-card advanced-context-card-loading rounded border p-3" style="--advanced-context-scan-delay: ${escapeHTML(scanDelay)};" aria-busy="true">
+      <div class="advanced-context-scan-line" aria-hidden="true"></div>
+      <div class="advanced-context-loading-content">
+        <div class="advanced-context-dots" aria-hidden="true">
+          <span class="advanced-context-dot"></span>
+          <span class="advanced-context-dot"></span>
+          <span class="advanced-context-dot"></span>
+        </div>
+        <div class="advanced-context-loading-label">${escapeHTML(loadingLabel)}</div>
+        <div class="advanced-context-skeleton-list" aria-hidden="true">
+          <div class="advanced-context-skeleton-line advanced-context-skeleton-line-wide"></div>
+          <div class="advanced-context-skeleton-line advanced-context-skeleton-line-mid"></div>
+          <div class="advanced-context-skeleton-line advanced-context-skeleton-line-short"></div>
+        </div>
       </div>
-      <p class="text-[11px] text-on-surface-variant">${escapeHTML(label)} stays inspector-only and cached locally.</p>
     </div>
   `;
 }
@@ -474,27 +494,30 @@ function renderAdvancedEnrichmentCard(states = {}) {
       <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
         ${renderAdvancedContextRow({
           kind: 'timeline',
-          label: 'Timeline',
           state: states.timeline,
           loadedLabel: 'Timeline inspected',
-          loadingLabel: 'Inspecting timeline',
-          unavailableLabel: 'Timeline unavailable'
+          loadingLabel: 'Fetching timeline',
+          unavailableLabel: 'Timeline unavailable',
+          scanDelay: '0s',
+          fadeDelay: '0s'
         })}
         ${renderAdvancedContextRow({
           kind: 'setup',
-          label: 'Setup files',
           state: states.setup,
           loadedLabel: 'Setup files inspected',
-          loadingLabel: 'Inspecting setup files',
-          unavailableLabel: 'Setup files unavailable'
+          loadingLabel: 'Scanning setup files',
+          unavailableLabel: 'Setup files unavailable',
+          scanDelay: '0.4s',
+          fadeDelay: '0.1s'
         })}
         ${renderAdvancedContextRow({
           kind: 'history',
-          label: 'Repo history',
           state: states.history,
           loadedLabel: 'Repo history inspected',
-          loadingLabel: 'Inspecting repo history',
-          unavailableLabel: 'Repo history unavailable'
+          loadingLabel: 'Reading repo history',
+          unavailableLabel: 'Repo history unavailable',
+          scanDelay: '0.8s',
+          fadeDelay: '0.2s'
         })}
       </div>
     </div>
@@ -511,6 +534,14 @@ function rerenderInspectorForKey(key) {
   if (getIssueCommentsCacheKey(store.inspectedIssue) === key) {
     openInspector();
   }
+}
+
+function waitForAdvancedContextMinimum(startedAt) {
+  const remaining = ADVANCED_CONTEXT_MIN_LOADING_MS - (Date.now() - startedAt);
+  if (remaining <= 0) return Promise.resolve();
+  return new Promise(resolve => {
+    setTimeout(resolve, remaining);
+  });
 }
 
 async function ensureInspectorCommentEnrichment(issue) {
@@ -566,31 +597,48 @@ async function ensureInspectorAdvancedEnrichment(issue) {
     }
   ];
 
+  const pendingSteps = [];
   for (const step of steps) {
     const state = step.getState(issue);
     if (state.status !== 'loading' || state.started) continue;
     state.started = true;
+    pendingSteps.push(step);
+  }
 
+  if (!pendingSteps.length) return;
+
+  const startedAt = Date.now();
+  const results = await Promise.all(pendingSteps.map(async step => {
     try {
       const result = await step.fetcher(issue, {
         token: store.githubToken,
         storage: localStorage
       });
       updateInspectorRateLimit(result.rateLimit);
-      step.stateMap.set(key, {
-        status: 'loaded',
-        summary: result.summary,
-        fromCache: result.fromCache
-      });
+      return {
+        step,
+        nextState: {
+          status: 'loaded',
+          summary: result.summary,
+          fromCache: result.fromCache
+        }
+      };
     } catch {
-      step.stateMap.set(key, {
-        status: 'error',
-        error: step.error
-      });
+      return {
+        step,
+        nextState: {
+          status: 'error',
+          error: step.error
+        }
+      };
     }
+  }));
 
-    rerenderInspectorForKey(key);
-  }
+  await waitForAdvancedContextMinimum(startedAt);
+  results.forEach(({ step, nextState }) => {
+    step.stateMap.set(key, nextState);
+  });
+  rerenderInspectorForKey(key);
 }
 
 function isIssueSavedToBoard(issue) {
@@ -3566,6 +3614,7 @@ function openInspector() {
   const issue = store.inspectedIssue;
   if (!issue) return;
 
+  resetAdvancedContextLoadingForIssue(issue);
   const commentEnrichmentState = getInspectorCommentEnrichmentState(issue);
   const timelineEnrichmentState = getInspectorTimelineEnrichmentState(issue);
   const repoSetupEnrichmentState = getInspectorRepoSetupEnrichmentState(issue);
@@ -4019,6 +4068,7 @@ function closeInspector() {
 
   inspectorRefreshStatus = '';
   inspectorRefreshStatusCardId = null;
+  activeAdvancedContextIssueKey = '';
   panel.classList.add('translate-x-full');
   setTimeout(() => {
     panel.style.display = 'none';

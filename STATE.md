@@ -1,5 +1,14 @@
 # PR Dashboard State
 
+## 2026-05-23 Advanced Context Scan-Line Loading
+
+- Replaced the three inspector Advanced Context loading cards with the Option B scan-line treatment: `Fetching timeline`, `Scanning setup files`, and `Reading repo history` now render a 1px `#378ADD` scan line, staggered scan delays of `0s`, `0.4s`, and `0.8s`, three pulsing colored dots, and pulsing skeleton rows on the `#0d1117` / `#1a2332` loading surface.
+- Preserved the resolved Advanced Context content labels, summaries, and badges, then added staggered `fadeUp` reveal delays of `0s`, `0.1s`, and `0.2s`.
+- Changed advanced enrichment display timing so every newly opened inspector starts in loading state, including cache hits. The existing fetchers still provide cached summaries, but the advanced cards now hold the loading view for at least 300ms before resolving.
+- Added responsive fixed minimum heights for the advanced context cards so loading and resolved states do not shift in the desktop three-column inspector or the mobile one-column inspector.
+- Verification on 2026-05-23: regression tests were written first and failed against the old loading state; final `node --test test/css-contract.test.js` passed 5/5, `node --test test/ui-copy.test.js` passed 21/21, `npm test` passed 212/212, and `npm run build` passed. A deterministic Chromium smoke at `http://127.0.0.1:4174/#board` verified cached issue loading, cached issue reopen loading, fresh issue scan delays, resolved fade delays, exact loading/resolved heights at `1280x900` (`152px`) and `390x844` (`94px`), exact loading colors, and no live GitHub dependency via mocked API routes.
+- Remaining risk: rendered validation was Chromium-only with seeded local board/cache data and mocked GitHub API responses. Live GitHub latency/rate limits can still affect how long uncached cards remain loading before they resolve or fall back to the existing error state.
+
 ## 2026-05-23 Token Input Password Manager Avoidance
 
 - Replaced the Settings GitHub token field with a normal `type="text"` input that is visually masked via `-webkit-text-security` while hidden. This avoids Chrome treating the token as a login password field, which caused both Save Password and Strong Password prompts.
