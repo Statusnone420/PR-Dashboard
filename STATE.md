@@ -1,5 +1,13 @@
 # PR Dashboard State
 
+## 2026-05-23 Avatar Clipping Review Fix
+
+- Kept `#user-profile-avatar` as the custom tooltip host without `overflow-hidden`.
+- Runtime avatar initials now render with `rounded-full overflow-hidden`; runtime GitHub avatar images render inside a rounded overflow-hidden wrapper, with the image itself also rounded.
+- Added regression coverage in `test/ui-copy.test.js` to keep runtime avatar content clipped while preserving the outer `data-tooltip="Profile"` wrapper and avoiding native `title` attributes.
+- Verification on 2026-05-23: local Chromium smoke at `http://127.0.0.1:5173/` verified initials, mocked GitHub image, and broken-image fallback avatar states are circular, and the custom Profile tooltip remains visible while the outer wrapper keeps `overflow: visible`. `npm test` passed 152/152, `npm run test:layout` passed 8/8, and `git diff --check` passed.
+- Remaining risk: avatar and tooltip rendering were smoke-tested in Chromium only.
+
 ## 2026-05-22 UI Polish: Scrollbars, Tooltips, Help, Feedback
 
 - Confirmed `dev` is synced to `main`: `git rev-list --left-right --count main...dev` returned `0 0`.

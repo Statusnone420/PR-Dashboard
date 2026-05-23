@@ -218,7 +218,7 @@ function closeMobileMenu() {
 
 function renderAvatarInitialsContent(initials, options = {}) {
   const idAttribute = options.includeInitialsId ? ' id="user-avatar-initials"' : '';
-  return `<div class="w-full h-full bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container"${idAttribute}>${escapeHTML(initials)}</div>`;
+  return `<div class="w-full h-full rounded-full overflow-hidden bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container"${idAttribute}>${escapeHTML(initials)}</div>`;
 }
 
 function renderProfileAvatarContent(profile, options = {}) {
@@ -231,15 +231,17 @@ function renderProfileAvatarContent(profile, options = {}) {
   const altName = profile?.login || profile?.name || 'GitHub user';
   const fallbackId = options.includeInitialsId ? ' data-avatar-fallback-id="user-avatar-initials"' : '';
   return `
-    <img
-      class="h-full w-full object-cover"
-      src="${escapeHTML(safeAvatarUrl)}"
-      alt="GitHub avatar for ${escapeHTML(altName)}"
-      referrerpolicy="no-referrer"
-      loading="lazy"
-      decoding="async"
-      data-avatar-fallback="${escapeHTML(initials)}"${fallbackId}
-    />
+    <div class="h-full w-full rounded-full overflow-hidden">
+      <img
+        class="h-full w-full rounded-full object-cover"
+        src="${escapeHTML(safeAvatarUrl)}"
+        alt="GitHub avatar for ${escapeHTML(altName)}"
+        referrerpolicy="no-referrer"
+        loading="lazy"
+        decoding="async"
+        data-avatar-fallback="${escapeHTML(initials)}"${fallbackId}
+      />
+    </div>
   `;
 }
 

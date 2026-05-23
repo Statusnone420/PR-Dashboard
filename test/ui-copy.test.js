@@ -158,6 +158,30 @@ test('profile avatar markup is safe and falls back to initials', () => {
   assert.match(mainJs, /user-avatar-initials/);
 });
 
+test('runtime profile avatar content clips inside the tooltip wrapper', () => {
+  const { indexHtml, mainJs } = readCopySources();
+  const avatarTag = indexHtml.match(/<div class="([^"]*)" id="user-profile-avatar"[^>]*>/);
+  assert.ok(avatarTag);
+  assert.doesNotMatch(avatarTag[1], /\boverflow-hidden\b/);
+  assert.match(avatarTag[0], /data-tooltip="Profile"/);
+
+  const initialsRenderer = sliceBetween(
+    mainJs,
+    'function renderAvatarInitialsContent',
+    'function renderProfileAvatarContent'
+  );
+  assert.match(initialsRenderer, /rounded-full/);
+  assert.match(initialsRenderer, /overflow-hidden/);
+
+  const profileRenderer = sliceBetween(
+    mainJs,
+    'function renderProfileAvatarContent',
+    'function renderProfileAvatarFrame'
+  );
+  assert.match(profileRenderer, /rounded-full/);
+  assert.match(profileRenderer, /overflow-hidden/);
+});
+
 test('empty results recovery uses broaden search copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
