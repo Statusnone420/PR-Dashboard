@@ -77,7 +77,9 @@ test.describe('A1 board layout', () => {
       { path: '/#find-issues', expectedText: 'Find your next contribution' },
       { path: '/#board', expectedText: 'Active workflow' },
       { path: '/#settings', expectedText: 'GitHub token' },
-      { path: '/#profile', expectedText: 'Profile' }
+      { path: '/#profile', expectedText: 'Profile' },
+      { path: '/#help', expectedText: 'Board workflow basics' },
+      { path: '/#feedback', expectedText: 'Report feedback' }
     ];
 
     for (const route of routes) {

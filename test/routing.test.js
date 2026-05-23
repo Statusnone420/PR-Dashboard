@@ -8,11 +8,13 @@ test('screenFromHash resolves supported hash routes', async () => {
   assert.equal(screenFromHash('#board'), 'board');
   assert.equal(screenFromHash('#settings'), 'settings');
   assert.equal(screenFromHash('#profile'), 'profile');
+  assert.equal(screenFromHash('#help'), 'help');
+  assert.equal(screenFromHash('#feedback'), 'feedback');
 });
 
 test('screenFromHash falls back to dashboard for unknown hashes', async () => {
   const { screenFromHash } = await import('../src/routing.js');
 
   assert.equal(screenFromHash(''), 'dashboard');
-  assert.equal(screenFromHash('#help'), 'dashboard');
+  assert.equal(screenFromHash('#unknown-route'), 'dashboard');
 });

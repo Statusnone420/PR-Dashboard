@@ -39,6 +39,8 @@
   html {
     background: var(--background);
     overflow-x: hidden;
+    scrollbar-color: rgba(82, 82, 91, 0.45) transparent;
+    scrollbar-width: thin;
   }
 
   body {
@@ -49,7 +51,16 @@
     line-height: 1.5;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    scrollbar-color: rgba(82, 82, 91, 0.45) transparent;
+    scrollbar-width: thin;
     text-rendering: optimizeLegibility;
+  }
+
+  html:hover,
+  body:hover,
+  html:focus-within,
+  body:focus-within {
+    scrollbar-color: rgba(82, 82, 91, 0.82) transparent;
   }
 
   h1,
@@ -121,16 +132,21 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--background);
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--outline-variant);
+    background: rgba(82, 82, 91, 0.45);
+    border: 2px solid transparent;
     border-radius: 9999px;
+    background-clip: padding-box;
   }
 
+  :hover::-webkit-scrollbar-thumb,
+  :focus-within::-webkit-scrollbar-thumb,
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--outline);
+    background: rgba(82, 82, 91, 0.82);
+    background-clip: padding-box;
   }
 }
 
@@ -433,6 +449,125 @@
   .board-lane-cards-container {
     min-width: 0;
     overflow-x: hidden;
+    scrollbar-color: rgba(82, 82, 91, 0.45) transparent;
+    scrollbar-width: thin;
+  }
+
+  .board-lane-cards-container:hover,
+  .board-lane-cards-container:focus-within {
+    scrollbar-color: rgba(82, 82, 91, 0.82) transparent;
+  }
+
+  .board-lane-cards-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .board-lane-cards-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .board-lane-cards-container::-webkit-scrollbar-thumb {
+    background: rgba(82, 82, 91, 0.45);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+
+  .board-lane-cards-container:hover::-webkit-scrollbar-thumb,
+  .board-lane-cards-container:focus-within::-webkit-scrollbar-thumb,
+  .board-lane-cards-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(82, 82, 91, 0.82);
+    background-clip: padding-box;
+  }
+
+  [data-tooltip] {
+    position: relative;
+  }
+
+  [data-tooltip]::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 0.5rem);
+    z-index: 80;
+    max-width: 14rem;
+    width: max-content;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--outline-variant);
+    border-radius: 0.375rem;
+    background: var(--surface-container-highest);
+    color: var(--on-surface);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    text-align: center;
+    transform: translate(-50%, -0.125rem);
+    transition: opacity 120ms ease-out, transform 120ms ease-out;
+    white-space: nowrap;
+  }
+
+  [data-tooltip-position='top']::before {
+    top: auto;
+    bottom: calc(100% + 0.5rem);
+    transform: translate(-50%, 0.125rem);
+  }
+
+  [data-tooltip-position='right']::before {
+    left: calc(100% + 0.5rem);
+    top: 50%;
+    transform: translate(-0.125rem, -50%);
+  }
+
+  [data-tooltip-position='left']::before {
+    left: auto;
+    right: calc(100% + 0.5rem);
+    top: 50%;
+    transform: translate(0.125rem, -50%);
+  }
+
+  [data-tooltip]:hover::before,
+  [data-tooltip]:focus-visible::before {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  [data-tooltip-position='top']:hover::before,
+  [data-tooltip-position='top']:focus-visible::before {
+    transform: translate(-50%, 0);
+  }
+
+  [data-tooltip-position='right']:hover::before,
+  [data-tooltip-position='right']:focus-visible::before,
+  [data-tooltip-position='left']:hover::before,
+  [data-tooltip-position='left']:focus-visible::before {
+    transform: translate(0, -50%);
+  }
+
+  .kanban-card [data-tooltip]::before,
+  .kanban-card [data-tooltip-position='top']::before,
+  .kanban-card [data-tooltip-position='right']::before,
+  .kanban-card [data-tooltip-position='left']::before {
+    left: auto;
+    right: 0;
+    top: auto;
+    bottom: calc(100% + 0.35rem);
+    max-width: 10rem;
+    transform: translateY(0.125rem);
+  }
+
+  .kanban-card [data-tooltip]:hover::before,
+  .kanban-card [data-tooltip]:focus-visible::before,
+  .kanban-card [data-tooltip-position='top']:hover::before,
+  .kanban-card [data-tooltip-position='top']:focus-visible::before,
+  .kanban-card [data-tooltip-position='right']:hover::before,
+  .kanban-card [data-tooltip-position='right']:focus-visible::before,
+  .kanban-card [data-tooltip-position='left']:hover::before,
+  .kanban-card [data-tooltip-position='left']:focus-visible::before {
+    transform: translateY(0);
   }
 
   @media (min-width: 1024px) {

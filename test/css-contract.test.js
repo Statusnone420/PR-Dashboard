@@ -44,3 +44,20 @@ test('board uses responsive grid contract instead of fixed horizontal row', asyn
   assert.doesNotMatch(mainJs, /min-w-max/);
   assert.doesNotMatch(css, /w-\[280px\]|shrink-0/);
 });
+
+test('app scrollbars and tooltip contracts are defined in CSS', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /scrollbar-width:\s*thin/);
+  assert.match(css, /scrollbar-color:\s*rgba\(82,\s*82,\s*91,\s*0\.45\)\s*transparent/);
+  assert.match(css, /::-webkit-scrollbar/);
+  assert.match(css, /::-webkit-scrollbar-thumb/);
+  assert.match(css, /:hover::-webkit-scrollbar-thumb/);
+  assert.match(css, /:focus-within::-webkit-scrollbar-thumb/);
+  assert.match(css, /\.board-lane-cards-container/);
+  assert.match(css, /overflow-x:\s*hidden/);
+  assert.match(css, /\[data-tooltip\]/);
+  assert.match(css, /\[data-tooltip\]::before/);
+  assert.match(css, /\[data-tooltip\]:hover::before/);
+  assert.match(css, /\[data-tooltip\]:focus-visible::before/);
+});

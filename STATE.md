@@ -1,5 +1,22 @@
 # PR Dashboard State
 
+## 2026-05-23 Avatar Clipping Review Fix
+
+- Kept `#user-profile-avatar` as the custom tooltip host without `overflow-hidden`.
+- Runtime avatar initials now render with `rounded-full overflow-hidden`; runtime GitHub avatar images render inside a rounded overflow-hidden wrapper, with the image itself also rounded.
+- Added regression coverage in `test/ui-copy.test.js` to keep runtime avatar content clipped while preserving the outer `data-tooltip="Profile"` wrapper and avoiding native `title` attributes.
+- Verification on 2026-05-23: local Chromium smoke at `http://127.0.0.1:5173/` verified initials, mocked GitHub image, and broken-image fallback avatar states are circular, and the custom Profile tooltip remains visible while the outer wrapper keeps `overflow: visible`. `npm test` passed 152/152, `npm run test:layout` passed 8/8, and `git diff --check` passed.
+- Remaining risk: avatar and tooltip rendering were smoke-tested in Chromium only.
+
+## 2026-05-22 UI Polish: Scrollbars, Tooltips, Help, Feedback
+
+- Confirmed `dev` is synced to `main`: `git rev-list --left-right --count main...dev` returned `0 0`.
+- Implemented app-styled thin scrollbars for page and board-lane scrolling, CSS-only `data-tooltip` app tooltips for chrome/icon controls and small board-flow metrics, and removed native `title` tooltip usage from interactive app chrome.
+- Added real `#help` and `#feedback` routes with desktop and mobile navigation. Help covers Board workflow basics, manual saved-card serial refresh behavior, GitHub API limits for Search vs REST/core, and local export/import/privacy notes. Feedback opens a prefilled GitHub issue and warns not to paste GitHub tokens or private data.
+- Built-preview route smoke at `http://127.0.0.1:4173` verified `#help` renders Help content without Dashboard `Saved candidates`, `#feedback` renders Feedback with the GitHub issue link, Review reminders and Settings tooltips appear on hover and keyboard focus, and a crowded Board lane scrolls vertically without document or lane horizontal overflow.
+- Verification on 2026-05-22: `npm test` passed 151/151, `npm run build` passed, `npm run test:layout` passed 8/8, and the built-preview smoke captured no app console warnings/errors. Generated A1 screenshot churn from `npm run test:layout` was restored.
+- Remaining risk: tooltip behavior was smoke-tested in Chromium only. GitHub issue creation is an outbound link to GitHub and was verified by URL construction, not by submitting an issue.
+
 ## 2026-05-20
 
 - Installed build-time Tailwind with PostCSS/autoprefixer and replaced the broken homemade utility clone.

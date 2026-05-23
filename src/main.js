@@ -130,7 +130,9 @@ function setupNavigation() {
     { id: 'dashboard', navId: 'tab-dashboard', mobileId: 'mobile-tab-dashboard' },
     { id: 'find-issues', navId: 'tab-find-issues', mobileId: 'mobile-tab-find-issues' },
     { id: 'board', navId: 'tab-board', mobileId: 'mobile-tab-board' },
-    { id: 'settings', navId: 'btn-settings', mobileId: 'mobile-tab-settings' }
+    { id: 'settings', navId: 'btn-settings', mobileId: 'mobile-tab-settings' },
+    { id: 'help', navId: 'tab-help', mobileId: 'mobile-tab-help' },
+    { id: 'feedback', navId: 'tab-feedback', mobileId: 'mobile-tab-feedback' }
   ];
 
   tabs.forEach(tab => {
@@ -179,11 +181,18 @@ function setupNavigation() {
   // Profile Avatar clicking takes to settings
   const avatar = document.getElementById('user-profile-avatar');
   if (avatar) {
-    avatar.addEventListener('click', () => {
+    const openProfile = () => {
       if (window.location.hash !== '#profile') {
         window.location.hash = 'profile';
       } else {
         store.setScreen('profile');
+      }
+    };
+    avatar.addEventListener('click', openProfile);
+    avatar.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openProfile();
       }
     });
   }
@@ -209,7 +218,7 @@ function closeMobileMenu() {
 
 function renderAvatarInitialsContent(initials, options = {}) {
   const idAttribute = options.includeInitialsId ? ' id="user-avatar-initials"' : '';
-  return `<div class="w-full h-full bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container"${idAttribute}>${escapeHTML(initials)}</div>`;
+  return `<div class="w-full h-full rounded-full overflow-hidden bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container"${idAttribute}>${escapeHTML(initials)}</div>`;
 }
 
 function renderProfileAvatarContent(profile, options = {}) {
@@ -222,15 +231,17 @@ function renderProfileAvatarContent(profile, options = {}) {
   const altName = profile?.login || profile?.name || 'GitHub user';
   const fallbackId = options.includeInitialsId ? ' data-avatar-fallback-id="user-avatar-initials"' : '';
   return `
-    <img
-      class="h-full w-full object-cover"
-      src="${escapeHTML(safeAvatarUrl)}"
-      alt="GitHub avatar for ${escapeHTML(altName)}"
-      referrerpolicy="no-referrer"
-      loading="lazy"
-      decoding="async"
-      data-avatar-fallback="${escapeHTML(initials)}"${fallbackId}
-    />
+    <div class="h-full w-full rounded-full overflow-hidden">
+      <img
+        class="h-full w-full rounded-full object-cover"
+        src="${escapeHTML(safeAvatarUrl)}"
+        alt="GitHub avatar for ${escapeHTML(altName)}"
+        referrerpolicy="no-referrer"
+        loading="lazy"
+        decoding="async"
+        data-avatar-fallback="${escapeHTML(initials)}"${fallbackId}
+      />
+    </div>
   `;
 }
 
@@ -266,8 +277,10 @@ function renderLocalAlertsPopover() {
   if (!button) return;
 
   const alerts = buildLocalAlerts(store.boardCards);
+  const remindersLabel = alerts.length ? `${alerts.length} Review reminders` : 'Review reminders';
   button.classList.toggle('text-primary', alerts.length > 0);
-  button.title = alerts.length ? `${alerts.length} Review reminders` : 'Review reminders';
+  button.setAttribute('aria-label', remindersLabel);
+  button.setAttribute('data-tooltip', remindersLabel);
   if (!localAlertsOpen) return;
 
   const popover = document.createElement('div');
@@ -293,7 +306,7 @@ function renderLocalAlertsPopover() {
   popover.innerHTML = `
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-sm font-semibold text-on-surface">Review reminders</h2>
-      <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn"><span class="material-symbols-outlined text-[16px]">close</span></button>
+      <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn" aria-label="Close review reminders" data-tooltip="Close review reminders" data-tooltip-position="left"><span class="material-symbols-outlined text-[16px]">close</span></button>
     </div>
     <p class="mb-3 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
     <div class="space-y-2">${alertsHTML}</div>
@@ -334,7 +347,9 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'tab-dashboard',
     'find-issues': 'tab-find-issues',
     'board': 'tab-board',
-    'settings': 'btn-settings'
+    'settings': 'btn-settings',
+    'help': 'tab-help',
+    'feedback': 'tab-feedback'
   };
 
   Object.entries(tabIds).forEach(([screen, elementId]) => {
@@ -358,7 +373,9 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'mobile-tab-dashboard',
     'find-issues': 'mobile-tab-find-issues',
     'board': 'mobile-tab-board',
-    'settings': 'mobile-tab-settings'
+    'settings': 'mobile-tab-settings',
+    'help': 'mobile-tab-help',
+    'feedback': 'mobile-tab-feedback'
   };
 
   Object.entries(mobileTabIds).forEach(([screen, elementId]) => {
@@ -438,6 +455,12 @@ function renderActiveScreen() {
     case 'profile':
       renderProfile(container);
       break;
+    case 'help':
+      renderHelp(container);
+      break;
+    case 'feedback':
+      renderFeedback(container);
+      break;
     default:
       renderDashboard(container);
   }
@@ -471,7 +494,7 @@ function renderBoardFlow(reviewFlow) {
     const width = safePercent(lane.percent);
     const safeColumn = escapeHTML(lane.column);
     const color = REVIEW_FLOW_COLORS[lane.column] || 'rgba(167, 139, 250, 0.9)';
-    return `<span class="review-flow-segment metric-progress-fill" data-review-flow-lane="${safeColumn}" style="width: ${width}%; background: ${color};" title="${safeColumn}: ${lane.count}"></span>`;
+    return `<span class="review-flow-segment metric-progress-fill" data-review-flow-lane="${safeColumn}" data-tooltip="${safeColumn}: ${lane.count}" data-tooltip-position="top" aria-label="${safeColumn}: ${lane.count}" tabindex="0" style="width: ${width}%; background: ${color};"></span>`;
   }).join('');
 
   const lanesHTML = reviewFlow.lanes.map(lane => {
@@ -1817,7 +1840,7 @@ function renderBoard(container) {
               <span class="font-semibold">New GitHub activity</span>
               <span class="text-on-surface-variant"> - ${escapeHTML(card.github_activity.summary || 'Updated on GitHub since last refresh.')}</span>
             </div>
-            <button class="shrink-0 rounded border border-primary/25 px-1.5 py-0.5 text-[10px] text-primary mark-activity-reviewed-btn" data-id="${cardId}">Mark reviewed</button>
+            <button class="shrink-0 rounded border border-primary/25 px-1.5 py-0.5 text-[10px] text-primary mark-activity-reviewed-btn" data-id="${cardId}" aria-label="Mark GitHub activity reviewed">Mark reviewed</button>
           </div>
         </div>
       ` : '';
@@ -1885,7 +1908,7 @@ function renderBoard(container) {
       return `
         <!-- Card -->
         <div class="kanban-card interactive-card rounded-lg p-3 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
-          <button class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-on-surface-variant transition-colors hover:border-error/30 hover:text-error delete-card-btn" data-id="${cardId}"><span class="material-symbols-outlined text-[14px]">close</span></button>
+          <button class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-on-surface-variant transition-colors hover:border-error/30 hover:text-error delete-card-btn" data-id="${cardId}" aria-label="Delete card" data-tooltip="Delete card" data-tooltip-position="left"><span class="material-symbols-outlined text-[14px]">close</span></button>
           
           <div class="flex justify-between items-start mb-2 pr-4">
             <span class="board-card-repo text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
@@ -1910,10 +1933,10 @@ function renderBoard(container) {
             <span class="text-[10px] text-on-surface-variant">${cardDate}</span>
             
             <div class="flex items-center gap-1">
-              <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-left-btn" data-id="${cardId}" ${leftArrowDisabled}>
+              <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-left-btn" data-id="${cardId}" aria-label="Move card left" data-tooltip="Move card left" data-tooltip-position="top" ${leftArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_left</span>
               </button>
-              <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-right-btn" data-id="${cardId}" ${rightArrowDisabled}>
+              <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-right-btn" data-id="${cardId}" aria-label="Move card right" data-tooltip="Move card right" data-tooltip-position="top" ${rightArrowDisabled}>
                 <span class="material-symbols-outlined text-[14px]">arrow_right</span>
               </button>
             </div>
@@ -2091,6 +2114,118 @@ function renderBoard(container) {
       store.clearBoard();
     });
   }
+}
+
+function getFeedbackIssueUrl() {
+  const title = encodeURIComponent('PR Dashboard feedback');
+  const body = encodeURIComponent([
+    '## What happened',
+    '',
+    '## Expected behavior',
+    '',
+    '## Steps to reproduce',
+    '1. ',
+    '2. ',
+    '3. ',
+    '',
+    '## Screenshot',
+    '',
+    '## Browser / viewport',
+    '',
+    'Do not paste GitHub tokens or private data.'
+  ].join('\n'));
+  return `https://github.com/Statusnone420/PR-Dashboard/issues/new?title=${title}&body=${body}`;
+}
+
+function renderHelp(container) {
+  container.innerHTML = `
+    <section class="p-6 md:p-12">
+      <div class="mx-auto max-w-4xl space-y-6">
+        <header class="space-y-2">
+          <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Help</h1>
+          <p class="text-sm text-on-surface-variant">Compact operating notes for local-first contribution tracking.</p>
+        </header>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <article class="interactive-card p-5">
+            <h2 class="mb-3 text-lg font-headline font-bold text-on-surface">Board workflow basics</h2>
+            <ul class="space-y-2 text-sm text-on-surface-variant">
+              <li>Save promising GitHub issues from Find Contributions or Lookup.</li>
+              <li>Move saved cards through Considering, Read Docs, Asked Maintainer, Working, and PR Open.</li>
+              <li>Move completed work to Merged. Move inactive or closed candidates to Passed.</li>
+            </ul>
+          </article>
+
+          <article class="interactive-card p-5">
+            <h2 class="mb-3 text-lg font-headline font-bold text-on-surface">Refresh behavior</h2>
+            <ul class="space-y-2 text-sm text-on-surface-variant">
+              <li>Refresh is manual only.</li>
+              <li>Saved cards only are refreshed from the Board.</li>
+              <li>Batch refreshes use serial requests so GitHub receives one saved-card request at a time.</li>
+            </ul>
+          </article>
+
+          <article class="interactive-card p-5">
+            <h2 class="mb-3 text-lg font-headline font-bold text-on-surface">GitHub API limits</h2>
+            <p class="mb-3 text-sm text-on-surface-variant">Find Contributions uses Search limits. Lookup and saved-card refresh use REST/core limits.</p>
+            <div class="flex flex-wrap gap-3 text-sm">
+              <a class="text-primary hover:underline" href="https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28" target="_blank" rel="noopener noreferrer">GitHub REST/core rate-limit docs</a>
+              <a class="text-primary hover:underline" href="https://docs.github.com/en/rest/rate-limit/rate-limit?apiVersion=2022-11-28" target="_blank" rel="noopener noreferrer">GitHub Search rate-limit docs</a>
+            </div>
+          </article>
+
+          <article class="interactive-card p-5">
+            <h2 class="mb-3 text-lg font-headline font-bold text-on-surface">Local data, export, import, and privacy</h2>
+            <ul class="space-y-2 text-sm text-on-surface-variant">
+              <li>Board cards, Hidden Results, profile metadata, and Proof Log entries stay in this browser.</li>
+              <li>Export Local Data and Import Local Data are the manual bridge between browsers.</li>
+              <li>GitHub tokens and repository metadata cache are excluded from exports.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderFeedback(container) {
+  const feedbackUrl = getFeedbackIssueUrl();
+
+  container.innerHTML = `
+    <section class="p-6 md:p-12">
+      <div class="mx-auto max-w-3xl space-y-6">
+        <header class="space-y-2">
+          <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Report feedback</h1>
+          <p class="text-sm text-on-surface-variant">Open a prefilled GitHub issue with enough context to reproduce the problem.</p>
+        </header>
+
+        <div class="interactive-card p-6">
+          <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-lg font-headline font-bold text-on-surface">Feedback checklist</h2>
+              <p class="mt-1 text-sm text-on-surface-variant">Include the details that make a UI bug or product issue actionable.</p>
+            </div>
+            <a class="interactive-button interactive-button-primary px-4 py-2" href="${feedbackUrl}" target="_blank" rel="noopener noreferrer">
+              Open GitHub issue
+              <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+            </a>
+          </div>
+
+          <ul class="grid grid-cols-1 gap-3 text-sm text-on-surface-variant sm:grid-cols-2">
+            <li class="rounded border border-outline-variant bg-surface-container-lowest p-3">What happened</li>
+            <li class="rounded border border-outline-variant bg-surface-container-lowest p-3">Expected behavior</li>
+            <li class="rounded border border-outline-variant bg-surface-container-lowest p-3">Steps to reproduce</li>
+            <li class="rounded border border-outline-variant bg-surface-container-lowest p-3">Screenshot</li>
+            <li class="rounded border border-outline-variant bg-surface-container-lowest p-3">Browser/viewport</li>
+          </ul>
+
+          <div class="mt-5 rounded-lg border border-error/25 bg-error-container/10 p-4 text-sm text-error">
+            Do not paste GitHub tokens or private data.
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 /**
@@ -2445,7 +2580,7 @@ function renderSettings(container) {
               <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">GitHub token</label>
               <div class="relative group">
                 <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password"/>
-                <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" style="background:none; border:none;">
+                <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" aria-label="Show token" data-tooltip="Show token" data-tooltip-position="left" style="background:none; border:none;">
                   <span class="material-symbols-outlined" id="visibility-icon">visibility</span>
                 </button>
               </div>
@@ -2597,9 +2732,13 @@ function renderSettings(container) {
       if (patInput.type === 'password') {
         patInput.type = 'text';
         visibilityIcon.textContent = 'visibility_off';
+        visibilityToggle.setAttribute('aria-label', 'Hide token');
+        visibilityToggle.setAttribute('data-tooltip', 'Hide token');
       } else {
         patInput.type = 'password';
         visibilityIcon.textContent = 'visibility';
+        visibilityToggle.setAttribute('aria-label', 'Show token');
+        visibilityToggle.setAttribute('data-tooltip', 'Show token');
       }
     });
   }

@@ -17,7 +17,7 @@
   <nav class="desktop-only flex-col fixed left-0 top-0 z-40 h-screen w-64 pt-14 pb-4 bg-surface border-r border-outline-variant" id="sidebar-nav">
     <!-- Brand / Brand Header Area inside SideNav -->
     <div class="px-6 py-6 flex items-center gap-3 border-b border-outline-variant" id="brand-header">
-      <div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary" title="PR Dashboard logo">
+      <div class="w-8 h-8 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary" aria-label="PR Dashboard logo" data-tooltip="PR Dashboard logo" data-tooltip-position="right" role="img" tabindex="0">
         <span class="material-symbols-outlined text-sm filled-icon" style="font-size: 16px;">hexagon</span>
       </div>
       <div>
@@ -62,7 +62,7 @@
       <!-- Left actions: search bar & mobile toggles -->
       <div class="flex items-center gap-4 w-full max-w-md">
         <!-- Mobile Menu Toggle Button -->
-        <button class="text-on-surface-variant hover:text-primary md:hidden" id="mobile-menu-toggle" style="background:none; border:none; padding: 4px;">
+        <button class="text-on-surface-variant hover:text-primary md:hidden" id="mobile-menu-toggle" aria-label="Open navigation" data-tooltip="Open navigation" data-tooltip-position="bottom" style="background:none; border:none; padding: 4px;">
           <span class="material-symbols-outlined">menu</span>
         </button>
         <!-- Brand logo visible on mobile only -->
@@ -82,15 +82,15 @@
           API: <span id="rate-limit-remaining">--</span>/<span id="rate-limit-limit">--</span>
         </div>
         
-        <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-notifications" title="Review reminders" style="background:none; border:none;">
+        <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-notifications" aria-label="Review reminders" data-tooltip="Review reminders" data-tooltip-position="bottom" style="background:none; border:none;">
           <span class="material-symbols-outlined text-[20px]">notifications</span>
         </button>
-        <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-settings" title="Token Settings" style="background:none; border:none;">
+        <button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" id="btn-settings" aria-label="Settings" data-tooltip="Settings" data-tooltip-position="bottom" style="background:none; border:none;">
           <span class="material-symbols-outlined text-[20px]">settings</span>
         </button>
         <div class="h-6 w-[1px] bg-outline-variant desktop-only"></div>
-        <div class="w-8 h-8 rounded-full border border-outline-variant overflow-hidden cursor-pointer hover:border-primary transition-colors ml-1" id="user-profile-avatar" title="User Profile">
-          <div class="w-full h-full bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container" id="user-avatar-initials">
+        <div class="w-8 h-8 rounded-full border border-outline-variant cursor-pointer hover:border-primary transition-colors ml-1" id="user-profile-avatar" aria-label="Profile" data-tooltip="Profile" data-tooltip-position="bottom" role="button" tabindex="0">
+          <div class="w-full h-full rounded-full overflow-hidden bg-primary-container flex items-center justify-center text-xs font-bold text-on-primary-container" id="user-avatar-initials">
             GH
           </div>
         </div>
@@ -102,7 +102,7 @@
       <div class="w-64 bg-surface h-full border-r border-outline-variant p-4 flex flex-col gap-4">
         <div class="flex justify-between items-center pb-4 border-b border-outline-variant">
           <span class="font-headline font-bold text-on-surface text-base">PR Dashboard</span>
-          <button id="mobile-menu-close" class="text-on-surface-variant hover:text-primary" style="background:none; border:none;"><span class="material-symbols-outlined">close</span></button>
+          <button id="mobile-menu-close" class="text-on-surface-variant hover:text-primary" aria-label="Close navigation" data-tooltip="Close navigation" data-tooltip-position="bottom" style="background:none; border:none;"><span class="material-symbols-outlined">close</span></button>
         </div>
         <div class="flex flex-col gap-2 mt-4">
           <a class="nav-tab active" id="mobile-tab-dashboard" href="#dashboard">
@@ -120,6 +120,14 @@
           <a class="nav-tab" id="mobile-tab-settings" href="#settings">
             <span class="material-symbols-outlined text-lg">settings</span>
             Settings
+          </a>
+          <a class="nav-tab" id="mobile-tab-help" href="#help">
+            <span class="material-symbols-outlined text-lg">help_outline</span>
+            Help
+          </a>
+          <a class="nav-tab" id="mobile-tab-feedback" href="#feedback">
+            <span class="material-symbols-outlined text-lg">chat_bubble_outline</span>
+            Feedback
           </a>
         </div>
       </div>
