@@ -1,6 +1,6 @@
 # Match Score Full-System Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement only the requested phase task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** If your environment supports planning/execution sub-skills, use them. Otherwise, follow this `PLAN.md` task-by-task using the checkbox steps.
 
 **Goal:** Upgrade PR Dashboard’s deterministic Match Score into a local-first personal matching system without redesigning the app or adding backend/AI dependencies.
 
@@ -35,6 +35,7 @@ Implementation must follow `AGENTS.md`:
 - Verify each phase before moving on.
 - Update `STATE.md` only during implementation phases when repo changes are made.
 - Do not rewrite unrelated user changes.
+- Do not create commits, branches, pull requests, or pushes unless the user explicitly asks. Leave changes available for review as an uncommitted diff.
 
 ---
 
@@ -112,6 +113,7 @@ Do not implement any of these in this plan:
 - No changing the current board workflow semantics.
 - No hiding scores behind unexplained labels.
 - No editing source, tests, styles, docs, or package scripts outside the requested phase scope.
+- No commits, branches, pull requests, or pushes unless explicitly requested by the user.
 
 ---
 
@@ -203,7 +205,11 @@ Rules:
 
 - Confidence is separate from score.
 - Missing data should not directly make a good issue look bad.
-- Low confidence may cap very high scores to avoid fake-perfect results.
+- Confidence caps are fixed unless tests prove they are impossible:
+  - Low confidence: max score `88`.
+  - Medium confidence: max score `94`.
+  - High confidence: no confidence cap, but existing fake-perfect gates still apply.
+- Changing these cap values requires explicit test updates and a note in `STATE.md`.
 - Confidence reasons must be concrete, such as:
   - `Repository metadata unavailable`
   - `Issue body is short`
@@ -464,13 +470,21 @@ This keeps local learning useful but transparent and reversible.
 
 Confidence is separate from score.
 
-Confidence may cap extreme scores, for example:
+Use these confidence caps unless a test proves they are impossible:
 
-- If confidence is `Low`, final score cannot exceed `88`.
-- If confidence is `Medium`, final score cannot exceed `94`.
-- If confidence is `High`, existing fake-perfect gates still apply.
+```text
+Low confidence: max score 88
+Medium confidence: max score 94
+High confidence: no confidence cap
+```
 
-Exact cap values may be adjusted during implementation only if tests document the chosen thresholds and behavior remains conservative.
+High confidence still uses existing fake-perfect gates.
+
+Changing these values requires:
+
+- explicit test updates
+- a note in `STATE.md`
+- clear explanation in the final phase report
 
 ### Existing Fake-Perfect Gates
 
@@ -551,7 +565,31 @@ Allowed feedback shape:
     scope: {},
     repo: {},
     labels: {}
-  }
+  },
+  events: {}
+}
+```
+
+Feedback recording must be idempotent.
+
+A given canonical issue key plus action/transition must not be counted twice because of:
+
+- re-render
+- reload
+- import
+- repeated movement into the same lane
+- repeated save of an already-saved issue
+- repeated hide of an already-hidden issue/repo
+
+Prefer deriving aggregate feedback from durable local board/hidden/proof state where possible. If event storage is used, store compact per-issue/action markers and recompute aggregates from them.
+
+Suggested event marker shape:
+
+```js
+events: {
+  "owner/repo#123|saved": "2026-05-23T12:00:00.000Z",
+  "owner/repo#123|entered:Working": "2026-05-23T12:05:00.000Z",
+  "owner/repo#123|entered:Merged": "2026-05-23T12:30:00.000Z"
 }
 ```
 
@@ -593,7 +631,7 @@ Import must accept older payloads without preferences/feedback.
 Merge behavior:
 
 - Preferences: keep newer `saved_at`.
-- Feedback: merge counters conservatively.
+- Feedback: merge event markers first, then recompute counters. If only counters are available from an older payload, add counters conservatively without duplicating known local event markers.
 - Enrichment cache: ignore imported enrichment cache if present in a hand-edited file.
 - Tokens/cache fields: continue ignoring.
 
@@ -820,11 +858,15 @@ Only touch styles if existing utilities cannot support the needed compact UI.
 ## Implementation Checklist
 
 - [ ] Inspect current `src/matchScore.js` and tests.
+- [ ] Inspect whether Phase 1 should be split only if the projected diff becomes too broad. If it does, stop and ask the user before coding.
 - [ ] Add tests for the new return shape while preserving old fields.
 - [ ] Add confidence helper tests:
   - repo metadata unavailable gives lower confidence.
   - short issue body gives lower confidence.
   - well-described hydrated issue gives high confidence.
+  - low confidence caps score at `88`.
+  - medium confidence caps score at `94`.
+  - high confidence uses no confidence cap but still uses fake-perfect gates.
 - [ ] Add mini-score tests for all seven mini-scores.
 - [ ] Add personal profile tests:
   - no profile returns `Unknown`, adjustment `0`.
@@ -862,7 +904,7 @@ Only touch styles if existing utilities cannot support the needed compact UI.
 
 ## Tests
 
-Run targeted tests first:
+Run targeted tests first if supported:
 
 ```powershell
 npm test -- test/match-score.test.js
@@ -880,6 +922,10 @@ Required assertions:
 - Closed issue is still zero.
 - Old consumers can still read `score`, `rating`, `rows`, `passReasons`, `flags`, `isContributionCandidate`.
 - New fields exist and are stable.
+- Confidence caps are exactly:
+  - Low: `88`
+  - Medium: `94`
+  - High: no confidence cap
 - Preference save/load/clear works.
 - Export/import includes preferences.
 - Token is not exported.
@@ -1000,12 +1046,18 @@ Modify:
   - scope
   - repo full name
   - labels
+- [ ] Make feedback recording idempotent before wiring it into store actions.
+- [ ] Prefer deriving aggregate feedback from durable state. If storing events, store per-canonical-issue/action markers and recompute aggregate counters from those markers.
 - [ ] Add tests for feedback storage normalization.
-- [ ] Add tests that saving to board increments feedback.
-- [ ] Add tests that moving to Working increments feedback.
-- [ ] Add tests that moving to Merged increments feedback.
-- [ ] Add tests that moving to Passed increments negative feedback.
-- [ ] Add tests that hiding issue/repo increments negative feedback.
+- [ ] Add tests that saving to board increments feedback once.
+- [ ] Add tests that saving an already-saved issue does not double-count feedback.
+- [ ] Add tests that moving to Working increments feedback once.
+- [ ] Add tests that repeated movement into Working does not double-count the same canonical issue/action marker.
+- [ ] Add tests that moving to Merged increments feedback once.
+- [ ] Add tests that moving to Passed increments negative feedback once.
+- [ ] Add tests that hiding issue/repo increments negative feedback once.
+- [ ] Add tests that reloading/re-rendering does not increment feedback.
+- [ ] Add tests that import merge does not double-count known markers.
 - [ ] Add tests that feedback adjustment is capped at `+8 / -10`.
 - [ ] Add tests that closed issue remains zero even with positive feedback.
 - [ ] Implement `matchFeedback.js`.
@@ -1028,12 +1080,15 @@ Modify:
 Required tests:
 
 - Feedback save/load/clear.
+- Feedback aggregate recompute from markers.
 - Feedback aggregate merge.
 - Board actions record expected counters.
-- Hidden actions record expected counters.
-- Proof/Merged actions record expected counters.
+- Board actions do not double-count on re-render/reload/repeated lane entry.
+- Hidden actions record expected counters once.
+- Proof/Merged actions record expected counters once.
 - Feedback score adjustment cap.
 - Export/import includes feedback.
+- Import does not duplicate existing feedback markers.
 - Token is not exported.
 - Clear All removes feedback.
 - Clear Token preserves feedback.
@@ -1067,15 +1122,16 @@ Minimum screenshot matrix:
 
 ## Data Checks
 
-- Confirm feedback stores aggregate counters, not full issue bodies.
+- Confirm feedback stores aggregate counters and compact event markers, not full issue bodies.
 - Confirm export contains feedback but not enrichment cache.
 - Confirm imported older payloads still work.
 - Confirm reset learned feedback removes only feedback.
+- Confirm Clear Token preserves feedback.
 
 ## Risks
 
 - Store movement paths may duplicate feedback events if an action is retried or re-rendered.
-- Moved cards can pass through lanes; avoid double-counting accidental repeated moves if possible.
+- Moved cards can pass through lanes; idempotent markers are required.
 - Feedback should be useful but not noisy in score rows.
 - Hidden repo feedback can be broad; keep penalty capped.
 
@@ -1271,6 +1327,8 @@ Add, in this order:
 
 All enrichment remains inspector-only, read-only, cached, and non-blocking.
 
+Phase 4 may be split into sequential sub-features if the diff becomes large. These are sub-features inside Phase 4, not additional phases. Complete timeline, setup ease, recent PR sample, and same-label sample sequentially. After each sub-feature, run targeted tests before continuing. If a sub-feature starts to create UI clutter, API overuse, or broad diff risk, stop and ask the user whether to defer the remaining Phase 4 sub-features.
+
 ## Explicit Non-Scope
 
 Do not implement:
@@ -1309,6 +1367,7 @@ Modify:
 
 - [ ] Inspect Phase 3 enrichment cache shape.
 - [ ] Extend enrichment cache without breaking comment summaries.
+- [ ] Implement timeline sub-feature first.
 - [ ] Add timeline fetch helper.
 - [ ] Add timeline summary:
   - linked PR evidence.
@@ -1317,6 +1376,8 @@ Modify:
   - closed/reopened context.
   - duplicate/blocked references if visible.
 - [ ] Add score rows for strong linked PR/claimed work evidence.
+- [ ] Run targeted timeline tests before continuing.
+- [ ] Implement repo setup sub-feature second.
 - [ ] Add repo setup helper.
 - [ ] Fetch/check public repo files conservatively:
   - README
@@ -1331,9 +1392,13 @@ Modify:
   - workflows present.
   - setup unclear.
 - [ ] Add Setup Ease mini-score updates.
+- [ ] Run targeted setup tests before continuing.
+- [ ] Implement recent PR sample sub-feature third.
 - [ ] Add recent PR sample helper.
 - [ ] Sample a small number of recent closed/merged PRs.
 - [ ] Summarize repo merge activity.
+- [ ] Run targeted PR sample tests before continuing.
+- [ ] Implement same-label issue sample sub-feature fourth.
 - [ ] Add same-label issue sample helper.
 - [ ] Sample small recent issue set for candidate labels.
 - [ ] Summarize whether labels look active or stale.
@@ -1367,7 +1432,13 @@ Required tests:
 - Enrichment cache excluded from export.
 - Rate-limit errors are non-blocking.
 
-Run:
+Run after each sub-feature where practical:
+
+```powershell
+npm test
+```
+
+Run full phase gates before stopping:
 
 ```powershell
 npm test
@@ -1411,6 +1482,7 @@ If Profile or cards are affected by enriched cache display, include those screen
 - Timeline events can be noisy or incomplete.
 - Repo-aware label quality from a small sample is heuristic.
 - UI can become too dense if every enrichment detail is shown.
+- Phase 4 is intentionally the highest-risk phase. Split internally and stop early if it begins to sprawl.
 
 ## Stop Condition
 
@@ -1470,6 +1542,7 @@ Stop immediately and ask for direction if any of these happen:
 - You need to change package scripts.
 - You need to redesign major layout surfaces.
 - You need to continue into the next phase to make the current phase coherent.
+- You believe commits, branches, pushes, or pull requests are required. Ask the user first.
 
 ---
 
@@ -1603,14 +1676,15 @@ A fresh agent starting from this plan must:
 8. Execute only that phase.
 9. Use tests-first implementation for behavior changes.
 10. Keep diffs scoped to the phase.
-11. Run full phase gates.
-12. Update `STATE.md` with:
+11. Do not create commits, branches, pushes, or pull requests unless the user explicitly asks.
+12. Run full phase gates.
+13. Update `STATE.md` with:
     - what changed
     - tests run
     - build result
     - screenshot/browser validation
     - known risk
-13. Stop after the phase and report results.
+14. Stop after the phase and report results.
 
 Do not create a new worktree. Work inside the current branch/workspace.
 
@@ -1622,21 +1696,21 @@ Do not create a new worktree. Work inside the current branch/workspace.
 
 ```text
 /goals
-Objective: Audit the Match Score full-system plan before implementation. Read AGENTS.md, PLAN.md, STATE.md, package.json, src/matchScore.js, src/main.js, src/profile.js, src/localData.js, src/state/store.js, and the relevant tests. Do not edit files. Report whether PLAN.md is coherent, phase-bounded, compatible with current architecture, and missing any required safety/test/UI/data checks. Stop after the audit.
+Objective: Audit the Match Score full-system plan before implementation. Read AGENTS.md, PLAN.md, STATE.md, package.json, src/matchScore.js, src/main.js, src/profile.js, src/localData.js, src/state/store.js, and relevant tests. Do not edit files. Report whether PLAN.md is coherent, phase-bounded, compatible with current architecture, missing safety/test/UI/data checks, and whether Phase 1 should split only if diff risk is too broad. Stop after audit.
 ```
 
 ### Phase 1 Prompt
 
 ```text
 /goals
-Objective: Execute Phase 1 only from PLAN.md: Match Score v3 Core. Add structured calculateMatchScore output, confidence, miniScores, personalFit, lean contribution preferences, Profile preferences UI, export/import support, and compact card/inspector display. Do not implement local feedback or GitHub enrichment. Run npm test, npm run build, git diff --check, and relevant UI/layout checks. Update STATE.md. Stop after Phase 1.
+Objective: Execute Phase 1 only from PLAN.md: Match Score v3 Core. Add structured calculateMatchScore output, fixed confidence caps, miniScores, personalFit, lean contribution preferences, Profile preferences UI, export/import support, and compact card/inspector display. Do not implement local feedback or GitHub enrichment. Run npm test, npm run build, git diff --check, and relevant UI/layout checks. Update STATE.md. Stop after Phase 1.
 ```
 
 ### Phase 2 Prompt
 
 ```text
 /goals
-Objective: Execute Phase 2 only from PLAN.md: Local Feedback Learning. Add compact local feedback storage from Save, Working, Passed, Merged, Hide issue, and Hide repo actions. Feed transparent capped feedback rows into Match Score. Include feedback in export/import, preserve token exclusion, add Profile reset/summary, verify storage and UI. Do not implement GitHub enrichment. Run full phase gates, update STATE.md, and stop.
+Objective: Execute Phase 2 only from PLAN.md: Local Feedback Learning. Add idempotent compact local feedback storage from Save, Working, Passed, Merged, Hide issue, and Hide repo actions. Feed transparent capped feedback rows into Match Score. Include feedback in export/import, preserve token exclusion, add Profile reset/summary, verify storage and UI. Do not implement GitHub enrichment. Run full phase gates, update STATE.md, and stop.
 ```
 
 ### Phase 3 Prompt
@@ -1650,7 +1724,7 @@ Objective: Execute Phase 3 only from PLAN.md: Lazy Inspector Enrichment, comment
 
 ```text
 /goals
-Objective: Execute Phase 4 only from PLAN.md: Advanced Enrichment. Add inspector-only cached read-only enrichment for issue timeline events, repo setup ease, recent PR sample, and same-label repo sample. Keep API usage conservative, cache compact, export excluding enrichment cache, and inspector UI readable. Run full phase gates, screenshot checks, update STATE.md, and stop.
+Objective: Execute Phase 4 only from PLAN.md: Advanced Enrichment. Add inspector-only cached read-only enrichment for issue timeline events, repo setup ease, recent PR sample, and same-label repo sample. Work sequentially and split internal sub-features if diff/API/UI risk grows. Keep cache compact and export excluding enrichment cache. Run full phase gates, screenshot checks, update STATE.md, and stop.
 ```
 
 ---
