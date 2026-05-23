@@ -7,6 +7,7 @@ import {
   loadBoardFromStorage
 } from '../boardModel.js';
 import { REPO_METADATA_CACHE_KEY } from '../api/repoMetadata.js';
+import { clearScoreEnrichmentCache } from '../api/issueComments.js';
 import {
   clearHiddenItems as clearHiddenItemsFromStorage,
   hideIssue as hideIssueInStorage,
@@ -21,6 +22,16 @@ import {
   upsertProofEntry
 } from '../proofLog.js';
 import { clearProfile, loadProfile, saveProfileFromGitHubUser } from '../profile.js';
+import {
+  clearContributionPreferences,
+  loadContributionPreferences,
+  saveContributionPreferences
+} from '../contributionPreferences.js';
+import {
+  clearMatchFeedback as clearMatchFeedbackFromStorage,
+  loadMatchFeedback,
+  recordMatchFeedbackEvent as recordMatchFeedbackEventInStorage
+} from '../matchFeedback.js';
 import { getCanonicalIssueKey } from '../issueKeys.js';
 
 export function createDefaultFilters() {
@@ -110,6 +121,8 @@ export class AppStore {
 
     // 3b. Local Profile State
     this.profile = loadProfile(localStorage);
+    this.contributionPreferences = loadContributionPreferences(localStorage);
+    this.matchFeedback = loadMatchFeedback(localStorage);
 
     // 4. Find Issues Search Cache & Parameters
     this.searchQuery = '';
@@ -177,6 +190,7 @@ export class AppStore {
       localStorage.removeItem('pr_dashboard_token');
     }
     this.resetRateLimits({ notify: false });
+    clearScoreEnrichmentCache(localStorage);
     this.notify();
   }
 
@@ -186,6 +200,7 @@ export class AppStore {
     localStorage.removeItem('pr_dashboard_remember_token');
     localStorage.removeItem('pr_dashboard_token');
     clearProfile(localStorage);
+    clearScoreEnrichmentCache(localStorage);
     this.profile = null;
     this.resetRateLimits({ notify: false });
     this.notify();
@@ -206,13 +221,19 @@ export class AppStore {
     clearHiddenItemsFromStorage(localStorage);
     clearProofLog(localStorage);
     clearProfile(localStorage);
+    clearContributionPreferences(localStorage);
+    clearMatchFeedbackFromStorage(localStorage);
+    clearScoreEnrichmentCache(localStorage);
     localStorage.removeItem(REPO_METADATA_CACHE_KEY);
     this.profile = null;
+    this.contributionPreferences = null;
+    this.matchFeedback = loadMatchFeedback(localStorage);
     this.notify();
   }
 
   hideIssue(issue) {
     hideIssueInStorage(issue, localStorage);
+    this.recordMatchFeedback(issue, 'hiddenIssue', { notify: false });
     if (this.inspectedIssue && this.inspectedIssue.id === issue?.id) {
       this.inspectedIssue = null;
     }
@@ -221,6 +242,7 @@ export class AppStore {
 
   hideRepo(issue) {
     hideRepoInStorage(issue, localStorage);
+    this.recordMatchFeedback(issue, 'hiddenRepo', { notify: false });
     this.inspectedIssue = null;
     this.notify();
   }
@@ -258,6 +280,38 @@ export class AppStore {
       this.notify();
     }
     return this.profile;
+  }
+
+  updateContributionPreferences(preferences, options = {}) {
+    this.contributionPreferences = saveContributionPreferences(preferences, localStorage, options);
+    if (options.notify !== false) {
+      this.notify();
+    }
+    return this.contributionPreferences;
+  }
+
+  clearContributionPreferences(options = {}) {
+    clearContributionPreferences(localStorage);
+    this.contributionPreferences = null;
+    if (options.notify !== false) {
+      this.notify();
+    }
+  }
+
+  recordMatchFeedback(issue, action, options = {}) {
+    this.matchFeedback = recordMatchFeedbackEventInStorage(issue, action, localStorage, options);
+    if (options.notify !== false) {
+      this.notify();
+    }
+    return this.matchFeedback;
+  }
+
+  clearMatchFeedback(options = {}) {
+    clearMatchFeedbackFromStorage(localStorage);
+    this.matchFeedback = loadMatchFeedback(localStorage);
+    if (options.notify !== false) {
+      this.notify();
+    }
   }
 
   unhideHiddenItem(type, key) {
@@ -330,6 +384,7 @@ export class AppStore {
       if (!this.boardCards["Considering"]) this.boardCards["Considering"] = [];
       this.boardCards["Considering"].push(freshIssue);
       this.saveBoardToStorage();
+      this.recordMatchFeedback(freshIssue, 'saved', { now: timestamp, notify: false });
     }
     this.notify();
   }
@@ -375,6 +430,9 @@ export class AppStore {
           });
         } else if (targetCol === 'Passed') {
           this.removeIssueFromProofLog(cardObj);
+        }
+        if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
+          this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
         }
         this.saveBoardToStorage();
         this.notify();
@@ -460,6 +518,9 @@ export class AppStore {
         });
       } else if (targetCol === 'Passed') {
         this.removeIssueFromProofLog(cardObj);
+      }
+      if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
+        this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
       }
       this.saveBoardToStorage();
       this.notify();

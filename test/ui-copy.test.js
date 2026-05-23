@@ -111,8 +111,82 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(copy, /not directly exposed by GitHub/);
   assert.match(copy, /Do not paste GitHub tokens or private data/);
   assert.match(mainJs, /No review reminders right now\./);
+  assert.match(mainJs, /Contribution preferences/);
+  assert.match(mainJs, /Save preferences/);
+  assert.match(mainJs, /Reset preferences/);
+  assert.match(mainJs, /Learned feedback/);
+  assert.match(mainJs, /Reset learned feedback/);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
+});
+
+test('match score v3 UI exposes compact confidence and inspector diagnostics', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(resultCards, /% Match/);
+  assert.match(resultCards, /Fit:/);
+  assert.match(resultCards, /Confidence:/);
+  assert.match(inspector, /Score diagnostics/);
+  assert.match(inspector, /Confidence/);
+  assert.match(inspector, /Mini-scores/);
+  assert.match(inspector, /Opportunity Fit/);
+  assert.match(inspector, /Issue Clarity/);
+  assert.match(inspector, /Repo Health/);
+  assert.match(inspector, /Social Risk/);
+  assert.match(inspector, /Setup Ease/);
+  assert.match(inspector, /Personal Fit/);
+  assert.match(inspector, /Why this score\?/);
+});
+
+test('profile preferences UI does not auto-apply search filters', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function hiddenItemMatchesFilter');
+
+  assert.match(profile, /contribution-preferences-form/);
+  assert.match(mainJs, /profile-preferences-save-btn/);
+  assert.match(profile, /profile-preferences-reset-btn/);
+  assert.doesNotMatch(profile, /runGitHubSearch|performSearch|applyDraftFilters|setFilters/);
+});
+
+test('profile learned feedback summary exposes reset without private data wording', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /renderMatchFeedbackCard/);
+  assert.match(mainJs, /Saved to board/);
+  assert.match(mainJs, /Moved to Merged/);
+  assert.match(mainJs, /Hidden issue/);
+  assert.match(mainJs, /Hidden repo/);
+  assert.doesNotMatch(mainJs, /private repo data|tokens in feedback|full issue body/i);
+});
+
+test('inspector comment enrichment exposes loading and error states without card fetching', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const matchScoreJs = readFileSync(new URL('../src/matchScore.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(mainJs, /Inspecting comments/);
+  assert.match(mainJs, /Comment enrichment unavailable/);
+  assert.match(mainJs, /Comments inspected/);
+  assert.match(matchScoreJs, /Maintainer appears open to PRs/);
+  assert.match(matchScoreJs, /Comment thread suggests someone may be working on this/);
+  assert.match(inspector, /commentEnrichmentHTML/);
+  assert.doesNotMatch(resultCards, /fetchIssueCommentsEnrichment|ensureInspectorCommentEnrichment|Inspecting comments/);
+});
+
+test('inspector advanced enrichment stays off result cards', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(mainJs, /Advanced context/);
+  assert.match(mainJs, /Timeline inspected/);
+  assert.match(mainJs, /Setup files inspected/);
+  assert.match(mainJs, /Repo history inspected/);
+  assert.match(inspector, /advancedEnrichmentHTML/);
+  assert.doesNotMatch(resultCards, /fetchIssueTimelineEnrichment|fetchRepoSetupEnrichment|fetchRepoHistoryEnrichment|Advanced context/);
 });
 
 test('help and feedback routes are included in navigation setup', () => {

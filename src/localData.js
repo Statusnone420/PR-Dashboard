@@ -2,6 +2,19 @@ import { BOARD_COLUMNS, BOARD_STORAGE_KEY, createEmptyBoard, normalizeBoardCards
 import { HIDDEN_STORAGE_KEY, loadHiddenItems, saveHiddenItems } from './hiddenItems.js';
 import { getCanonicalIssueKey } from './issueKeys.js';
 import { loadProfile, PROFILE_STORAGE_KEY, saveProfile } from './profile.js';
+import {
+  CONTRIBUTION_PREFERENCES_STORAGE_KEY,
+  loadContributionPreferences,
+  mergeContributionPreferences,
+  saveContributionPreferences
+} from './contributionPreferences.js';
+import {
+  MATCH_FEEDBACK_STORAGE_KEY,
+  loadMatchFeedback,
+  mergeMatchFeedback,
+  saveMatchFeedback
+} from './matchFeedback.js';
+import { SCORE_ENRICHMENT_CACHE_KEY } from './api/issueComments.js';
 import { loadProofLog, mergeProofLogs, PROOF_LOG_STORAGE_KEY, saveProofLog } from './proofLog.js';
 import { REPO_METADATA_CACHE_KEY } from './api/repoMetadata.js';
 
@@ -158,7 +171,9 @@ export function exportLocalData(storage = getStorage(), options = {}) {
     boardCards: targetStorage ? normalizeBoardCards(parseBoard(targetStorage)).board : createEmptyBoard(),
     hiddenItems: targetStorage ? loadHiddenItems(targetStorage) : { version: 1, issues: {}, repos: {} },
     proofLog: targetStorage ? loadProofLog(targetStorage) : { version: 1, entries: {} },
-    profile: targetStorage ? loadProfile(targetStorage) : null
+    profile: targetStorage ? loadProfile(targetStorage) : null,
+    contributionPreferences: targetStorage ? loadContributionPreferences(targetStorage) : null,
+    matchFeedback: targetStorage ? loadMatchFeedback(targetStorage) : null
   };
 }
 
@@ -181,8 +196,18 @@ export function importLocalData(storage = getStorage(), payload = {}) {
   const profile = retainedProfile
     ? saveProfile(retainedProfile, targetStorage)
     : loadProfile(targetStorage);
+  const retainedContributionPreferences = mergeContributionPreferences(
+    loadContributionPreferences(targetStorage),
+    payload.contributionPreferences
+  );
+  const contributionPreferences = retainedContributionPreferences
+    ? saveContributionPreferences(retainedContributionPreferences, targetStorage)
+    : loadContributionPreferences(targetStorage);
+  const matchFeedback = payload.matchFeedback
+    ? saveMatchFeedback(mergeMatchFeedback(loadMatchFeedback(targetStorage), payload.matchFeedback), targetStorage)
+    : loadMatchFeedback(targetStorage);
 
-  return { imported: true, boardCards, hiddenItems, proofLog, profile };
+  return { imported: true, boardCards, hiddenItems, proofLog, profile, contributionPreferences, matchFeedback };
 }
 
 export function clearAllAppDataKeys(storage = getStorage()) {
@@ -190,6 +215,9 @@ export function clearAllAppDataKeys(storage = getStorage()) {
   if (!targetStorage) return;
   targetStorage.removeItem(PROOF_LOG_STORAGE_KEY);
   targetStorage.removeItem(PROFILE_STORAGE_KEY);
+  targetStorage.removeItem(CONTRIBUTION_PREFERENCES_STORAGE_KEY);
+  targetStorage.removeItem(MATCH_FEEDBACK_STORAGE_KEY);
+  targetStorage.removeItem(SCORE_ENRICHMENT_CACHE_KEY);
   targetStorage.removeItem(HIDDEN_STORAGE_KEY);
   targetStorage.removeItem(REPO_METADATA_CACHE_KEY);
 }

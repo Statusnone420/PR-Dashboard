@@ -1,4 +1,5 @@
 import { isClosedIssue } from './boardModel.js';
+import { getFeedbackScoreAdjustment } from './matchFeedback.js';
 
 const BEGINNER_LABELS = ['good first issue', 'help wanted', 'beginner', 'starter'];
 const STRONG_FIT_LABELS = [
@@ -100,6 +101,22 @@ const BOUNDED_FIX_PATTERNS = [
   /\bsmall\s+(?:fix|change|cleanup)\b/i,
   /\b(?:typo|spelling|readme|config)\b/i
 ];
+const CONFIDENCE_CAPS = {
+  Low: 88,
+  Medium: 94
+};
+const WORK_TYPE_TERMS = {
+  docs: ['docs', 'documentation', 'readme', 'copy', 'wording'],
+  readme: ['readme'],
+  tests: ['test', 'tests', 'testing'],
+  test: ['test', 'tests', 'testing'],
+  config: ['config', 'configuration', 'settings'],
+  ui: ['ui', 'button', 'label', 'tooltip', 'copy'],
+  bug: ['bug', 'fix', 'broken', 'expected', 'actual'],
+  refactor: ['refactor', 'rewrite', 'architecture'],
+  migration: ['migration', 'migrate'],
+  api: ['api', 'endpoint']
+};
 
 function clampScore(score) {
   return Math.max(0, Math.min(100, Math.round(score)));
@@ -123,6 +140,10 @@ function daysSince(value, now) {
 
 function hasAny(value, terms) {
   return terms.some(term => value.includes(term));
+}
+
+function hasWholeTerm(value, term) {
+  return new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(value);
 }
 
 function normalizedHeading(line) {
@@ -197,6 +218,308 @@ function hasBoundedFixWording(issueText) {
   return BOUNDED_FIX_PATTERNS.some(pattern => pattern.test(compact));
 }
 
+function levelScore(level) {
+  if (level === 'High') return 90;
+  if (level === 'Medium') return 60;
+  if (level === 'Low') return 25;
+  return 0;
+}
+
+function createMiniScore(label, level, reasons = []) {
+  return {
+    label,
+    level,
+    score: levelScore(level),
+    reasons: reasons.filter(Boolean)
+  };
+}
+
+function getIssueBody(issue) {
+  return typeof issue?.body === 'string' ? issue.body.trim() : '';
+}
+
+function repoMetadataUnavailable(issue) {
+  const repo = issue?.repository || {};
+  return Boolean(
+    repo.metadataUnavailable
+    || issue?.repository_metadata_unavailable
+    || (!repo.full_name && !repo.name)
+    || (
+      repo.full_name
+      && repo.pushed_at === undefined
+      && repo.stargazers_count === undefined
+      && repo.archived === undefined
+      && repo.disabled === undefined
+    )
+  );
+}
+
+function buildConfidence(issue, signals, stage, enrichment = {}) {
+  const reasons = [];
+  const currentWeaknesses = [];
+  const repo = issue?.repository || {};
+  const body = getIssueBody(issue);
+  const commentSummary = enrichment?.comments || null;
+  const timelineSummary = enrichment?.timeline || null;
+  const setupSummary = enrichment?.setup || null;
+  const historySummary = enrichment?.history || null;
+  const commentsInspected = Boolean(commentSummary?.inspected);
+  const timelineInspected = Boolean(timelineSummary?.inspected);
+  const setupInspected = Boolean(setupSummary?.inspected);
+  const historyInspected = Boolean(historySummary?.inspected);
+
+  if (repoMetadataUnavailable(issue)) {
+    reasons.push('Repository metadata unavailable');
+    currentWeaknesses.push('repo');
+  }
+  if (repo.archived || repo.disabled) {
+    reasons.push('Repository archived or disabled');
+    currentWeaknesses.push('repo');
+  }
+  if (!body || body.length < 80) {
+    reasons.push('Issue body is short');
+    currentWeaknesses.push('body');
+  } else if (/details are unclear|unclear|not sure|somehow/i.test(body)) {
+    reasons.push('Issue body is vague');
+    currentWeaknesses.push('body');
+  }
+  if (signals.updatedDays > 365) {
+    reasons.push('Issue is stale');
+    currentWeaknesses.push('age');
+  }
+  if (repo.pushed_at && daysSince(repo.pushed_at, signals.now) > 365) {
+    reasons.push('Repository appears stale');
+    currentWeaknesses.push('repo-age');
+  }
+  if (signals.isAssigned && Number(issue?.comments || 0) > 10) {
+    reasons.push('Assigned issue has an active thread');
+    currentWeaknesses.push('social');
+  }
+
+  if (commentsInspected) {
+    reasons.push('Comments inspected');
+    if (commentSummary.botOnlyRecentActivity) {
+      reasons.push('Only bot comments inspected');
+    }
+    if (commentSummary.ownershipClaim || commentSummary.blockedHint) {
+      currentWeaknesses.push('social');
+    }
+  } else if (stage === 'preview') {
+    reasons.push('Comments not inspected');
+  }
+  if (timelineInspected) {
+    reasons.push('Timeline inspected');
+    if (timelineSummary.linkedPullRequest || timelineSummary.assignmentActivity || timelineSummary.duplicateOrBlockedReference) {
+      currentWeaknesses.push('social');
+    }
+  } else {
+    reasons.push('Timeline not inspected');
+  }
+  if (setupInspected) {
+    reasons.push('Setup files inspected');
+    if (setupSummary.setupUnclear) {
+      currentWeaknesses.push('setup');
+    }
+  } else {
+    reasons.push('Setup files not inspected');
+  }
+  if (historyInspected) {
+    reasons.push('Repo history inspected');
+    if (historySummary.staleSameLabelSample) {
+      currentWeaknesses.push('age');
+    }
+  }
+
+  const distinctWeaknesses = new Set(currentWeaknesses);
+  let level = 'High';
+  if (
+    distinctWeaknesses.has('repo')
+    || (distinctWeaknesses.has('body') && (distinctWeaknesses.has('age') || distinctWeaknesses.has('social')))
+    || distinctWeaknesses.has('repo-age')
+  ) {
+    level = 'Low';
+  } else if (
+    distinctWeaknesses.size > 0
+    || Number(issue?.comments || 0) > 10
+    || signals.isAssigned
+    || signals.updatedDays > 180
+  ) {
+    level = 'Medium';
+  }
+
+  return { level, reasons };
+}
+
+function workTypeMatches(term, labels, issueText) {
+  const normalized = String(term || '').toLowerCase();
+  const terms = WORK_TYPE_TERMS[normalized] || [normalized];
+  return terms.some(item => labels.some(label => hasWholeTerm(label, item)) || hasWholeTerm(issueText, item));
+}
+
+function scopeLabel(signals) {
+  if (signals.hasComplexScope) return 'Large/unclear';
+  if (signals.hasSmallScope || signals.hasActionableTaskList || signals.hasBoundedFix) return 'Small';
+  return 'Medium';
+}
+
+function buildPersonalFit(issue, profile, signals) {
+  if (!profile || typeof profile !== 'object') {
+    return {
+      personalFit: {
+        status: 'Unknown',
+        adjustment: 0,
+        reasons: ['No contribution preferences saved']
+      },
+      rows: []
+    };
+  }
+
+  const rows = [];
+  const reasons = [];
+  const labels = signals.labels;
+  const issueText = signals.issueText;
+  const repoLanguage = String(issue?.repository?.language || '').toLowerCase();
+  const languages = Array.isArray(profile.languages) ? profile.languages : [];
+  const preferredWork = Array.isArray(profile.preferredWork) ? profile.preferredWork : [];
+  const avoidWork = Array.isArray(profile.avoidWork) ? profile.avoidWork : [];
+
+  for (const language of languages) {
+    const clean = String(language || '').trim();
+    if (clean && repoLanguage && repoLanguage === clean.toLowerCase()) {
+      rows.push({ points: 6, label: `Matches ${clean} preference` });
+      reasons.push(`Matches ${clean} preference`);
+      break;
+    }
+  }
+
+  for (const work of preferredWork) {
+    const clean = String(work || '').trim();
+    if (clean && workTypeMatches(clean, labels, issueText)) {
+      rows.push({ points: 5, label: `Matches ${clean} preference` });
+      reasons.push(`Matches ${clean} preference`);
+    }
+  }
+
+  for (const work of avoidWork) {
+    const clean = String(work || '').trim();
+    if (clean && workTypeMatches(clean, labels, issueText)) {
+      rows.push({ points: -8, label: `Matches avoided ${clean} work` });
+      reasons.push(`Avoids ${clean} work`);
+    }
+  }
+
+  const scope = scopeLabel(signals);
+  if (profile.timeBudget === 'under-1-hour' && scope !== 'Small') {
+    rows.push({ points: -7, label: 'Larger than under-1-hour preference' });
+    reasons.push('Larger than under-1-hour preference');
+  } else if (profile.timeBudget === 'half-day' && scope === 'Large/unclear') {
+    rows.push({ points: -5, label: 'Larger than half-day preference' });
+    reasons.push('Larger than half-day preference');
+  }
+
+  if (profile.experience === 'first-pr' && signals.hasBeginnerLabel && scope === 'Small') {
+    rows.push({ points: 4, label: 'Matches first PR preference' });
+    reasons.push('Matches first PR preference');
+  } else if (profile.experience === 'first-pr' && scope === 'Large/unclear') {
+    rows.push({ points: -6, label: 'Too broad for first PR preference' });
+    reasons.push('Too broad for first PR preference');
+  } else if (profile.experience === 'advanced' && scope === 'Large/unclear') {
+    rows.push({ points: 3, label: 'Matches advanced preference' });
+    reasons.push('Matches advanced preference');
+  }
+
+  const rawAdjustment = rows.reduce((total, row) => total + row.points, 0);
+  const adjustment = Math.max(-20, Math.min(15, rawAdjustment));
+  if (adjustment !== rawAdjustment) {
+    rows.push({
+      points: adjustment - rawAdjustment,
+      label: 'Contribution preference adjustment cap'
+    });
+  }
+  const status = adjustment > 0 ? 'Matched' : adjustment < -8 ? 'Mismatch' : adjustment < 0 ? 'Mixed' : 'Unknown';
+
+  return {
+    personalFit: {
+      status,
+      adjustment,
+      reasons: reasons.length ? reasons : ['No contribution preference match']
+    },
+    rows
+  };
+}
+
+function buildMiniScores(issue, signals, personalFit, enrichment = {}) {
+  const opportunityReasons = [];
+  const historySummary = enrichment?.history || null;
+  const timelineSummary = enrichment?.timeline || null;
+  const setupSummary = enrichment?.setup || null;
+  if (signals.hasBeginnerLabel || signals.hasStrongFitLabel || signals.hasBoundedFix) opportunityReasons.push('Clear contribution target');
+  if (historySummary?.activeSameLabelIssues) opportunityReasons.push('Same-label issues are active');
+  if (historySummary?.staleSameLabelSample) opportunityReasons.push('Same-label issues look stale');
+  if (signals.hasStaleLabel || signals.hasMetaGrowth || isClosedIssue(issue)) opportunityReasons.push('Hard-pass signal present');
+  const opportunityLevel = isClosedIssue(issue) || signals.hasStaleLabel || signals.hasMetaGrowth || historySummary?.staleSameLabelSample
+    ? 'Low'
+    : signals.hasBeginnerLabel || signals.hasStrongFitLabel || signals.hasBoundedFix || signals.hasSmallScope || historySummary?.activeSameLabelIssues
+      ? 'High'
+      : 'Medium';
+
+  const body = getIssueBody(issue);
+  const clarityLevel = !body
+    ? 'Unknown'
+    : body.length < 80 || /details are unclear|unclear|not sure|somehow/i.test(body)
+      ? 'Low'
+      : signals.hasClearBehavior || signals.hasActionableTaskList || body.length >= 140
+        ? 'High'
+        : 'Medium';
+
+  const scope = scopeLabel(signals);
+  const scopeLevel = scope === 'Small' ? 'High' : scope === 'Medium' ? 'Medium' : 'Low';
+  const repo = issue?.repository || {};
+  const pushedDays = daysSince(repo.pushed_at, signals.now);
+  const repoHealth = repo.archived || repo.disabled || pushedDays > 365
+    ? createMiniScore('Low', 'Low', ['Repository is stale or unavailable'])
+    : repoMetadataUnavailable(issue)
+      ? createMiniScore('Unknown', 'Unknown', ['Repository metadata unavailable'])
+      : pushedDays <= 90 || historySummary?.recentMergedPrs
+        ? createMiniScore('High', 'High', [historySummary?.recentMergedPrs ? 'Recent repo PRs are merging' : 'Repository pushed recently'])
+        : createMiniScore('Medium', 'Medium', ['Repository activity is mixed']);
+
+  const comments = Number(issue?.comments || 0);
+  const commentSummary = enrichment?.comments || null;
+  const socialRisk = timelineSummary?.linkedPullRequest || timelineSummary?.assignmentActivity
+    ? createMiniScore('High risk', 'Low', [timelineSummary.linkedPullRequest ? 'Timeline shows linked PR activity' : 'Timeline shows assignment activity'])
+    : commentSummary?.blockedHint || commentSummary?.ownershipClaim
+    ? createMiniScore('High risk', 'Low', [commentSummary.blockedHint ? 'Comment thread suggests blocked work' : 'Comment thread suggests someone may be working on this'])
+    : signals.isAssigned || comments > 15
+      ? createMiniScore('High risk', 'Low', [signals.isAssigned ? 'Already assigned' : 'Crowded thread'])
+      : comments > 5
+        ? createMiniScore('Medium risk', 'Medium', ['Needs comment review'])
+        : createMiniScore('Low risk', 'High', [commentSummary?.maintainerEncouragement ? 'Maintainer appears open to PRs' : 'Unassigned or quiet thread']);
+  const setupEase = setupSummary?.inspected
+    ? setupSummary.setupUnclear
+      ? createMiniScore('Unclear', 'Low', ['Setup files look unclear'])
+      : setupSummary.setupDocsPresent || setupSummary.workflowPresent || setupSummary.configHintsPresent
+        ? createMiniScore('Discoverable', 'High', setupSummary.reasons?.length ? setupSummary.reasons : ['Repo setup files look discoverable'])
+        : createMiniScore('Limited', 'Medium', ['Setup evidence is limited'])
+    : createMiniScore('Unknown', 'Unknown', ['Setup files not inspected']);
+
+  return {
+    opportunityFit: createMiniScore(opportunityLevel, opportunityLevel, opportunityReasons),
+    issueClarity: createMiniScore(clarityLevel, clarityLevel, [clarityLevel === 'High' ? 'Issue describes expected outcome' : 'Issue may need clarification']),
+    scope: createMiniScore(scope, scopeLevel, [scope === 'Small' ? 'Work looks bounded' : 'Inspect scope before starting']),
+    repoHealth,
+    socialRisk,
+    setupEase,
+    personalFit: createMiniScore(personalFit.status, personalFit.status === 'Matched' ? 'High' : personalFit.status === 'Mixed' ? 'Medium' : personalFit.status === 'Mismatch' ? 'Low' : 'Unknown', personalFit.reasons)
+  };
+}
+
+function applyScoreCap(score, cap, label, add) {
+  if (score <= cap) return score;
+  add(cap - score, label);
+  return cap;
+}
+
 export function getMatchScoreRating(score) {
   if (score >= 85) return 'Strong candidate';
   if (score >= 70) return 'Good candidate';
@@ -225,6 +548,32 @@ export function calculateMatchScore(issue, options = {}) {
   const hasSmallScope = hasSmallScopeSignal(issueText);
   const hasActionableTaskList = hasTaskList(`${issue?.body || ''}`);
   const hasBoundedFix = hasBoundedFixWording(issueText);
+  const hasComplexScope = hasAny(issueText, COMPLEX_SCOPE_TERMS);
+  const hasMetaGrowth = hasAny(issueText, META_GROWTH_TERMS) || labels.some(label => /marketing|community|growth/.test(label));
+  const updatedDays = daysSince(issue?.updated_at, now);
+  const stage = options.stage || (options.enrichment ? 'enriched' : 'preview');
+  const enrichment = options.enrichment || {};
+  const signals = {
+    now,
+    labels,
+    issueText,
+    updatedDays,
+    isAssigned,
+    hasBeginnerLabel,
+    hasStrongFitLabel,
+    hasStaleLabel,
+    hasSmallScope,
+    hasActionableTaskList,
+    hasBoundedFix,
+    hasClearBehavior,
+    hasComplexScope,
+    hasMetaGrowth
+  };
+  const emptyPersonalFit = {
+    status: 'Unknown',
+    adjustment: 0,
+    reasons: ['No contribution preferences saved']
+  };
 
   if (isClosedIssue(issue)) {
     add(-100, 'Closed issue', 'Closed issue');
@@ -234,7 +583,14 @@ export function calculateMatchScore(issue, options = {}) {
       rows,
       passReasons: [...passReasons],
       flags: { isAssigned, hasBeginnerLabel, hasStaleLabel },
-      isContributionCandidate: false
+      isContributionCandidate: false,
+      stage,
+      confidence: {
+        level: 'High',
+        reasons: ['Closed issue']
+      },
+      miniScores: buildMiniScores(issue, signals, emptyPersonalFit, enrichment),
+      personalFit: emptyPersonalFit
     };
   }
 
@@ -269,7 +625,6 @@ export function calculateMatchScore(issue, options = {}) {
     add(8, 'Unassigned');
   }
 
-  const updatedDays = daysSince(issue?.updated_at, now);
   if (updatedDays <= 30) {
     add(7, 'Updated recently');
   } else if (updatedDays > 365) {
@@ -305,12 +660,67 @@ export function calculateMatchScore(issue, options = {}) {
     add(-20, 'Vague issue body', 'Too vague');
   }
 
-  if (hasAny(issueText, COMPLEX_SCOPE_TERMS)) {
+  if (hasComplexScope) {
     add(-22, 'Large or ambiguous scope', 'Too complex');
   }
 
-  if (hasAny(issueText, META_GROWTH_TERMS) || labels.some(label => /marketing|community|growth/.test(label))) {
+  if (hasMetaGrowth) {
     add(-30, 'Meta/growth issue', 'Meta/growth issue');
+  }
+
+  const personal = buildPersonalFit(issue, options.profile, signals);
+  for (const row of personal.rows) {
+    add(row.points, row.label);
+  }
+
+  const feedback = getFeedbackScoreAdjustment(issue, options.feedback);
+  for (const row of feedback.rows) {
+    add(row.points, row.label);
+  }
+
+  const commentSummary = enrichment?.comments;
+  if (commentSummary?.inspected) {
+    if (commentSummary.maintainerEncouragement) {
+      add(4, 'Maintainer appears open to PRs');
+    }
+    if (commentSummary.ownershipClaim) {
+      add(-8, 'Comment thread suggests someone may be working on this', 'Possibly claimed');
+    }
+    if (commentSummary.blockedHint) {
+      add(-10, 'Comment thread suggests blocked work', 'Blocked');
+    }
+  }
+  const timelineSummary = enrichment?.timeline;
+  if (timelineSummary?.inspected) {
+    if (timelineSummary.linkedPullRequest) {
+      add(-12, 'Timeline shows linked PR activity', 'Linked PR');
+    }
+    if (timelineSummary.assignmentActivity) {
+      add(-6, 'Timeline shows assignment activity', 'Possibly claimed');
+    }
+    if (timelineSummary.duplicateOrBlockedReference) {
+      add(-8, 'Timeline mentions duplicate or blocked context', 'Blocked');
+    }
+  }
+  const setupSummary = enrichment?.setup;
+  if (setupSummary?.inspected) {
+    if (setupSummary.setupUnclear) {
+      add(-6, 'Repo setup files look unclear', 'Repo setup risk');
+    } else if (setupSummary.setupDocsPresent || setupSummary.workflowPresent || setupSummary.configHintsPresent) {
+      add(4, 'Repo setup files look discoverable');
+    }
+  }
+  const historySummary = enrichment?.history;
+  if (historySummary?.inspected) {
+    if (historySummary.recentMergedPrs) {
+      add(4, 'Recent repo PRs are merging');
+    }
+    if (historySummary.activeSameLabelIssues) {
+      add(3, 'Same-label issues are active');
+    }
+    if (historySummary.staleSameLabelSample) {
+      add(-6, 'Same-label issues look stale', 'Too old');
+    }
   }
 
   const hasStrongContributionFitSignal = hasStrongFitLabel
@@ -318,6 +728,7 @@ export function calculateMatchScore(issue, options = {}) {
     || hasActionableTaskList
     || hasSmallScope
     || (hasBugLabel && hasClearBehavior && hasBoundedFix);
+  const confidence = buildConfidence(issue, signals, stage, enrichment);
   let score = clampScore(rows.reduce((total, row) => total + row.points, 0));
 
   if (!hasStrongContributionFitSignal && score > 90) {
@@ -328,13 +739,21 @@ export function calculateMatchScore(issue, options = {}) {
     score = 94;
   }
 
+  if (CONFIDENCE_CAPS[confidence.level]) {
+    score = applyScoreCap(score, CONFIDENCE_CAPS[confidence.level], `${confidence.level} confidence cap`, add);
+  }
+
   return {
     score,
     rating: getMatchScoreRating(score),
     rows,
     passReasons: [...passReasons],
     flags: { isAssigned, hasBeginnerLabel, hasStaleLabel },
-    isContributionCandidate: score >= 50
+    isContributionCandidate: score >= 50,
+    stage,
+    confidence,
+    miniScores: buildMiniScores(issue, signals, personal.personalFit, enrichment),
+    personalFit: personal.personalFit
   };
 }
 

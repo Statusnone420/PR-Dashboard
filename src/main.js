@@ -6,6 +6,10 @@ import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, sa
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
+import { fetchIssueCommentsEnrichment, getCachedIssueCommentEnrichment, getIssueCommentsCacheKey } from './api/issueComments.js';
+import { fetchIssueTimelineEnrichment, getCachedIssueTimelineEnrichment } from './api/issueTimeline.js';
+import { fetchRepoSetupEnrichment, getCachedRepoSetupEnrichment } from './api/repoSetup.js';
+import { fetchRepoHistoryEnrichment, getCachedRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { summarizeDashboardMetrics } from './dashboardMetrics.js';
@@ -14,6 +18,7 @@ import { filterHiddenIssues, isIssueHidden, isRepoHidden, listHiddenItems } from
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
 import { getCanonicalIssueKey, getCanonicalRepoKey } from './issueKeys.js';
 import { exportLocalData, importLocalData } from './localData.js';
+import { summarizeMatchFeedback } from './matchFeedback.js';
 import { buildLocalAlerts } from './localAlerts.js';
 import { isGitHubActivityVisible } from './githubActivity.js';
 import { getProfileInitials } from './profile.js';
@@ -34,6 +39,10 @@ let hiddenSettingsFilter = '';
 let localAlertsOpen = false;
 let inspectorRefreshStatus = '';
 let inspectorRefreshStatusCardId = null;
+const inspectorCommentEnrichmentStates = new Map();
+const inspectorTimelineEnrichmentStates = new Map();
+const inspectorRepoSetupEnrichmentStates = new Map();
+const inspectorRepoHistoryEnrichmentStates = new Map();
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -61,8 +70,12 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Calculates issue match score from 0-100.
  */
-function calculateFitScore(issue) {
-  const result = calculateMatchScore(issue);
+function calculateFitScore(issue, options = {}) {
+  const result = calculateMatchScore(issue, {
+    profile: store.contributionPreferences,
+    feedback: store.matchFeedback,
+    enrichment: options.enrichment
+  });
   return {
     ...result,
     logs: result.rows.map(row => `${row.points >= 0 ? '+' : ''}${row.points} ${row.label}`),
@@ -87,6 +100,497 @@ function getInspectorBestFitLabel(bestFor) {
   if (bestFor === 'Standard') return 'Standard contributor';
   if (bestFor === 'Deep Dive') return 'Deep dive';
   return bestFor;
+}
+
+function getConfidenceTone(level) {
+  if (level === 'High') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
+  if (level === 'Medium') return 'border-primary/20 bg-primary/10 text-primary';
+  return 'border-error/25 bg-error-container/10 text-error';
+}
+
+function getStageLabel(stage) {
+  return stage === 'enriched' ? 'Enriched' : 'Preview';
+}
+
+function formatPreferenceList(list) {
+  return Array.isArray(list) ? list.join(', ') : '';
+}
+
+function parsePreferenceList(value) {
+  const seen = new Set();
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function renderSelectOption(value, label, selectedValue) {
+  return `<option value="${escapeHTML(value)}" ${selectedValue === value ? 'selected' : ''}>${escapeHTML(label)}</option>`;
+}
+
+function renderPreferenceField(id, label, value, placeholder) {
+  return `
+    <label class="block">
+      <span class="mb-1 block text-xs font-medium text-on-surface-variant">${escapeHTML(label)}</span>
+      <input
+        class="w-full rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+        id="${escapeHTML(id)}"
+        type="text"
+        value="${escapeHTML(value)}"
+        placeholder="${escapeHTML(placeholder)}"
+      />
+    </label>
+  `;
+}
+
+function renderContributionPreferencesCard(preferences) {
+  const saved = preferences || {};
+  const experience = saved.experience || '';
+  const timeBudget = saved.timeBudget || '';
+  const savedAt = saved.saved_at ? `Saved ${escapeHTML(formatDate(saved.saved_at))}` : 'No preferences saved yet';
+
+  return `
+    <section class="interactive-card rounded-xl p-6">
+      <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 class="text-lg font-headline font-bold text-on-surface">Contribution preferences</h2>
+          <p class="mt-1 text-xs text-on-surface-variant">Saved locally and used only to explain personal fit in deterministic scores.</p>
+        </div>
+        <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${savedAt}</span>
+      </div>
+      <form class="space-y-4" id="contribution-preferences-form">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          ${renderPreferenceField('profile-preference-languages', 'Languages', formatPreferenceList(saved.languages), 'TypeScript, Rust')}
+          ${renderPreferenceField('profile-preference-preferred-work', 'Preferred work', formatPreferenceList(saved.preferredWork), 'docs, tests, config')}
+          ${renderPreferenceField('profile-preference-avoid-work', 'Avoid work', formatPreferenceList(saved.avoidWork), 'refactor, migration')}
+        </div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium text-on-surface-variant">Experience</span>
+            <select class="w-full rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary" id="profile-preference-experience">
+              ${renderSelectOption('', 'Not set', experience)}
+              ${renderSelectOption('first-pr', 'First PR', experience)}
+              ${renderSelectOption('comfortable', 'Comfortable', experience)}
+              ${renderSelectOption('advanced', 'Advanced', experience)}
+            </select>
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium text-on-surface-variant">Time budget</span>
+            <select class="w-full rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary" id="profile-preference-time-budget">
+              ${renderSelectOption('', 'Not set', timeBudget)}
+              ${renderSelectOption('under-1-hour', 'Under 1 hour', timeBudget)}
+              ${renderSelectOption('half-day', 'Half day', timeBudget)}
+              ${renderSelectOption('weekend', 'Weekend', timeBudget)}
+            </select>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="interactive-button interactive-button-primary px-4 py-2" id="profile-preferences-save-btn" type="submit">Save preferences</button>
+          <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-preferences-reset-btn" type="button">Reset preferences</button>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+function renderFeedbackMetric(label, value) {
+  return `
+    <div class="rounded border border-outline-variant bg-surface-container-lowest p-3">
+      <div class="text-[11px] text-on-surface-variant">${escapeHTML(label)}</div>
+      <div class="mt-1 text-lg font-headline font-bold text-on-surface">${safeInteger(value)}</div>
+    </div>
+  `;
+}
+
+function renderMatchFeedbackCard(feedback) {
+  const summary = summarizeMatchFeedback(feedback);
+  const totals = summary.totals || {};
+  const updated = summary.eventCount > 0
+    ? `Updated ${escapeHTML(formatDate(summary.updated_at))}`
+    : 'No learned feedback yet';
+
+  return `
+    <section class="interactive-card rounded-xl p-6">
+      <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 class="text-lg font-headline font-bold text-on-surface">Learned feedback</h2>
+          <p class="mt-1 text-xs text-on-surface-variant">Derived from local Board and Hidden Results actions, then used as small explainable score nudges.</p>
+        </div>
+        <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${updated}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-6">
+        ${renderFeedbackMetric('Saved to board', totals.saved)}
+        ${renderFeedbackMetric('Moved to Working', totals.working)}
+        ${renderFeedbackMetric('Moved to Merged', totals.merged)}
+        ${renderFeedbackMetric('Moved to Passed', totals.passed)}
+        ${renderFeedbackMetric('Hidden issue', totals.hiddenIssue)}
+        ${renderFeedbackMetric('Hidden repo', totals.hiddenRepo)}
+      </div>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs text-on-surface-variant">${safeInteger(summary.eventCount)} local event markers. Aggregates are recomputed from markers.</p>
+        <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-match-feedback-reset-btn" type="button">Reset learned feedback</button>
+      </div>
+    </section>
+  `;
+}
+
+function getMiniScoreTitle(key) {
+  return {
+    opportunityFit: 'Opportunity Fit',
+    issueClarity: 'Issue Clarity',
+    scope: 'Scope',
+    repoHealth: 'Repo Health',
+    socialRisk: 'Social Risk',
+    setupEase: 'Setup Ease',
+    personalFit: 'Personal Fit'
+  }[key] || key;
+}
+
+function renderMiniScoreList(miniScores = {}) {
+  return ['opportunityFit', 'issueClarity', 'scope', 'repoHealth', 'socialRisk', 'setupEase', 'personalFit'].map(key => {
+    const item = miniScores[key] || { label: 'Unknown', level: 'Unknown', reasons: [] };
+    const tone = item.level === 'High'
+      ? 'border-tertiary/25 bg-tertiary/10 text-tertiary'
+      : item.level === 'Medium'
+        ? 'border-primary/20 bg-primary/10 text-primary'
+        : item.level === 'Low'
+          ? 'border-error/25 bg-error-container/10 text-error'
+          : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
+    const reason = Array.isArray(item.reasons) && item.reasons.length ? item.reasons[0] : '';
+    return `
+      <div class="rounded border border-outline-variant bg-surface-container-lowest p-3">
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="text-xs font-medium text-on-surface">${escapeHTML(getMiniScoreTitle(key))}</span>
+          <span class="rounded border ${tone} px-2 py-0.5 text-[11px]">${escapeHTML(item.label || 'Unknown')}</span>
+        </div>
+        ${reason ? `<p class="text-[11px] text-on-surface-variant">${escapeHTML(reason)}</p>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function getInspectorCommentEnrichmentState(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) {
+    return {
+      status: 'error',
+      error: 'Valid GitHub issue reference required for comment enrichment.'
+    };
+  }
+
+  const existing = inspectorCommentEnrichmentStates.get(key);
+  if (existing) return existing;
+
+  const cached = getCachedIssueCommentEnrichment(issue, localStorage);
+  if (cached?.summary) {
+    const loaded = { status: 'loaded', summary: cached.summary, fromCache: true };
+    inspectorCommentEnrichmentStates.set(key, loaded);
+    return loaded;
+  }
+
+  const loading = { status: 'loading', started: false };
+  inspectorCommentEnrichmentStates.set(key, loading);
+  return loading;
+}
+
+function getInspectorAdvancedEnrichmentState(issue, stateMap, getCached, invalidMessage) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) {
+    return {
+      status: 'error',
+      error: invalidMessage
+    };
+  }
+
+  const existing = stateMap.get(key);
+  if (existing) return existing;
+
+  const cached = getCached(issue, localStorage);
+  if (cached?.summary) {
+    const loaded = { status: 'loaded', summary: cached.summary, fromCache: true };
+    stateMap.set(key, loaded);
+    return loaded;
+  }
+
+  const loading = { status: 'loading', started: false };
+  stateMap.set(key, loading);
+  return loading;
+}
+
+function getInspectorTimelineEnrichmentState(issue) {
+  return getInspectorAdvancedEnrichmentState(
+    issue,
+    inspectorTimelineEnrichmentStates,
+    getCachedIssueTimelineEnrichment,
+    'Valid GitHub issue reference required for timeline enrichment.'
+  );
+}
+
+function getInspectorRepoSetupEnrichmentState(issue) {
+  return getInspectorAdvancedEnrichmentState(
+    issue,
+    inspectorRepoSetupEnrichmentStates,
+    getCachedRepoSetupEnrichment,
+    'Valid GitHub issue reference required for repo setup enrichment.'
+  );
+}
+
+function getInspectorRepoHistoryEnrichmentState(issue) {
+  return getInspectorAdvancedEnrichmentState(
+    issue,
+    inspectorRepoHistoryEnrichmentStates,
+    getCachedRepoHistoryEnrichment,
+    'Valid GitHub issue reference and label required for repo history enrichment.'
+  );
+}
+
+function clearInspectorEnrichmentStates() {
+  inspectorCommentEnrichmentStates.clear();
+  inspectorTimelineEnrichmentStates.clear();
+  inspectorRepoSetupEnrichmentStates.clear();
+  inspectorRepoHistoryEnrichmentStates.clear();
+}
+
+function getInspectorEnrichmentForScore(states = {}) {
+  const enrichment = {};
+  if (states.comments?.status === 'loaded' && states.comments.summary) {
+    enrichment.comments = states.comments.summary;
+  }
+  if (states.timeline?.status === 'loaded' && states.timeline.summary) {
+    enrichment.timeline = states.timeline.summary;
+  }
+  if (states.setup?.status === 'loaded' && states.setup.summary) {
+    enrichment.setup = states.setup.summary;
+  }
+  if (states.history?.status === 'loaded' && states.history.summary) {
+    enrichment.history = states.history.summary;
+  }
+
+  return Object.keys(enrichment).length ? enrichment : undefined;
+}
+
+function renderCommentEnrichmentCard(state) {
+  if (state?.status === 'loaded') {
+    const reasons = Array.isArray(state.summary?.reasons) && state.summary.reasons.length
+      ? state.summary.reasons
+      : ['No comments found'];
+    return `
+      <div class="rounded-lg border border-tertiary/25 bg-tertiary/10 p-4">
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold text-tertiary">Comments inspected</h3>
+          <span class="rounded border border-tertiary/25 px-2 py-0.5 text-[11px] text-tertiary">${safeInteger(state.summary?.totalComments)} comments</span>
+        </div>
+        <ul class="space-y-1">
+          ${reasons.map(reason => `<li class="text-xs text-on-surface-variant">${escapeHTML(reason)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  if (state?.status === 'error') {
+    return `
+      <div class="rounded-lg border border-error/25 bg-error-container/10 p-4">
+        <h3 class="text-sm font-semibold text-error mb-1">Comment enrichment unavailable</h3>
+        <p class="text-sm text-on-surface-variant">Score uses preview context. Save, Hide, and Open on GitHub still work.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="rounded-lg border border-primary/20 bg-primary/10 p-4">
+      <h3 class="text-sm font-semibold text-primary mb-1">Inspecting comments</h3>
+      <p class="text-sm text-on-surface-variant">Fetching public issue comments for this inspector only.</p>
+    </div>
+  `;
+}
+
+function getAdvancedContextMeta(kind, summary = {}) {
+  if (kind === 'timeline') {
+    return `${safeInteger(summary.totalEvents)} events`;
+  }
+  if (kind === 'setup') {
+    return `${safeInteger(summary.filesChecked)} files`;
+  }
+  if (kind === 'history') {
+    return `${safeInteger(summary.sampledPullRequests)} PRs / ${safeInteger(summary.sampledSameLabelIssues)} issues`;
+  }
+  return '';
+}
+
+function renderAdvancedContextRow({ kind, label, state, loadedLabel, loadingLabel, unavailableLabel }) {
+  if (state?.status === 'loaded') {
+    const reasons = Array.isArray(state.summary?.reasons) && state.summary.reasons.length
+      ? state.summary.reasons.slice(0, 2)
+      : ['No strong signals found'];
+    const meta = getAdvancedContextMeta(kind, state.summary);
+    return `
+      <div class="rounded border border-outline-variant bg-surface-container-lowest p-3">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-on-surface">${escapeHTML(loadedLabel)}</span>
+          ${meta ? `<span class="shrink-0 rounded border border-tertiary/25 px-2 py-0.5 text-[11px] text-tertiary">${escapeHTML(meta)}</span>` : ''}
+        </div>
+        <ul class="space-y-1">
+          ${reasons.map(reason => `<li class="text-[11px] text-on-surface-variant">${escapeHTML(reason)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  if (state?.status === 'error') {
+    return `
+      <div class="rounded border border-error/25 bg-error-container/10 p-3">
+        <div class="mb-1 flex items-center gap-2">
+          <span class="material-symbols-outlined text-error text-[16px]">error</span>
+          <span class="text-xs font-semibold text-error">${escapeHTML(unavailableLabel)}</span>
+        </div>
+        <p class="text-[11px] text-on-surface-variant">Score keeps the available context.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="rounded border border-primary/20 bg-primary/10 p-3">
+      <div class="mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-[16px]">hourglass_empty</span>
+        <span class="text-xs font-semibold text-primary">${escapeHTML(loadingLabel)}</span>
+      </div>
+      <p class="text-[11px] text-on-surface-variant">${escapeHTML(label)} stays inspector-only and cached locally.</p>
+    </div>
+  `;
+}
+
+function renderAdvancedEnrichmentCard(states = {}) {
+  return `
+    <div class="rounded-lg border border-outline-variant bg-surface-container p-4">
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-on-background">Advanced context</h3>
+        <span class="rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant">Inspector only</span>
+      </div>
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        ${renderAdvancedContextRow({
+          kind: 'timeline',
+          label: 'Timeline',
+          state: states.timeline,
+          loadedLabel: 'Timeline inspected',
+          loadingLabel: 'Inspecting timeline',
+          unavailableLabel: 'Timeline unavailable'
+        })}
+        ${renderAdvancedContextRow({
+          kind: 'setup',
+          label: 'Setup files',
+          state: states.setup,
+          loadedLabel: 'Setup files inspected',
+          loadingLabel: 'Inspecting setup files',
+          unavailableLabel: 'Setup files unavailable'
+        })}
+        ${renderAdvancedContextRow({
+          kind: 'history',
+          label: 'Repo history',
+          state: states.history,
+          loadedLabel: 'Repo history inspected',
+          loadingLabel: 'Inspecting repo history',
+          unavailableLabel: 'Repo history unavailable'
+        })}
+      </div>
+    </div>
+  `;
+}
+
+function updateInspectorRateLimit(rateLimit) {
+  if (!rateLimit) return;
+  store.setRateLimit(rateLimit, rateLimit.resource || 'core', { notify: false });
+  renderApiLimitsTracker(store.rateLimits);
+}
+
+function rerenderInspectorForKey(key) {
+  if (getIssueCommentsCacheKey(store.inspectedIssue) === key) {
+    openInspector();
+  }
+}
+
+async function ensureInspectorCommentEnrichment(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) return;
+  const state = getInspectorCommentEnrichmentState(issue);
+  if (state.status !== 'loading' || state.started) return;
+  state.started = true;
+
+  try {
+    const result = await fetchIssueCommentsEnrichment(issue, {
+      token: store.githubToken,
+      storage: localStorage
+    });
+    updateInspectorRateLimit(result.rateLimit);
+    inspectorCommentEnrichmentStates.set(key, {
+      status: 'loaded',
+      summary: result.summary,
+      fromCache: result.fromCache
+    });
+  } catch {
+    inspectorCommentEnrichmentStates.set(key, {
+      status: 'error',
+      error: 'Comment enrichment unavailable.'
+    });
+  }
+
+  rerenderInspectorForKey(key);
+}
+
+async function ensureInspectorAdvancedEnrichment(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) return;
+
+  const steps = [
+    {
+      stateMap: inspectorTimelineEnrichmentStates,
+      getState: getInspectorTimelineEnrichmentState,
+      fetcher: fetchIssueTimelineEnrichment,
+      error: 'Timeline unavailable.'
+    },
+    {
+      stateMap: inspectorRepoSetupEnrichmentStates,
+      getState: getInspectorRepoSetupEnrichmentState,
+      fetcher: fetchRepoSetupEnrichment,
+      error: 'Setup files unavailable.'
+    },
+    {
+      stateMap: inspectorRepoHistoryEnrichmentStates,
+      getState: getInspectorRepoHistoryEnrichmentState,
+      fetcher: fetchRepoHistoryEnrichment,
+      error: 'Repo history unavailable.'
+    }
+  ];
+
+  for (const step of steps) {
+    const state = step.getState(issue);
+    if (state.status !== 'loading' || state.started) continue;
+    state.started = true;
+
+    try {
+      const result = await step.fetcher(issue, {
+        token: store.githubToken,
+        storage: localStorage
+      });
+      updateInspectorRateLimit(result.rateLimit);
+      step.stateMap.set(key, {
+        status: 'loaded',
+        summary: result.summary,
+        fromCache: result.fromCache
+      });
+    } catch {
+      step.stateMap.set(key, {
+        status: 'error',
+        error: step.error
+      });
+    }
+
+    rerenderInspectorForKey(key);
+  }
 }
 
 function isIssueSavedToBoard(issue) {
@@ -794,6 +1298,7 @@ function renderDashboard(container) {
                 ${score}% Match
               </div>
               <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+              <span class="px-2 py-0.5 rounded text-xs border ${getConfidenceTone(fitObj.confidence.level)} whitespace-nowrap">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
             </div>
           </div>
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
@@ -1670,6 +2175,7 @@ function renderIssueCardsList(issuesList, options = {}) {
           ${labelsHTML}
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
           <span class="interactive-chip rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+          <span class="interactive-chip rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
           ${repoUnavailableHTML}
         </div>
         
@@ -2406,6 +2912,8 @@ function bindLocalDataImport(inputId, statusId) {
       const result = importLocalData(localStorage, payload);
       store.boardCards = result.boardCards || store.boardCards;
       store.profile = result.profile || store.profile;
+      store.contributionPreferences = result.contributionPreferences || store.contributionPreferences;
+      store.matchFeedback = result.matchFeedback || store.matchFeedback;
       store.notify();
       if (status) {
         status.textContent = result.imported ? 'Local data imported.' : 'Import failed: unsupported file.';
@@ -2497,7 +3005,7 @@ function renderProfile(container) {
               </label>
             </div>
           </div>
-          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include Board cards, Hidden Results, profile, and Proof Log. GitHub tokens and repo metadata cache are excluded.</p>
+          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include Board cards, Hidden Results, profile, contribution preferences, learned feedback, and Proof Log. GitHub tokens and repo metadata cache are excluded.</p>
         </header>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -2514,6 +3022,10 @@ function renderProfile(container) {
             <div class="mt-4 metric-card-value">${alerts.length}</div>
           </div>
         </div>
+
+        ${renderContributionPreferencesCard(store.contributionPreferences)}
+
+        ${renderMatchFeedbackCard(store.matchFeedback)}
 
         <section class="interactive-card rounded-xl p-6">
           <div class="mb-4 flex items-center justify-between">
@@ -2546,6 +3058,32 @@ function renderProfile(container) {
   if (exportBtn) exportBtn.addEventListener('click', handleExportLocalData);
   bindAvatarFallbacks(container);
   bindLocalDataImport('profile-import-input', 'profile-import-status');
+  const preferencesForm = document.getElementById('contribution-preferences-form');
+  if (preferencesForm) {
+    preferencesForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      store.updateContributionPreferences({
+        languages: parsePreferenceList(document.getElementById('profile-preference-languages')?.value),
+        preferredWork: parsePreferenceList(document.getElementById('profile-preference-preferred-work')?.value),
+        avoidWork: parsePreferenceList(document.getElementById('profile-preference-avoid-work')?.value),
+        experience: document.getElementById('profile-preference-experience')?.value || '',
+        timeBudget: document.getElementById('profile-preference-time-budget')?.value || '',
+        saved_at: new Date().toISOString()
+      });
+    });
+  }
+  const resetPreferencesBtn = document.getElementById('profile-preferences-reset-btn');
+  if (resetPreferencesBtn) {
+    resetPreferencesBtn.addEventListener('click', () => {
+      store.clearContributionPreferences();
+    });
+  }
+  const resetFeedbackBtn = document.getElementById('profile-match-feedback-reset-btn');
+  if (resetFeedbackBtn) {
+    resetFeedbackBtn.addEventListener('click', () => {
+      store.clearMatchFeedback();
+    });
+  }
   document.querySelectorAll('.proof-remove-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       store.removeProofLogEntry(btn.getAttribute('data-key'));
@@ -2803,7 +3341,7 @@ function renderSettings(container) {
             </h2>
           </div>
           <div class="p-6 space-y-4">
-            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
+            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, contribution preferences, learned feedback, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
             <div class="flex flex-wrap gap-3">
               <button class="interactive-button interactive-button-secondary px-4 py-2" id="settings-export-local-data-btn">Export Local Data</button>
               <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
@@ -2901,6 +3439,7 @@ function renderSettings(container) {
     saveBtn.addEventListener('click', () => {
       const tokVal = patInput.value.trim();
       const remVal = rememberCheckbox.checked;
+      clearInspectorEnrichmentStates();
       store.updateToken(tokVal, remVal);
 
       // Show temporary save feedback
@@ -2948,6 +3487,7 @@ function renderSettings(container) {
   const clearTokenBtn = document.getElementById('clear-token-settings-btn');
   if (clearTokenBtn) {
     clearTokenBtn.addEventListener('click', () => {
+      clearInspectorEnrichmentStates();
       store.clearToken();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;
@@ -2995,6 +3535,7 @@ function renderSettings(container) {
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
       hiddenSettingsFilter = '';
+      clearInspectorEnrichmentStates();
       store.clearAllLocalData();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;
@@ -3025,7 +3566,19 @@ function openInspector() {
   const issue = store.inspectedIssue;
   if (!issue) return;
 
-  const fitObj = calculateFitScore(issue);
+  const commentEnrichmentState = getInspectorCommentEnrichmentState(issue);
+  const timelineEnrichmentState = getInspectorTimelineEnrichmentState(issue);
+  const repoSetupEnrichmentState = getInspectorRepoSetupEnrichmentState(issue);
+  const repoHistoryEnrichmentState = getInspectorRepoHistoryEnrichmentState(issue);
+  const inspectorEnrichment = getInspectorEnrichmentForScore({
+    comments: commentEnrichmentState,
+    timeline: timelineEnrichmentState,
+    setup: repoSetupEnrichmentState,
+    history: repoHistoryEnrichmentState
+  });
+  const fitObj = calculateFitScore(issue, {
+    enrichment: inspectorEnrichment
+  });
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const contributionBrief = buildContributionBrief(issue, fitObj);
@@ -3081,9 +3634,24 @@ function openInspector() {
       </div>
     </div>
   ` : '';
+  const commentEnrichmentHTML = renderCommentEnrichmentCard(commentEnrichmentState);
+  const advancedEnrichmentHTML = renderAdvancedEnrichmentCard({
+    timeline: timelineEnrichmentState,
+    setup: repoSetupEnrichmentState,
+    history: repoHistoryEnrichmentState
+  });
   const refreshStatusHTML = inspectorRefreshStatus && inspectorRefreshStatusCardId === issue.id ? `
     <span class="text-xs text-on-surface-variant" id="inspector-refresh-status">${escapeHTML(inspectorRefreshStatus)}</span>
   ` : '';
+  const stageLabel = getStageLabel(fitObj.stage);
+  const confidenceTone = getConfidenceTone(fitObj.confidence.level);
+  const confidenceReasonsHTML = (fitObj.confidence.reasons || []).map(reason => `
+    <li class="flex items-start gap-2 text-xs text-on-surface-variant">
+      <span class="material-symbols-outlined text-primary text-[13px] mt-0.5">info</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const miniScoresHTML = renderMiniScoreList(fitObj.miniScores);
 
   // Render match score explanations
   const fitScoreReasonsHTML = fitObj.rows.map(row => {
@@ -3147,6 +3715,8 @@ function openInspector() {
         <div class="flex items-center flex-wrap gap-2 mb-3">
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${safeIssueLanguage}</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${rating.rating}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border border-outline-variant bg-surface-container-high text-on-surface-variant">${stageLabel}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${confidenceTone}">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
           <span class="text-xs text-on-surface-variant font-mono">${repoName} #${safeIssueNumber}</span>
         </div>
         <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${safeIssueTitle}</h2>
@@ -3212,6 +3782,8 @@ function openInspector() {
       ${riskyLookupHTML}
       ${hiddenInspectorHTML}
       ${activityInspectorHTML}
+      ${commentEnrichmentHTML}
+      ${advancedEnrichmentHTML}
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -3222,6 +3794,30 @@ function openInspector() {
       
       <!-- Fit Details & Analytics Bento -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
+
+        <!-- Score Diagnostics -->
+        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h4 class="text-xs font-headline font-semibold text-on-background mb-1 flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary text-[18px]">monitoring</span>
+                Score diagnostics
+              </h4>
+              <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${stageLabel} stage</p>
+            </div>
+            <span class="w-fit rounded border ${confidenceTone} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          </div>
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Confidence</div>
+              <ul class="space-y-2">${confidenceReasonsHTML}</ul>
+            </div>
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
+            </div>
+          </div>
+        </div>
 
         <!-- Contribution Coach Brief -->
         <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
@@ -3402,6 +3998,9 @@ function openInspector() {
       closeInspector();
     });
   }
+
+  ensureInspectorCommentEnrichment(issue);
+  ensureInspectorAdvancedEnrichment(issue);
 
   // Checkbox toggle inside action plan
   document.querySelectorAll('.inspector-task-checkbox').forEach(cb => {

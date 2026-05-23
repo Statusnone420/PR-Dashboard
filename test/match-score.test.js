@@ -285,3 +285,342 @@ test('broad well described bug can still be strong but not fake perfect', async 
   assert.ok(result.score > 90);
   assert.ok(result.score < 100);
 });
+
+test('match score v3 preserves old fields and adds structured preview fields', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue());
+
+  assert.equal(typeof result.score, 'number');
+  assert.equal(typeof result.rating, 'string');
+  assert.ok(Array.isArray(result.rows));
+  assert.ok(Array.isArray(result.passReasons));
+  assert.equal(typeof result.flags.isAssigned, 'boolean');
+  assert.equal(typeof result.flags.hasBeginnerLabel, 'boolean');
+  assert.equal(typeof result.flags.hasStaleLabel, 'boolean');
+  assert.equal(typeof result.isContributionCandidate, 'boolean');
+  assert.equal(result.stage, 'preview');
+  assert.equal(result.confidence.level, 'High');
+  assert.ok(result.confidence.reasons.includes('Comments not inspected'));
+  assert.ok(result.confidence.reasons.includes('Setup files not inspected'));
+  assert.ok(result.confidence.reasons.includes('Timeline not inspected'));
+  assert.deepEqual(Object.keys(result.miniScores).sort(), [
+    'issueClarity',
+    'opportunityFit',
+    'personalFit',
+    'repoHealth',
+    'scope',
+    'setupEase',
+    'socialRisk'
+  ].sort());
+  assert.equal(result.personalFit.status, 'Unknown');
+  assert.equal(result.personalFit.adjustment, 0);
+});
+
+test('preview advisory enrichment gaps do not make strong hydrated issues low confidence', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Fix settings copy button aria label',
+    body: [
+      'Actual behavior:',
+      'The settings copy button has the wrong aria label.',
+      '',
+      'Expected behavior:',
+      'The button should announce Copy token.',
+      '',
+      'Proposed fix:',
+      '- Update the settings copy button aria label.',
+      '- Add a regression test for the accessible label.'
+    ].join('\n'),
+    repository: strongRepo()
+  }));
+
+  assert.equal(result.stage, 'preview');
+  assert.equal(result.confidence.level, 'High');
+  assert.ok(result.score > 90);
+  assert.ok(result.confidence.reasons.includes('Comments not inspected'));
+});
+
+test('low confidence requires current data weakness and caps score at 88', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    repository: { full_name: 'openai/codex', metadataUnavailable: true }
+  }));
+
+  assert.equal(result.confidence.level, 'Low');
+  assert.ok(result.confidence.reasons.includes('Repository metadata unavailable'));
+  assert.ok(result.score <= 88);
+  assert.ok(result.rows.some(row => row.label === 'Low confidence cap'));
+});
+
+test('medium confidence caps score at 94', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    comments: 12,
+    repository: strongRepo()
+  }));
+
+  assert.equal(result.confidence.level, 'Medium');
+  assert.ok(result.score <= 94);
+  assert.ok(result.rows.some(row => row.label === 'Medium confidence cap'));
+});
+
+test('mini-scores expose all dimensions with stable labels', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue());
+
+  assert.equal(result.miniScores.opportunityFit.label, 'High');
+  assert.equal(result.miniScores.issueClarity.label, 'High');
+  assert.equal(result.miniScores.scope.label, 'Small');
+  assert.equal(result.miniScores.repoHealth.label, 'High');
+  assert.equal(result.miniScores.socialRisk.label, 'Low risk');
+  assert.equal(result.miniScores.setupEase.label, 'Unknown');
+  assert.equal(result.miniScores.personalFit.label, 'Unknown');
+});
+
+test('personal fit profile adds visible preference rows and adjustment', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue(), {
+    profile: {
+      version: 1,
+      languages: ['TypeScript'],
+      preferredWork: ['docs'],
+      avoidWork: [],
+      experience: 'first-pr',
+      timeBudget: 'half-day'
+    }
+  });
+
+  assert.equal(result.personalFit.status, 'Matched');
+  assert.ok(result.personalFit.adjustment > 0);
+  assert.ok(result.rows.some(row => row.label === 'Matches TypeScript preference'));
+  assert.ok(result.rows.some(row => row.label === 'Matches docs preference'));
+});
+
+test('personal fit penalties are visible and capped', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Rewrite architecture and migrate every package',
+    body: 'Expected behavior: rewrite the entire architecture across everything and migrate every package.',
+    labels: [{ name: 'refactor' }, { name: 'migration' }, { name: 'api' }],
+    repository: strongRepo({ language: 'JavaScript' })
+  }), {
+    profile: {
+      version: 1,
+      languages: ['TypeScript'],
+      preferredWork: [],
+      avoidWork: ['refactor', 'migration', 'api'],
+      experience: 'first-pr',
+      timeBudget: 'under-1-hour'
+    }
+  });
+
+  assert.equal(result.personalFit.status, 'Mismatch');
+  assert.equal(result.personalFit.adjustment, -20);
+  assert.ok(result.rows.some(row => row.label === 'Matches avoided refactor work'));
+  assert.ok(result.rows.some(row => row.label === 'Larger than under-1-hour preference'));
+});
+
+test('personal fit boost cannot exceed 15', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue(), {
+    profile: {
+      version: 1,
+      languages: ['TypeScript'],
+      preferredWork: ['docs', 'readme', 'config', 'test'],
+      avoidWork: [],
+      experience: 'first-pr',
+      timeBudget: 'under-1-hour'
+    }
+  });
+
+  assert.equal(result.personalFit.adjustment, 15);
+});
+
+test('closed issue remains zero when profile is present', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({ state: 'closed' }), {
+    profile: {
+      version: 1,
+      languages: ['TypeScript'],
+      preferredWork: ['docs'],
+      avoidWork: [],
+      experience: 'first-pr',
+      timeBudget: 'under-1-hour'
+    }
+  });
+
+  assert.equal(result.score, 0);
+  assert.equal(result.personalFit.status, 'Unknown');
+  assert.equal(result.personalFit.adjustment, 0);
+  assert.equal(result.isContributionCandidate, false);
+});
+
+test('feedback adjustment adds transparent capped positive score rows', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue(), {
+    feedback: {
+      version: 1,
+      totals: { saved: 4, working: 3, merged: 2, passed: 0, hiddenIssue: 0, hiddenRepo: 0 },
+      buckets: {
+        languages: { TypeScript: { saved: 4, working: 3, merged: 2 } },
+        workTypes: { docs: { saved: 4, working: 3, merged: 2 }, tests: { saved: 3, merged: 2 } },
+        scope: { Small: { working: 3, merged: 2 } },
+        repo: { 'openai/codex': { merged: 2 } },
+        labels: { 'good first issue': { working: 3, merged: 2 } }
+      },
+      events: {}
+    }
+  });
+
+  assert.ok(result.rows.some(row => row.label === 'Matches your completed contribution patterns'));
+  assert.ok(result.rows.find(row => row.label === 'Matches your completed contribution patterns').points <= 8);
+});
+
+test('feedback adjustment adds transparent capped negative score rows', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue(), {
+    feedback: {
+      version: 1,
+      totals: { saved: 0, working: 0, merged: 0, passed: 4, hiddenIssue: 3, hiddenRepo: 2 },
+      buckets: {
+        languages: { TypeScript: { passed: 4, hiddenIssue: 3, hiddenRepo: 2 } },
+        workTypes: { docs: { passed: 4, hiddenIssue: 3 }, tests: { hiddenIssue: 3 } },
+        scope: { Small: { passed: 4 } },
+        repo: { 'openai/codex': { hiddenRepo: 2 } },
+        labels: { 'good first issue': { passed: 4, hiddenIssue: 3 } }
+      },
+      events: {}
+    }
+  });
+
+  const row = result.rows.find(item => item.label === 'Similar items were passed or hidden locally');
+  assert.ok(row);
+  assert.ok(row.points >= -10);
+});
+
+test('closed issue remains zero with positive feedback present', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({ state: 'closed' }), {
+    feedback: {
+      version: 1,
+      totals: { saved: 10, working: 10, merged: 10, passed: 0, hiddenIssue: 0, hiddenRepo: 0 },
+      buckets: {
+        languages: { TypeScript: { merged: 10 } },
+        workTypes: { docs: { merged: 10 } },
+        scope: { Small: { merged: 10 } },
+        repo: { 'openai/codex': { merged: 10 } },
+        labels: { 'good first issue': { merged: 10 } }
+      },
+      events: {}
+    }
+  });
+
+  assert.equal(result.score, 0);
+  assert.equal(result.isContributionCandidate, false);
+  assert.ok(!result.rows.some(row => /completed contribution patterns|passed or hidden/.test(row.label)));
+});
+
+test('comment enrichment adds cautious score rows and enriched confidence behavior', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue(), {
+    enrichment: {
+      comments: {
+        inspected: true,
+        maintainerEncouragement: true,
+        ownershipClaim: true,
+        blockedHint: true,
+        botOnlyRecentActivity: false,
+        reasons: [
+          'Maintainer appears open to PRs',
+          'Comment thread suggests someone may be working on this',
+          'Comment thread suggests blocked work'
+        ]
+      }
+    }
+  });
+
+  assert.equal(result.stage, 'enriched');
+  assert.ok(!result.confidence.reasons.includes('Comments not inspected'));
+  assert.ok(result.confidence.reasons.includes('Comments inspected'));
+  assert.ok(result.rows.some(row => row.label === 'Maintainer appears open to PRs'));
+  assert.ok(result.rows.some(row => row.label === 'Comment thread suggests someone may be working on this'));
+  assert.ok(result.rows.some(row => row.label === 'Comment thread suggests blocked work'));
+  assert.equal(result.miniScores.socialRisk.label, 'High risk');
+});
+
+test('bot-only comment enrichment stays advisory without maintainer boost', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue(), {
+    enrichment: {
+      comments: {
+        inspected: true,
+        maintainerEncouragement: false,
+        ownershipClaim: false,
+        blockedHint: false,
+        botOnlyRecentActivity: true,
+        reasons: ['Only bot comments inspected']
+      }
+    }
+  });
+
+  assert.ok(result.confidence.reasons.includes('Only bot comments inspected'));
+  assert.ok(!result.rows.some(row => row.label === 'Maintainer appears open to PRs'));
+});
+
+test('advanced enrichment updates cautious score rows and mini-scores', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(clearBug(), {
+    enrichment: {
+      timeline: {
+        inspected: true,
+        linkedPullRequest: true,
+        assignmentActivity: true,
+        reasons: ['Timeline shows linked PR activity', 'Timeline shows assignment activity']
+      },
+      setup: {
+        inspected: true,
+        setupDocsPresent: true,
+        contributingPresent: true,
+        workflowPresent: true,
+        configHintsPresent: true,
+        testHintsPresent: true,
+        setupUnclear: false,
+        reasons: ['Setup docs found', 'CI workflow found', 'Test/build hints found']
+      },
+      history: {
+        inspected: true,
+        recentMergedPrs: true,
+        activeSameLabelIssues: true,
+        staleSameLabelSample: false,
+        reasons: ['Recent repo PRs are merging', 'Same-label issues are active']
+      }
+    }
+  });
+
+  const rowText = result.rows.map(row => row.label).join(' ');
+
+  assert.match(rowText, /Timeline shows linked PR activity/);
+  assert.match(rowText, /Timeline shows assignment activity/);
+  assert.match(rowText, /Repo setup files look discoverable/);
+  assert.match(rowText, /Recent repo PRs are merging/);
+  assert.match(rowText, /Same-label issues are active/);
+  assert.equal(result.miniScores.setupEase.level, 'High');
+  assert.match(result.miniScores.socialRisk.reasons.join(' '), /Timeline shows linked PR activity/);
+  assert.match(result.confidence.reasons.join(' '), /Timeline inspected/);
+  assert.match(result.confidence.reasons.join(' '), /Setup files inspected/);
+});

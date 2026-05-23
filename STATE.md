@@ -1,5 +1,44 @@
 # PR Dashboard State
 
+## 2026-05-23 Match Score v3 Phase 4
+
+- Added inspector-only advanced enrichment for public issue timeline events, repo setup files, recent closed PR samples, and same-label issue samples. These read-only fetches run lazily from the inspector, sequence API use conservatively, stay non-blocking on errors, and never fetch for result or board cards before the inspector opens.
+- Extended `pr_dashboard_score_enrichment_cache_v1` with typed compact entries for comments, timeline, repo setup, and repo history while preserving old comment-only cache behavior. Cached data stores normalized booleans/counts/reasons only; raw comment bodies, config/script bodies, tokens, Authorization data, private repos, and token-used unknown-visibility repos remain excluded. Token save/change/clear and Clear All clear the cache, and export/import still excludes it.
+- Match Score now uses advanced enrichment for transparent timeline, setup, recent PR, and same-label rows plus confidence and mini-score updates for Social Risk, Setup Ease, Repo Health, and Opportunity Fit. Closed-issue zero scoring remains unchanged.
+- Verification on 2026-05-23: `npm test` passed 208/208, `npm run build` passed, and `npm run test:layout` passed 9/9. Mocked Chromium screenshots covered inspector final advanced state at 1920x1080, inspector mini-scores at 1920x1080, final enriched mobile inspector at 390x844, and error mobile inspector at 375x667. The checks confirmed no advanced fetch before inspector open, request counts of 1 comment, 1 timeline, 6 setup file checks, 1 PR sample, and 1 same-label search for the successful inspector path, no horizontal overflow, compact cache contents, and no unexpected console/page/request failures. Expected mocked GitHub 404/503 resource messages were allowed for missing setup files and the error-state screenshot.
+- Remaining risk: advanced enrichment is heuristic and uses small public GitHub samples. Timeline events, contents endpoints, same-label quality, and rate-limit behavior can vary on live repositories; rendered validation was Chromium-only with mocked GitHub responses and no real PAT.
+
+## 2026-05-23 Match Score v3 Phase 3
+
+- Added lazy inspector-only issue comment enrichment. Result and board cards stay preview-only; opening the inspector fetches public issue comments with a read-only GitHub API request, shows loading/error/loaded states, and feeds compact comment summary signals into Match Score.
+- Added `pr_dashboard_score_enrichment_cache_v1` for six-hour public comment summaries only. The cache excludes comment bodies, tokens, Authorization data, private repos, and token-used repos with unknown visibility. Clear Token and Clear All remove the enrichment cache, while export/import continues to exclude it.
+- Match Score now adds transparent comment rows for maintainer openness, possible ownership claims, and blocked-work hints. Comment inspection also updates confidence reasons and social-risk mini-score behavior without changing closed-issue zero scoring.
+- Verification on 2026-05-23: `npm test` passed 196/196, `npm run build` passed, and `npm run test:layout` passed 9/9. Mocked Chromium screenshots covered inspector comment loading and enriched states at 1920x1080, enriched inspector at 390x844, and error/low-confidence inspector at 375x667. The checks confirmed no result-card comment fetches before inspector open, one lazy comments request per inspector scenario, no horizontal overflow, compact cache contents, and export exclusion of the enrichment cache/comment body/token data.
+- Remaining risk: rendered validation used Chromium with mocked public GitHub comment responses and a fake PAT-shaped token. Live GitHub comment availability, rate limits, and author associations can vary.
+
+## 2026-05-23 Match Score v3 Phase 2
+
+- Added local Match Feedback storage under `pr_dashboard_match_feedback_v1`. Feedback records compact idempotent event markers for Save, Working, Merged, Passed, Hide issue, and Hide repo actions; totals and feature buckets are recomputed from those markers instead of being durable mutable counters.
+- Wired local feedback into store actions, Match Score rows, and export/import. Feedback rows are transparent and capped at `+8 / -10`; closed issues still score zero even when positive feedback exists. Clear Token preserves feedback and contribution preferences; Clear All removes feedback.
+- Added a compact Profile `Learned feedback` summary with local action totals and a reset action that removes only match feedback. Export/import copy now names learned feedback while continuing to exclude GitHub tokens, repo metadata cache, and enrichment cache.
+- Verification on 2026-05-23: `npm test` passed 187/187, `npm run build` passed, `npm run test:layout` passed 9/9, and `git diff --check` passed. Mocked Chromium screenshots covered Profile feedback summary and inspector feedback score rows at 1920x1080, Profile at 390x844 and 375x667, and scrolled mobile Profile feedback cards at 390x844 and 375x667; all had no console warnings/errors and no horizontal overflow. Reset learned feedback was smoke-tested to clear only the feedback key while preserving contribution preferences.
+- Remaining risk: feedback learning is deterministic and local-only. The rendered validation used Chromium with seeded local storage rather than live GitHub data or a real PAT.
+
+## 2026-05-23 Match Score v3 Phase 1B
+
+- Added visible Phase 1A score diagnostics without changing scoring rules: compact Confidence chips on Dashboard/Find Contributions cards, inspector `Preview`/`Enriched` stage and confidence details, mini-score cards, and preserved existing score rows/pass reason chips.
+- Added a compact Profile `Contribution preferences` card with language, preferred work, avoided work, experience, and time-budget controls. Save writes normalized local preferences; Reset removes only contribution preferences. Settings stayed focused on token, hidden items, export/import, and danger actions.
+- Verification on 2026-05-23: `npm test` passed 177/177, `npm run build` passed, `git diff --check` passed, and `npm run test:layout` passed 9/9. Browser smoke at `http://127.0.0.1:4173/#profile` verified Profile preferences at 1920x1080 and 390x844 with no console warnings/errors or horizontal overflow, including Save/Reset interaction. Mocked Playwright screenshots covered Find Contributions, inspector, and Profile at 1920x1080 and 390x844, plus inspector/Profile at 375x667, all without horizontal overflow.
+- Remaining risk: rendered validation used Chromium only. The deterministic result-card and inspector screenshots used mocked public GitHub responses rather than live GitHub search.
+
+## 2026-05-23 Match Score v3 Phase 1A
+
+- Added structured Match Score v3 data while preserving the existing `score`, `rating`, `rows`, `passReasons`, `flags`, and `isContributionCandidate` contract. New score output includes `stage`, confidence with fixed caps, seven mini-scores, and capped personal-fit adjustments.
+- Added local contribution preference storage under `pr_dashboard_contribution_preferences_v1`, with normalized non-secret fields only. Export/import now includes preferences, merges by newer `saved_at`, and ignores hand-edited token/cache/private fields.
+- Wired preferences into app state and invisible score calculation. Clear Token preserves preferences; Clear All removes preferences along with the existing local app data. Phase 1A made no intentional visible UI or style changes.
+- Verification on 2026-05-23: targeted Phase 1A tests passed, then full gates passed with `npm test` 175/175, `npm run build`, and `git diff --check`.
+- Remaining risk: mini-scores and confidence are deterministic heuristics based only on current local/search/repo data until later UI, feedback, and enrichment phases add more context.
+
 ## 2026-05-23 README Gallery And Docs Sweep
 
 - Refreshed the README hero and added a compact Product Tour gallery under `qa_screenshots/readme/`, using deterministic TEAMMATES public GitHub snapshots for `#13997`, `#13998`, `#14005`, `#13698`, `#13944`, and `#14003`.
