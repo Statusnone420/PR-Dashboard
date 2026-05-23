@@ -1,5 +1,12 @@
 # PR Dashboard State
 
+## 2026-05-23 Phase 4 Setup Enrichment DevTools Noise Fix
+
+- Updated inspector-only repo setup enrichment to fetch the repository root contents listing first, infer setup evidence from discovered entries, and fetch bodies only for discovered manifest files needed for test/build hints. Missing `package.json`, `pyproject.toml`, `pom.xml`, README, CONTRIBUTING, `.github`, `workflows`, or `docs/CONTRIBUTING*` files are now normal missing evidence instead of direct optional-file probes.
+- `.github/workflows` inspection is gated by root `.github` discovery and a `.github` directory listing that contains `workflows`. `docs/CONTRIBUTING*` detection is gated by root `docs` discovery and the `docs` directory listing. True root contents failures, auth/rate-limit failures, malformed issue references, and network failures still flow to the existing non-blocking inspector enrichment error path.
+- Verification on 2026-05-23: `node --test test/repo-setup.test.js` passed 5/5, `npm test` passed 210/210, `npm run build` passed, `npm run test:layout` passed 9/9, and `git diff --check` passed.
+- Remaining risk: root and discovered-directory contents requests still depend on live GitHub availability and rate limits. The DevTools-noise fix covers expected missing optional setup files and directory children, not true repository/API failures.
+
 ## 2026-05-23 Match Score v3 Phase 4
 
 - Added inspector-only advanced enrichment for public issue timeline events, repo setup files, recent closed PR samples, and same-label issue samples. These read-only fetches run lazily from the inspector, sequence API use conservatively, stay non-blocking on errors, and never fetch for result or board cards before the inspector opens.
