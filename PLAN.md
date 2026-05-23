@@ -26,6 +26,17 @@ Audit baseline used for prioritization:
 | Help | 8.1/10 | Compact, readable, and already close to the right density. |
 | Feedback | 7.8/10 | Clear and functional; needs sanitized diagnostic prefill and better CTA feedback. |
 
+## Execution sequence and checkpoints
+
+Implement this as phased work, not one giant patch:
+
+1. **Plan / docs / baseline contract:** make `PLAN.md`, `test/docs-contract.test.js`, and `STATE.md` agree that this is the active UX sweep; confirm the existing docs-contract failure is resolved before UI work starts.
+2. **Core decision flow:** land shared metrics, inspector tabs, score presentation, cards, and the three micro-interactions together because these pieces depend on the same score/save/inspector state.
+3. **Primary workflow screens:** land Find Contributions compression, compact Board mode, and Profile/Activity/Settings ownership changes.
+4. **Polish and hardening:** land density classes, token/danger confirmations, popovers, accessibility fixes, Help/Feedback wiring, and shared empty states.
+
+At each checkpoint, run `npm test`, `npm run build`, and `git diff --check`. For every visual checkpoint after UI changes, start the Vite dev server and capture/inspect desktop and mobile browser views for Find Contributions, Inspector, Board, Profile/Activity, and Settings. Record the verification result and remaining risk in `STATE.md`.
+
 ## Priority fixes (sorted Critical → Low)
 
 ### Critical — Convert the plan and implementation target to the real vanilla-JS architecture
@@ -39,6 +50,7 @@ Audit baseline used for prioritization:
   ```text
   No new dependencies.
   Do not introduce React/TSX.
+  Do not create an additional worktree; work in the current default workspace.
   Prefer small helper modules over one giant main.js patch.
   Keep existing localStorage/export/import schema compatible.
   After each phase: npm test, npm run build, git diff --check.
@@ -49,8 +61,8 @@ Audit baseline used for prioritization:
 ### Critical — Rebuild the inspector as a decision drawer with Overview / Evidence / Action tabs
 - **Problem:** The inspector is the main UX failure. It currently mixes score diagnostics, mini-scores, confidence, contribution brief, risks, first move, action plan, comments, advanced context, and raw issue description in one long scrollable drawer. The user should not need to scroll through a document dump to decide whether to save, hide, pass, or open the issue.
 - **Screen(s) affected:** Inspector drawer, Find Contributions with inspector open, saved-card inspector states.
-- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `openInspector`, `renderScoreDiagnostics`, `renderContributionBrief`, `renderActionPlan`, `renderIssueDescription`, `inspector-save-issue-btn`, and drawer close/bind logic.
-- **Implementation:** Refactor `openInspector(issue)` so it renders three tabs. Keep the drawer shell and sticky header, but move content into deliberate decision layers.
+- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `openInspector`, `Score diagnostics`, `Contribution Brief`, `Action Plan`, `Issue Description`, `inspector-save-issue-btn`, and drawer close/bind logic.
+- **Implementation:** Refactor the existing `openInspector()` flow, which currently reads `store.inspectedIssue`, so it renders three tabs. Keep the existing drawer shell `#inspector-overlay-drawer`, sticky header, and close timing, but move content into deliberate decision layers.
 
   Required tab structure:
 
@@ -85,14 +97,17 @@ Audit baseline used for prioritization:
   ```js
   const INSPECTOR_TABS = ['overview', 'evidence', 'action'];
 
-  function openInspector(issue) {
-    const panel = document.querySelector('#issue-inspector');
+  function openInspector() {
+    const panel = document.querySelector('#inspector-overlay-drawer');
     if (!panel) return;
+
+    const issue = store.inspectedIssue;
+    if (!issue) return;
 
     const activeTab = 'overview';
     panel.innerHTML = renderInspectorShell(issue, activeTab);
     panel.style.display = 'flex';
-    requestAnimationFrame(() => panel.classList.remove('translate-x-full'));
+    setTimeout(() => panel.classList.remove('translate-x-full'), 20);
 
     bindInspectorTabs(panel, issue);
     bindInspectorActions(panel, issue);
@@ -116,27 +131,34 @@ Audit baseline used for prioritization:
 ### Critical — Fix local-state consistency across Dashboard, Board, Profile, Settings, cards, and inspector
 - **Problem:** The screenshots show state drift: a saved card can exist on Board and in learned feedback while Dashboard/Profile counters still show zero. Even when this is caused by screenshot timing, the app needs one canonical local-state summary. Count drift makes users doubt whether saves, hides, and completed work are real.
 - **Screen(s) affected:** Dashboard, Find Contributions cards, Inspector, Board, Profile, Activity, Settings hidden results, import/export.
-- **Files likely involved:** `src/main.js`, `src/store.js`, `src/storage.js`, `src/localStore.js`, or whatever file currently owns localStorage reads/writes. Add `src/appMetrics.js` if there is no existing selector module.
-- **Implementation:** Add a shared metrics helper and use it everywhere instead of recomputing counts per screen. Keep localStorage keys and export/import schema compatible.
+- **Files likely involved:** `src/main.js`, `src/state/store.js`, `src/dashboardMetrics.js`, `src/dashboardHero.js`, `src/dashboardReviewFlow.js`, `src/boardConstants.js`, `src/localData.js`, `src/hiddenItems.js`, and `src/proofLog.js`. Add `src/appMetrics.js` only if the summary cannot stay cleanly inside the existing metrics helpers.
+- **Implementation:** Add or extend a shared metrics helper and use it everywhere instead of recomputing counts per screen. The board is currently stored as an object keyed by the real column names from `src/boardConstants.js`, not as cards with lowercase status strings. Keep localStorage keys and export/import schema compatible.
 
   Suggested helper:
 
   ```js
-  const ACTIVE_BOARD_STATES = ['considering', 'read-docs', 'asked-maintainer', 'working', 'pr-open'];
-  const DONE_BOARD_STATES = ['merged', 'passed'];
+  import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
+  import { isClosedIssue } from './boardModel.js';
 
   export function summarizeAppMetrics({
-    boardCards = [],
+    boardCardsByColumn = {},
     hiddenIssues = [],
     hiddenRepos = [],
     proofEntries = [],
     reviewReminders = [],
   } = {}) {
-    const activeBoardWork = boardCards.filter((card) => ACTIVE_BOARD_STATES.includes(card.status)).length;
-    const resolvedOrPassed = boardCards.filter((card) => DONE_BOARD_STATES.includes(card.status)).length;
+    const boardEntries = BOARD_COLUMNS.flatMap((column) =>
+      (boardCardsByColumn[column] || []).map((card) => ({ column, card }))
+    );
+    const activeBoardWork = boardEntries.filter(({ column, card }) =>
+      ACTIVE_BOARD_COLUMNS.includes(column) && !isClosedIssue(card)
+    ).length;
+    const resolvedOrPassed = boardEntries.filter(({ column, card }) =>
+      COMPLETED_BOARD_COLUMNS.includes(column) || isClosedIssue(card)
+    ).length;
 
     return {
-      savedCandidates: boardCards.length,
+      savedCandidates: boardEntries.length,
       activeBoardWork,
       resolvedOrPassed,
       hiddenIssues: hiddenIssues.length,
@@ -148,16 +170,16 @@ Audit baseline used for prioritization:
   }
   ```
 
-  Use this helper in `renderDashboard`, `renderProfile`, `renderSettings`, `renderBoard`, card button state, and inspector action state. After save/hide/move/import/clear actions, re-render affected regions or dispatch a small custom event such as `app:local-state-changed`.
+  Use this helper in `renderDashboard`, `renderProfile`, `renderSettings`, `renderBoard`, card button state, and inspector action state. Feed it with the existing `store.boardCards`, `listHiddenItems(localStorage)`, `listProofEntries(localStorage)`, and `buildLocalAlerts(store.boardCards)` shapes. After save/hide/move/import/clear actions, re-render affected regions or dispatch a small custom event such as `app:local-state-changed`.
 - **Acceptance criteria:** Saving one issue updates result card state, inspector state, Board lane count, Dashboard saved candidates, and Profile saved candidates without a full refresh. Hiding one issue updates Settings hidden issue count and Dashboard hidden result count. Import/export round-trips counts. Tests cover save, hide, unhide, move, merge, pass, clear board, clear hidden items, and clear all app data.
 
 ### High — Compress issue cards and switch to strength-first score language
 - **Problem:** Search cards are badge walls. GitHub labels, `100% Match`, `Fit`, `Confidence`, state badges, stars, forks, comments, assignee state, and action buttons all compete at the same level. Also, raw 99–100% match labels imply false precision and make many cards look equally perfect.
 - **Screen(s) affected:** Find Contributions result list/grid, saved-card states, Dashboard saved candidates, Board cards, inspector background cards.
-- **Files likely involved:** `src/main.js`, `src/styles.css`; add `src/matchScore.js` if there is no existing scoring presentation helper. Search for `renderIssueCardsList`, `fitObj.score`, `Confidence:`, `Fit:`, `good first issue`, `help wanted`, and card action templates.
+- **Files likely involved:** `src/main.js`, `src/styles.css`, and the existing `src/matchScore.js`; add a small `src/scorePresentation.js` only if keeping presentation labels out of the scoring module would make the change cleaner. Search for `renderIssueCardsList`, `fitObj.score`, `Confidence:`, `Fit:`, `good first issue`, `help wanted`, and card action templates.
 - **Implementation:** Make cards decision units, not metadata dumps. Default card hierarchy should be: repository + issue number, title, one-line summary, one top reason, match strength, confidence, quiet metadata, actions.
 
-  Add a score-presentation helper:
+  Add a pure score-presentation helper and keep HTML string rendering in `src/main.js` so `src/matchScore.js` stays focused on scoring data:
 
   ```js
   export function getMatchStrength(score) {
@@ -167,10 +189,11 @@ Audit baseline used for prioritization:
     return { label: 'Skip', tone: 'skip' };
   }
 
-  export function renderMatchChip(score, { showExact = false, animate = false } = {}) {
+  function renderScoreChip(score, { showExact = false, animate = false } = {}) {
     const strength = getMatchStrength(score);
     const text = showExact ? `${score}% Match` : strength.label;
-    return `<span class="score-chip score-chip--${strength.tone}" data-score-value="${score}" ${animate ? 'data-animate-score="true"' : ''}>${text}</span>`;
+    const animateAttr = animate ? ' data-animate-score="true"' : '';
+    return `<span class="score-chip score-chip--${strength.tone}" data-score-value="${safeInteger(score)}"${animateAttr}>${escapeHTML(text)}</span>`;
   }
   ```
 
@@ -198,7 +221,7 @@ Audit baseline used for prioritization:
   [Filter rail with Quick filters] [Result cards]
   ```
 
-  Use Superpower to save a repeatable review prompt for this screen: verify header height, first-result position, active filter clarity, card density, and empty/error states after each Codex pass.
+  Use a repeatable review checklist for this screen: verify header height, first-result position, active filter clarity, card density, and empty/error states after each pass. Record any remaining layout risk in `STATE.md`.
 - **Acceptance criteria:** Results begin at least 120px higher than the current layout at desktop width. Query preview is hidden by default. Quick presets live with filters. Only one primary search field is visually dominant. Dirty filters are obvious and resettable.
 
 ### High — Add premium micro-interactions without masking structural problems
@@ -209,9 +232,11 @@ Audit baseline used for prioritization:
 
   **1. Inspector score counter**
 
-  Use `data-score-value` for exact score values and `data-animate-score="true"` only on the inspector score element that should animate. Do not animate every score chip on the page. Use `requestAnimationFrame`, guard against repeated enrichment re-renders, and respect `prefers-reduced-motion`.
+  Use `data-score-value` for exact score values and `data-animate-score="true"` only on the inspector score element that should animate. Do not animate every score chip on the page. Use `requestAnimationFrame`, guard against repeated Advanced Context enrichment re-renders, and respect `prefers-reduced-motion`. Because `openInspector()` currently replaces `panel.innerHTML` during enrichment refreshes, track entry animation outside the replaced DOM, for example with `activeInspectorEntryAnimationKey`.
 
   ```js
+  let activeInspectorEntryAnimationKey = '';
+
   function prefersReducedMotion() {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   }
@@ -239,7 +264,11 @@ Audit baseline used for prioritization:
     requestAnimationFrame(tick);
   }
 
-  function runInspectorEntryEffects(panel) {
+  function runInspectorEntryEffects(panel, issue) {
+    const issueKey = getCanonicalIssueKey(issue) || String(issue?.id || '');
+    if (!issueKey || activeInspectorEntryAnimationKey === issueKey) return;
+    activeInspectorEntryAnimationKey = issueKey;
+
     window.setTimeout(() => {
       animateScoreCounter(panel.querySelector('[data-animate-score="true"][data-score-value]'));
     }, 20);
@@ -317,15 +346,17 @@ Audit baseline used for prioritization:
 ### High — Make the Board useful when it has 0–3 active cards
 - **Problem:** The current Board uses a full kanban layout even when there is only one saved card. Five active columns plus two completed columns create a giant empty canvas, making the saved candidate feel less important than the empty lanes.
 - **Screen(s) affected:** Board, Dashboard active-board module, saved-card movement controls.
-- **Files likely involved:** `src/main.js`, `src/styles.css`; search for `renderBoard`, `Kanban`, `CONSIDERING`, `READ DOCS`, `ASKED MAINTAINER`, `WORKING`, `PR OPEN`, `MERGED`, and `PASSED`.
+- **Files likely involved:** `src/main.js`, `src/styles.css`, `src/boardConstants.js`, and `src/dashboardReviewFlow.js`; search for `renderBoard`, `kanban-column`, `ACTIVE_BOARD_COLUMNS`, `COMPLETED_BOARD_COLUMNS`, `Considering`, `Read Docs`, `Asked Maintainer`, `Working`, `PR Open`, `Merged`, and `Passed`.
 - **Implementation:** Add two board modes: compact for 0–3 active cards and full kanban for 4+ active cards or when the user manually expands. Compact mode should show current cards first, collapsed empty lanes, and next-stage controls directly on each card.
 
   Vanilla JS sketch:
 
   ```js
-  function getBoardMode(boardCards, userMode) {
+  function getBoardMode(boardCardsByColumn, userMode) {
     if (userMode === 'kanban' || userMode === 'compact') return userMode;
-    const activeCount = boardCards.filter((card) => ACTIVE_BOARD_STATES.includes(card.status)).length;
+    const activeCount = ACTIVE_BOARD_COLUMNS.reduce((total, column) => {
+      return total + (boardCardsByColumn[column] || []).filter((card) => !isClosedIssue(card)).length;
+    }, 0);
     return activeCount <= 3 ? 'compact' : 'kanban';
   }
   ```
@@ -342,7 +373,7 @@ Audit baseline used for prioritization:
 ### High — Split Profile, Activity, and Settings responsibilities
 - **Problem:** Profile is doing too much. It contains identity, preferences, stats, learned feedback, proof log, review reminders, and import/export-adjacent concepts. Settings also contains hidden results, import/export, token setup, and danger actions. The app needs clearer ownership.
 - **Screen(s) affected:** Profile, Activity, Settings, Dashboard, sidebar navigation.
-- **Files likely involved:** `src/main.js`, `src/styles.css`, any router/nav constants; search for `renderProfile`, `renderSettings`, `Proof Log`, `Review reminders`, `Learned feedback`, `Export Local Data`, and sidebar route definitions.
+- **Files likely involved:** `src/main.js`, `src/styles.css`, `src/routing.js`, `index.html`, `test/routing.test.js`, and `test/ui-copy.test.js`; search for `renderProfile`, `renderSettings`, `Proof Log`, `Review reminders`, `Learned feedback`, `Export Local Data`, `setupNavigation`, `renderActiveScreen`, `updateActiveNav`, and sidebar/mobile route definitions.
 - **Implementation:** Add an `Activity` route/hash and sidebar nav item. Keep Profile focused on identity, contribution preferences, and high-level stats. Move proof log, review reminders, and learned feedback/personal scoring signals to Activity. Keep token setup, hidden results, import/export, and danger zone only in Settings.
 
   Target IA:
@@ -481,10 +512,10 @@ Audit baseline used for prioritization:
   function renderEmptyState({ title, body, primaryAction, secondaryAction, variant = 'default' }) {
     return `
       <div class="empty-state empty-state--${variant}">
-        <p class="empty-state__title">${escapeHtml(title)}</p>
-        <p class="empty-state__body">${escapeHtml(body)}</p>
-        ${primaryAction ? renderButtonLink(primaryAction) : ''}
-        ${secondaryAction ? renderButtonLink(secondaryAction, 'secondary') : ''}
+        <p class="empty-state__title">${escapeHTML(title)}</p>
+        <p class="empty-state__body">${escapeHTML(body)}</p>
+        ${primaryAction ? renderEmptyStateAction(primaryAction) : ''}
+        ${secondaryAction ? renderEmptyStateAction(secondaryAction, 'secondary') : ''}
       </div>
     `;
   }
