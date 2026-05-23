@@ -210,6 +210,10 @@ Rules:
   - Medium confidence: max score `94`.
   - High confidence: no confidence cap, but existing fake-perfect gates still apply.
 - Changing these cap values requires explicit test updates and a note in `STATE.md`.
+- Preview confidence must not treat missing future enrichment as a current-data failure.
+- `Comments not inspected`, `Setup files not inspected`, and `Timeline not inspected` are advisory preview reasons only. They must not by themselves make confidence `Low`.
+- Before enrichment exists, strong hydrated preview issues may be `High` confidence, or at worst `Medium`.
+- `Low` confidence requires concrete weakness in data already available to the current phase, such as missing repo metadata, very short or vague issue body, unavailable issue body, stale or disabled repository, or conflicting risk signals.
 - Confidence reasons must be concrete, such as:
   - `Repository metadata unavailable`
   - `Issue body is short`
@@ -543,7 +547,7 @@ It may store compact aggregate patterns derived from local actions:
 - hidden issue
 - hidden repo
 
-Do not store full issue bodies in feedback records. Prefer compact feature buckets and counters.
+Do not store full issue bodies in feedback records. Store compact feature buckets and counters only as values recomputed from durable event markers.
 
 Allowed feedback shape:
 
@@ -572,6 +576,12 @@ Allowed feedback shape:
 
 Feedback recording must be idempotent.
 
+In Phase 2, event markers are the source of truth for feedback.
+
+Aggregates, totals, and buckets must be recomputed from event markers.
+
+Do not directly mutate aggregate counters as the durable source of truth.
+
 A given canonical issue key plus action/transition must not be counted twice because of:
 
 - re-render
@@ -580,8 +590,9 @@ A given canonical issue key plus action/transition must not be counted twice bec
 - repeated movement into the same lane
 - repeated save of an already-saved issue
 - repeated hide of an already-hidden issue/repo
+- duplicate markers in storage or import payloads
 
-Prefer deriving aggregate feedback from durable local board/hidden/proof state where possible. If event storage is used, store compact per-issue/action markers and recompute aggregates from them.
+When deriving feedback from local board/hidden/proof state, first normalize it into compact per-canonical-issue/action event markers, then recompute aggregates from those markers.
 
 Suggested event marker shape:
 
@@ -599,6 +610,12 @@ Enrichment cache is not portable.
 
 It may store fetched public GitHub context summaries, but not tokens.
 
+Do not cache enrichment for private repositories.
+
+If repository visibility is unknown and a token was used for the request, do not cache the result. Do not create token-scoped enrichment cache entries as a workaround.
+
+Clear enrichment cache when a GitHub token is saved, changed, or cleared.
+
 Use TTL. Recommended initial TTL:
 
 ```text
@@ -606,7 +623,7 @@ Use TTL. Recommended initial TTL:
 24 hours for repo/setup enrichment
 ```
 
-Keep cached values compact and sanitized. Do not cache Authorization headers.
+Keep cached values compact and sanitized. Do not cache Authorization headers, token-derived identity, private repository data, or any field that depends on who authenticated the request.
 
 ### Export Local Data
 
@@ -659,6 +676,7 @@ Merge behavior:
 - remember-token setting
 - GitHub identity profile
 - rate limit state
+- score enrichment cache
 
 `clearToken()` must not remove:
 
@@ -697,7 +715,7 @@ If one reason is shown, keep it short:
 
 ```text
 Matches TypeScript preference
-Low confidence: comments not inspected
+Medium confidence: comments not inspected
 ```
 
 ### Inspector
@@ -787,24 +805,25 @@ Never send write methods. Existing `createGitHubRequestOptions()` blocks write m
 
 ## 10. Phase Overview
 
-There are exactly four implementation phases.
+There are exactly five implementation checkpoints.
 
 Each phase must be independently useful, fully verified, and stopped before the next phase.
 
-1. Phase 1: Match Score v3 Core.
-2. Phase 2: Local Feedback Learning.
-3. Phase 3: Lazy Inspector Enrichment, comments first.
-4. Phase 4: Advanced Enrichment.
+1. Phase 1A: Match Score v3 Core Data.
+2. Phase 1B: Match Score v3 UI.
+3. Phase 2: Local Feedback Learning.
+4. Phase 3: Lazy Inspector Enrichment, comments first.
+5. Phase 4: Advanced Enrichment.
 
 Implementing agents must execute only the phase requested by `/goals`.
 
 ---
 
-# Phase 1: Match Score v3 Core
+# Phase 1A: Match Score v3 Core Data
 
 ## Scope
 
-Phase 1 adds structured scoring output, lean contribution preferences, confidence, mini-scores, and compact UI display. It does not add outcome feedback or GitHub enrichment.
+Phase 1A adds structured scoring output, lean contribution preference storage, confidence, mini-scores, personal fit, store/data wiring, and export/import behavior. It does not add visible score UI, outcome feedback, or GitHub enrichment.
 
 Implement:
 
@@ -812,17 +831,19 @@ Implement:
 - `confidence`.
 - `miniScores`.
 - `personalFit`.
-- Preference storage module.
-- Profile preferences UI.
+- `contributionPreferences` storage module.
+- Store/data wiring for preferences.
 - Export/import preferences.
 - Clear All/Clear Token behavior for preferences.
-- Compact card confidence chip.
-- Inspector mini-score/confidence section.
 
 ## Explicit Non-Scope
 
 Do not implement:
 
+- Profile contribution preferences UI.
+- Card confidence chip.
+- Inspector mini-score/confidence section.
+- UI redesign or layout changes.
 - Local feedback learning.
 - Enrichment cache.
 - Comment fetching.
@@ -832,7 +853,6 @@ Do not implement:
 - Repo-aware label history.
 - Any backend/auth change.
 - Auto-applying preferences to filters.
-- Redesigning cards or inspector layout.
 
 ## Likely Files
 
@@ -845,25 +865,26 @@ Modify:
 
 - `src/matchScore.js`
 - `test/match-score.test.js`
-- `src/main.js`
+- `src/main.js` only if needed to pass preferences into the existing score wrapper without visible UI changes
 - `src/state/store.js`
 - `src/localData.js`
 - `test/local-data.test.js`
 - `test/store-persistence.test.js`
-- `test/ui-copy.test.js`
 - `STATE.md`
 
-Only touch styles if existing utilities cannot support the needed compact UI.
+Do not touch styles in Phase 1A.
 
 ## Implementation Checklist
 
 - [ ] Inspect current `src/matchScore.js` and tests.
-- [ ] Inspect whether Phase 1 should be split only if the projected diff becomes too broad. If it does, stop and ask the user before coding.
 - [ ] Add tests for the new return shape while preserving old fields.
 - [ ] Add confidence helper tests:
   - repo metadata unavailable gives lower confidence.
   - short issue body gives lower confidence.
   - well-described hydrated issue gives high confidence.
+  - missing comments/setup/timeline alone does not make preview confidence `Low`.
+  - strong hydrated preview issues can still score above `90` when comments/setup/timeline are not inspected.
+  - low confidence requires current-data weakness such as missing repo metadata, very short/vague body, unavailable body, stale/disabled repo, or conflicting risk signals.
   - low confidence caps score at `88`.
   - medium confidence caps score at `94`.
   - high confidence uses no confidence cap but still uses fake-perfect gates.
@@ -888,18 +909,16 @@ Only touch styles if existing utilities cannot support the needed compact UI.
   - save
   - clear
   - merge newer preference on import
+  - drop malformed or disallowed preference fields on import
 - [ ] Add store fields/methods for preferences.
 - [ ] Add export/import support.
 - [ ] Ensure export excludes tokens and caches.
+- [ ] Ensure malicious or hand-edited imports cannot add token/cache/private fields through preferences.
 - [ ] Ensure Clear All removes preferences.
 - [ ] Ensure Clear Token preserves preferences.
-- [ ] Add Profile contribution preferences card.
-- [ ] Add compact controls and Save/Reset behavior.
 - [ ] Pass profile preferences into `calculateFitScore()` or equivalent score wrapper.
-- [ ] Add card confidence chip.
-- [ ] Add inspector mini-score/confidence section.
-- [ ] Keep existing result card score and fit chips.
-- [ ] Update tests and copy contracts.
+- [ ] Avoid visible UI changes. If a visible UI change happens accidentally, stop and move that work to Phase 1B.
+- [ ] Update tests.
 - [ ] Update `STATE.md` with changes, verification, and remaining risk.
 
 ## Tests
@@ -922,16 +941,128 @@ Required assertions:
 - Closed issue is still zero.
 - Old consumers can still read `score`, `rating`, `rows`, `passReasons`, `flags`, `isContributionCandidate`.
 - New fields exist and are stable.
+- Preview missing enrichment reasons do not make confidence `Low` by themselves.
+- Strong hydrated preview issues can still score above `90` without comments/setup/timeline enrichment.
+- Low confidence requires concrete current-data weakness.
 - Confidence caps are exactly:
   - Low: `88`
   - Medium: `94`
   - High: no confidence cap
 - Preference save/load/clear works.
 - Export/import includes preferences.
+- Imported preferences drop token, email, private repo data, arbitrary fields, malformed values, and hand-edited cache/token fields.
 - Token is not exported.
 - Clear Token preserves preferences.
 - Clear All removes preferences.
+
+## UI/Screenshot Checks
+
+Phase 1A should not require screenshots because it should not change visible UI.
+
+If visible UI changes accidentally occur, stop and move that work to Phase 1B. If a tiny unavoidable visible change remains, run the relevant existing layout/browser smoke and inspect the diff before stopping.
+
+## Data Checks
+
+- Inspect local storage keys after saving preferences.
+- Confirm preferences JSON has only allowed fields.
+- Confirm export includes preferences.
+- Confirm export does not include token or enrichment cache.
+- Confirm import from old payload without preferences still works.
+- Confirm malicious or hand-edited imports cannot persist token, cache, private repo data, email, arbitrary fields, or malformed preference values.
+
+## Risks
+
+- New mini-score objects could break assumptions in contribution brief if not backward-compatible.
+- Score changes could churn existing tests; update only where behavior intentionally changed.
+- `src/main.js` is large. If Phase 1A needs it only to pass preferences into scoring, keep the edit invisible and minimal.
+
+## Stop Condition
+
+Stop Phase 1A after:
+
+- `npm test` passes.
+- `npm run build` passes.
+- `git diff --check` passes.
+- Any accidental visible UI change is moved to Phase 1B or separately smoke checked.
+- `STATE.md` is updated.
+- Stop and wait for user review.
+
+Do not continue to Phase 1B without explicit user instruction.
+
+---
+
+# Phase 1B: Match Score v3 UI
+
+## Scope
+
+Phase 1B adds compact UI for the Phase 1A scoring and preference data. It does not change scoring rules beyond reading the fields created in Phase 1A.
+
+Implement:
+
+- Profile contribution preferences card.
+- Compact preference controls and Save/Reset behavior.
+- Card confidence chip.
+- Inspector mini-score/confidence section.
+- UI/copy tests.
+- Screenshot/layout checks.
+
+## Explicit Non-Scope
+
+Do not implement:
+
+- Local feedback learning.
+- GitHub enrichment.
+- Enrichment cache.
+- Search-result auto-enrichment.
+- Auto-applying preferences to filters.
+- Backend/auth changes.
+- Scoring rule changes not required to display Phase 1A fields.
+- Major redesign of cards, inspector, or Profile.
+
+## Likely Files
+
+Modify:
+
+- `src/main.js`
+- `test/ui-copy.test.js`
+- `test/store-persistence.test.js` if Save/Reset behavior needs store coverage
+- `src/styles.css` only if existing utilities cannot support the needed compact UI
+- `STATE.md`
+
+## Implementation Checklist
+
+- [ ] Inspect Phase 1A preference store and score return shape.
+- [ ] Add Profile contribution preferences card.
+- [ ] Add compact controls for languages, preferred work, avoid work, experience, and time budget.
+- [ ] Add Save and Reset actions using the Phase 1A store/data helpers.
+- [ ] Keep Settings focused on token, hidden items, export/import, and danger zone.
+- [ ] Do not auto-run search or auto-apply filters from preferences.
+- [ ] Pass saved contribution preferences into card and inspector scoring.
+- [ ] Add compact card confidence chip while keeping existing Match and Fit chips.
+- [ ] Add inspector stage, confidence reasons, and mini-score section.
+- [ ] Keep existing score rows and pass reason chips visible.
+- [ ] Keep cards compact and inspector scannable on desktop and mobile.
+- [ ] Update UI/copy tests.
+- [ ] Update `STATE.md` with changes, verification, screenshots, and remaining risk.
+
+## Tests
+
+Required assertions:
+
 - UI copy tests pass.
+- Profile page includes `Contribution preferences`.
+- Save/Reset controls are present and do not expose token/private-data wording.
+- Result cards keep existing Match and Fit chips and add only compact confidence UI.
+- Inspector shows stage, confidence reasons, mini-scores, existing score rows, and pass reason chips.
+- Preferences do not auto-run search or auto-apply filters.
+
+Run:
+
+```powershell
+npm test
+npm run build
+git diff --check
+```
 
 ## UI/Screenshot Checks
 
@@ -953,33 +1084,38 @@ Minimum screenshot matrix:
 375x667: Profile, inspector
 ```
 
-Use existing layout/browser tests where available. If running Playwright updates screenshots, inspect diffs and restore unrelated screenshot churn unless the phase intentionally updates them.
+Use existing layout/browser tests where available:
+
+```powershell
+npm run test:layout
+```
+
+If running Playwright updates screenshots, inspect diffs and restore unrelated screenshot churn unless the phase intentionally updates them.
 
 ## Data Checks
 
-- Inspect local storage keys after saving preferences.
-- Confirm preferences JSON has only allowed fields.
-- Confirm export includes preferences.
-- Confirm export does not include token or enrichment cache.
-- Confirm import from old payload without preferences still works.
+- Confirm Profile Save writes only normalized contribution preferences.
+- Confirm Reset removes only contribution preferences.
+- Confirm Clear Token still preserves contribution preferences.
+- Confirm Clear All still removes contribution preferences.
 
 ## Risks
 
 - `src/main.js` is large; keep edits localized.
 - Preference UI could make Profile feel too heavy.
-- New mini-score objects could break assumptions in contribution brief if not backward-compatible.
-- Score changes could churn existing tests; update only where behavior intentionally changed.
+- Mini-score UI could make the inspector too dense.
+- Card chips can wrap awkwardly on mobile; screenshots must catch this.
 
 ## Stop Condition
 
-Stop Phase 1 after:
+Stop Phase 1B after:
 
 - `npm test` passes.
 - `npm run build` passes.
 - `git diff --check` passes.
 - Affected UI is screenshot/smoke checked.
 - `STATE.md` is updated.
-- User has reviewed the result.
+- Stop and wait for user review.
 
 Do not continue to Phase 2 without explicit user instruction.
 
@@ -1000,7 +1136,7 @@ Feedback signals:
 - Hidden issue: negative.
 - Hidden repo: negative.
 
-Implement compact aggregate feedback storage and scoring rows.
+Implement compact event-marker feedback storage, recomputed aggregate summaries, and scoring rows.
 
 ## Explicit Non-Scope
 
@@ -1047,7 +1183,9 @@ Modify:
   - repo full name
   - labels
 - [ ] Make feedback recording idempotent before wiring it into store actions.
-- [ ] Prefer deriving aggregate feedback from durable state. If storing events, store per-canonical-issue/action markers and recompute aggregate counters from those markers.
+- [ ] Store per-canonical-issue/action event markers as the durable source of truth.
+- [ ] Recompute aggregate totals and buckets from event markers.
+- [ ] Do not directly mutate aggregate counters as durable state.
 - [ ] Add tests for feedback storage normalization.
 - [ ] Add tests that saving to board increments feedback once.
 - [ ] Add tests that saving an already-saved issue does not double-count feedback.
@@ -1058,6 +1196,7 @@ Modify:
 - [ ] Add tests that hiding issue/repo increments negative feedback once.
 - [ ] Add tests that reloading/re-rendering does not increment feedback.
 - [ ] Add tests that import merge does not double-count known markers.
+- [ ] Add tests that duplicate markers in storage/import are deduped before aggregate recompute.
 - [ ] Add tests that feedback adjustment is capped at `+8 / -10`.
 - [ ] Add tests that closed issue remains zero even with positive feedback.
 - [ ] Implement `matchFeedback.js`.
@@ -1083,12 +1222,13 @@ Required tests:
 - Feedback aggregate recompute from markers.
 - Feedback aggregate merge.
 - Board actions record expected counters.
-- Board actions do not double-count on re-render/reload/repeated lane entry.
+- Board actions do not double-count on re-render, reload, repeated save, or repeated lane entry.
 - Hidden actions record expected counters once.
 - Proof/Merged actions record expected counters once.
 - Feedback score adjustment cap.
 - Export/import includes feedback.
 - Import does not duplicate existing feedback markers.
+- Duplicate event markers are deduped before recomputing totals/buckets.
 - Token is not exported.
 - Clear All removes feedback.
 - Clear Token preserves feedback.
@@ -1143,7 +1283,7 @@ Stop Phase 2 after:
 - Feedback storage shape is inspected.
 - UI is smoke/screenshot checked.
 - `STATE.md` is updated.
-- User explicitly approves moving to Phase 3.
+- Stop and wait for user review and explicit approval to move to Phase 3.
 
 Do not continue to Phase 3 without explicit user instruction.
 
@@ -1215,6 +1355,9 @@ Modify:
 - [ ] Add storage/cache helpers for comment enrichment under enrichment cache key.
 - [ ] Cache by canonical issue key.
 - [ ] Add TTL for comment enrichment.
+- [ ] Do not cache private repository enrichment.
+- [ ] Do not cache if repository visibility is unknown and a token was used.
+- [ ] Clear enrichment cache when the token is saved, changed, or cleared.
 - [ ] Add tests for API URL construction.
 - [ ] Add tests blocking non-GitHub or invalid issue references.
 - [ ] Add tests parsing comment summary:
@@ -1250,6 +1393,7 @@ Required tests:
 - Comment summary classification.
 - Bot-only recent activity does not count as maintainer encouragement.
 - Enrichment cache TTL.
+- Enrichment cache privacy and token-change clearing.
 - Enriched scoring rows.
 - Enriched confidence behavior.
 - Inspector loading/error copy exists.
@@ -1287,9 +1431,10 @@ Use mocked Playwright routes for deterministic comment responses. Do not depend 
 
 - Confirm enrichment cache is not exported.
 - Confirm cache contains compact summaries only.
-- Confirm no token/header is cached.
+- Confirm no token/header/token-derived identity is cached.
+- Confirm private repositories and token-used unknown-visibility responses are not cached.
 - Confirm Clear All removes enrichment cache.
-- Confirm Clear Token does not need to remove enrichment cache unless token-specific data was accidentally included. Prefer not storing token-specific data.
+- Confirm token save/change/clear removes enrichment cache.
 
 ## Risks
 
@@ -1306,7 +1451,7 @@ Stop Phase 3 after:
 - Mocked browser smoke confirms inspector enrichment.
 - API/cache safety is inspected.
 - `STATE.md` is updated.
-- User explicitly approves moving to Phase 4.
+- Stop and wait for user review and explicit approval to move to Phase 4.
 
 Do not continue to Phase 4 without explicit user instruction.
 
@@ -1472,6 +1617,8 @@ If Profile or cards are affected by enriched cache display, include those screen
 - Confirm enrichment cache excludes tokens.
 - Confirm enrichment cache is excluded from export.
 - Confirm Clear All removes cache.
+- Confirm token save/change/clear removes cache.
+- Confirm private repositories and token-used unknown-visibility responses are not cached.
 - Confirm old comment-only cache entries still load or are safely ignored.
 - Confirm API fetch count stays within phase budget.
 
@@ -1492,7 +1639,7 @@ Stop Phase 4 after:
 - Inspector UI remains compact and readable.
 - API/cache safety is inspected.
 - `STATE.md` is updated.
-- User reviews final advanced enrichment behavior.
+- Stop and wait for user review.
 
 ---
 
@@ -1592,7 +1739,11 @@ Do not assume targeted test command syntax works. If unsure, run `npm test`.
 
 Use existing screenshots as design guardrails. Do not let the app drift into overbuilt UI.
 
-### Phase 1 Screenshots
+### Phase 1A Screenshots
+
+Phase 1A should not require screenshots unless visible UI changes accidentally occur.
+
+### Phase 1B Screenshots
 
 Desktop:
 
@@ -1672,7 +1823,7 @@ A fresh agent starting from this plan must:
 4. Run `git status --short`.
 5. Inspect `package.json`.
 6. Inspect the files listed in section 2 for the requested phase.
-7. Confirm which `/goals` phase was requested.
+7. Confirm which `/goals` phase was requested: Phase 1A, Phase 1B, Phase 2, Phase 3, or Phase 4.
 8. Execute only that phase.
 9. Use tests-first implementation for behavior changes.
 10. Keep diffs scoped to the phase.
@@ -1696,39 +1847,46 @@ Do not create a new worktree. Work inside the current branch/workspace.
 
 ```text
 /goals
-Objective: Audit the Match Score full-system plan before implementation. Read AGENTS.md, PLAN.md, STATE.md, package.json, src/matchScore.js, src/main.js, src/profile.js, src/localData.js, src/state/store.js, and relevant tests. Do not edit files. Report whether PLAN.md is coherent, phase-bounded, compatible with current architecture, missing safety/test/UI/data checks, and whether Phase 1 should split only if diff risk is too broad. Stop after audit.
+Objective: Audit the Match Score full-system plan before implementation. Read AGENTS.md, PLAN.md, STATE.md, package.json, src/matchScore.js, src/main.js, src/profile.js, src/localData.js, src/state/store.js, and relevant tests. Do not edit files. Report whether PLAN.md is coherent, phase-bounded, compatible with current architecture, and missing safety/test/UI/data checks. Verify Phase 1A/1B boundaries, preview confidence, feedback idempotency, and enrichment cache privacy. Stop after audit.
 ```
 
-### Phase 1 Prompt
+### Phase 1A Prompt
 
 ```text
 /goals
-Objective: Execute Phase 1 only from PLAN.md: Match Score v3 Core. Add structured calculateMatchScore output, fixed confidence caps, miniScores, personalFit, lean contribution preferences, Profile preferences UI, export/import support, and compact card/inspector display. Do not implement local feedback or GitHub enrichment. Run npm test, npm run build, git diff --check, and relevant UI/layout checks. Update STATE.md. Stop after Phase 1.
+Objective: Execute Phase 1A only from PLAN.md: Match Score v3 Core Data. Add structured calculateMatchScore output, fixed confidence caps, miniScores, personalFit, contributionPreferences storage, store/data wiring, export/import support, Clear All/Clear Token behavior, and tests. Do not implement Profile preference UI, card confidence chips, inspector mini-score UI, local feedback, or GitHub enrichment. Prove strong hydrated preview issues can still score above 90 without comments/setup/timeline enrichment. Test malicious preference imports drop token/private/cache fields. Run npm test, npm run build, git diff --check, update STATE.md, and stop.
+```
+
+### Phase 1B Prompt
+
+```text
+/goals
+Objective: Execute Phase 1B only from PLAN.md: Match Score v3 UI. Add Profile contribution preferences UI, compact card confidence chip, inspector stage/confidence/mini-score section, UI/copy tests, and required screenshots/layout checks using the Phase 1A data contract. Do not change scoring rules except to pass/read existing Phase 1A fields. Do not implement local feedback or GitHub enrichment. Run npm test, npm run build, git diff --check, npm run test:layout or relevant UI smoke, update STATE.md, and stop.
 ```
 
 ### Phase 2 Prompt
 
 ```text
 /goals
-Objective: Execute Phase 2 only from PLAN.md: Local Feedback Learning. Add idempotent compact local feedback storage from Save, Working, Passed, Merged, Hide issue, and Hide repo actions. Feed transparent capped feedback rows into Match Score. Include feedback in export/import, preserve token exclusion, add Profile reset/summary, verify storage and UI. Do not implement GitHub enrichment. Run full phase gates, update STATE.md, and stop.
+Objective: Execute Phase 2 only from PLAN.md: Local Feedback Learning. Add idempotent compact local feedback storage from Save, Working, Passed, Merged, Hide issue, and Hide repo actions. Use event markers as durable source of truth and recompute totals/buckets from markers; do not mutate aggregate counters as durable truth. Feed transparent capped feedback rows into Match Score. Include feedback in export/import, preserve token exclusion, add Profile reset/summary, verify storage and UI. Do not implement GitHub enrichment. Run full phase gates, update STATE.md, and stop.
 ```
 
 ### Phase 3 Prompt
 
 ```text
 /goals
-Objective: Execute Phase 3 only from PLAN.md: Lazy Inspector Enrichment, comments first. Add inspector-only read-only GitHub issue comment enrichment with compact cached summaries, loading/error UI, confidence updates, and cautious social-risk score rows. Do not fetch timeline events, repo setup files, PR samples, or label history. Run full phase gates, mocked UI checks, update STATE.md, and stop.
+Objective: Execute Phase 3 only from PLAN.md: Lazy Inspector Enrichment, comments first. Add inspector-only read-only GitHub issue comment enrichment with compact public-only cached summaries, loading/error UI, confidence updates, and cautious social-risk score rows. Do not cache private repos or token-used unknown-visibility results. Clear enrichment cache on token save/change/clear. Do not fetch timeline events, repo setup files, PR samples, or label history. Run full phase gates, mocked UI checks, update STATE.md, and stop.
 ```
 
 ### Phase 4 Prompt
 
 ```text
 /goals
-Objective: Execute Phase 4 only from PLAN.md: Advanced Enrichment. Add inspector-only cached read-only enrichment for issue timeline events, repo setup ease, recent PR sample, and same-label repo sample. Work sequentially and split internal sub-features if diff/API/UI risk grows. Keep cache compact and export excluding enrichment cache. Run full phase gates, screenshot checks, update STATE.md, and stop.
+Objective: Execute Phase 4 only from PLAN.md: Advanced Enrichment. Add inspector-only cached read-only enrichment for issue timeline events, repo setup ease, recent PR sample, and same-label repo sample. Work sequentially and split internal sub-features if diff/API/UI risk grows. Keep cache compact, public-only, cleared on token save/change/clear, and excluded from export. Run full phase gates, screenshot checks, update STATE.md, and stop.
 ```
 
 ---
 
 ## 17. Final Instruction For Implementing Agents
 
-Implementing agents must execute only the phase requested by `/goals` and must not continue to the next phase without explicit user instruction.
+Implementing agents must execute only the phase requested by `/goals` and must not continue to the next phase or checkpoint without explicit user instruction.
