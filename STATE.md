@@ -1,5 +1,77 @@
 # PR Dashboard State
 
+## 2026-05-24 UX Salvage From TEST-UX
+
+- Salvaged the narrow `TEST-UX` improvements onto `dev` without merging the branch wholesale. Added the Activity route/nav item, kept Profile focused on identity/local contribution preferences, moved Proof Log, Review reminders, and learned feedback into Activity, and left export/import/reset controls in Settings.
+- Added session-local Board view switching with auto Compact mode when active non-closed board work is three cards or fewer, plus a Full Kanban toggle that preserves the existing A1 board layout. Compact mode shows a dense active-card list with lane, exact `% Match`, confidence, next move, Pass, move-forward, and Inspect actions.
+- Reduced Find Contributions card noise while preserving exact score visibility: cards now keep `% Match` and Confidence visible, show one primary GitHub label plus `+N labels`, add a quiet one-line `Why:` reason, and move quick filters into the filter sidebar. The GitHub query preview is now behind a `View GitHub query` disclosure.
+- Preserved the current single-scroll inspector and Advanced Context scan-line loading. No inspector tabs, `Overview` / `Evidence` / `Action` tab flow, or hidden/multi-click inspection model was imported.
+- Verification on 2026-05-24: board mode tests were written first and failed for missing `src/boardMode.js`; routing/copy/CSS tests failed for missing Activity, compact board, Profile split, and compact styles before implementation. Final `npm test` passed 221/221, `npm run build` passed, `npm run test:layout` passed 9/9, and the in-app browser smoke at `http://127.0.0.1:5174` verified Profile cleanup, Activity page, Board Compact/Full Kanban toggle, Find Contributions quick filters/query disclosure/exact score card, and inspector opened from a result card with Action center plus Advanced context and no Overview/Evidence tabs.
+- Remaining risk: the in-app browser inspector smoke used one live public GitHub Lookup result from `TEAMMATES/teammates#13997`, so that exact issue's live state and GitHub rate limits can change. Rendered browser validation was Chromium-only.
+
+## 2026-05-23 Advanced Context Scan-Line Loading
+
+- Replaced the three inspector Advanced Context loading cards with the Option B scan-line treatment: `Fetching timeline`, `Scanning setup files`, and `Reading repo history` now render a 1px `#378ADD` scan line, staggered scan delays of `0s`, `0.4s`, and `0.8s`, three pulsing colored dots, and pulsing skeleton rows on the `#0d1117` / `#1a2332` loading surface.
+- Preserved the resolved Advanced Context content labels, summaries, and badges, then added staggered `fadeUp` reveal delays of `0s`, `0.1s`, and `0.2s`.
+- Changed advanced enrichment display timing so every newly opened inspector starts in loading state, including cache hits. The existing fetchers still provide cached summaries, but the advanced cards now hold the loading view for at least 300ms before resolving.
+- Added responsive fixed minimum heights for the advanced context cards so loading and resolved states do not shift in the desktop three-column inspector or the mobile one-column inspector.
+- Verification on 2026-05-23: regression tests were written first and failed against the old loading state; final `node --test test/css-contract.test.js` passed 5/5, `node --test test/ui-copy.test.js` passed 21/21, `npm test` passed 212/212, and `npm run build` passed. A deterministic Chromium smoke at `http://127.0.0.1:4174/#board` verified cached issue loading, cached issue reopen loading, fresh issue scan delays, resolved fade delays, exact loading/resolved heights at `1280x900` (`152px`) and `390x844` (`94px`), exact loading colors, and no live GitHub dependency via mocked API routes.
+- Remaining risk: rendered validation was Chromium-only with seeded local board/cache data and mocked GitHub API responses. Live GitHub latency/rate limits can still affect how long uncached cards remain loading before they resolve or fall back to the existing error state.
+
+## 2026-05-23 Token Input Password Manager Avoidance
+
+- Replaced the Settings GitHub token field with a normal `type="text"` input that is visually masked via `-webkit-text-security` while hidden. This avoids Chrome treating the token as a login password field, which caused both Save Password and Strong Password prompts.
+- Kept browser/password-manager suppression hints on the token input: `autocomplete="off"`, autocap/autocorrect/spellcheck off, and common password-manager ignore attributes. The visibility button now toggles a `data-token-visible` state instead of changing the input type.
+- Added UI copy/markup contract coverage so the token input stays out of password-field heuristics.
+- Verification on 2026-05-23: `node --test test/ui-copy.test.js` passed 21/21, `npm test` passed 211/211, `npm run build` passed, and `git diff --check` passed.
+- Remaining risk: Chrome and Chromium browsers support the masking CSS used here. Other browsers or third-party password managers can still apply their own heuristics, but the app no longer renders this token control as an actual password field.
+
+## 2026-05-23 Phase 4 Setup Enrichment DevTools Noise Fix
+
+- Updated inspector-only repo setup enrichment to fetch the repository root contents listing first, infer setup evidence from discovered entries, and fetch bodies only for discovered manifest files needed for test/build hints. Missing `package.json`, `pyproject.toml`, `pom.xml`, README, CONTRIBUTING, `.github`, `workflows`, or `docs/CONTRIBUTING*` files are now normal missing evidence instead of direct optional-file probes.
+- `.github/workflows` inspection is gated by root `.github` discovery and a `.github` directory listing that contains `workflows`. `docs/CONTRIBUTING*` detection is gated by root `docs` discovery and the `docs` directory listing. True root contents failures, auth/rate-limit failures, malformed issue references, and network failures still flow to the existing non-blocking inspector enrichment error path.
+- Verification on 2026-05-23: `node --test test/repo-setup.test.js` passed 5/5, `npm test` passed 210/210, `npm run build` passed, `npm run test:layout` passed 9/9, and `git diff --check` passed.
+- Remaining risk: root and discovered-directory contents requests still depend on live GitHub availability and rate limits. The DevTools-noise fix covers expected missing optional setup files and directory children, not true repository/API failures.
+
+## 2026-05-23 Match Score v3 Phase 4
+
+- Added inspector-only advanced enrichment for public issue timeline events, repo setup files, recent closed PR samples, and same-label issue samples. These read-only fetches run lazily from the inspector, sequence API use conservatively, stay non-blocking on errors, and never fetch for result or board cards before the inspector opens.
+- Extended `pr_dashboard_score_enrichment_cache_v1` with typed compact entries for comments, timeline, repo setup, and repo history while preserving old comment-only cache behavior. Cached data stores normalized booleans/counts/reasons only; raw comment bodies, config/script bodies, tokens, Authorization data, private repos, and token-used unknown-visibility repos remain excluded. Token save/change/clear and Clear All clear the cache, and export/import still excludes it.
+- Match Score now uses advanced enrichment for transparent timeline, setup, recent PR, and same-label rows plus confidence and mini-score updates for Social Risk, Setup Ease, Repo Health, and Opportunity Fit. Closed-issue zero scoring remains unchanged.
+- Verification on 2026-05-23: `npm test` passed 208/208, `npm run build` passed, and `npm run test:layout` passed 9/9. Mocked Chromium screenshots covered inspector final advanced state at 1920x1080, inspector mini-scores at 1920x1080, final enriched mobile inspector at 390x844, and error mobile inspector at 375x667. The checks confirmed no advanced fetch before inspector open, request counts of 1 comment, 1 timeline, 6 setup file checks, 1 PR sample, and 1 same-label search for the successful inspector path, no horizontal overflow, compact cache contents, and no unexpected console/page/request failures. Expected mocked GitHub 404/503 resource messages were allowed for missing setup files and the error-state screenshot.
+- Remaining risk: advanced enrichment is heuristic and uses small public GitHub samples. Timeline events, contents endpoints, same-label quality, and rate-limit behavior can vary on live repositories; rendered validation was Chromium-only with mocked GitHub responses and no real PAT.
+
+## 2026-05-23 Match Score v3 Phase 3
+
+- Added lazy inspector-only issue comment enrichment. Result and board cards stay preview-only; opening the inspector fetches public issue comments with a read-only GitHub API request, shows loading/error/loaded states, and feeds compact comment summary signals into Match Score.
+- Added `pr_dashboard_score_enrichment_cache_v1` for six-hour public comment summaries only. The cache excludes comment bodies, tokens, Authorization data, private repos, and token-used repos with unknown visibility. Clear Token and Clear All remove the enrichment cache, while export/import continues to exclude it.
+- Match Score now adds transparent comment rows for maintainer openness, possible ownership claims, and blocked-work hints. Comment inspection also updates confidence reasons and social-risk mini-score behavior without changing closed-issue zero scoring.
+- Verification on 2026-05-23: `npm test` passed 196/196, `npm run build` passed, and `npm run test:layout` passed 9/9. Mocked Chromium screenshots covered inspector comment loading and enriched states at 1920x1080, enriched inspector at 390x844, and error/low-confidence inspector at 375x667. The checks confirmed no result-card comment fetches before inspector open, one lazy comments request per inspector scenario, no horizontal overflow, compact cache contents, and export exclusion of the enrichment cache/comment body/token data.
+- Remaining risk: rendered validation used Chromium with mocked public GitHub comment responses and a fake PAT-shaped token. Live GitHub comment availability, rate limits, and author associations can vary.
+
+## 2026-05-23 Match Score v3 Phase 2
+
+- Added local Match Feedback storage under `pr_dashboard_match_feedback_v1`. Feedback records compact idempotent event markers for Save, Working, Merged, Passed, Hide issue, and Hide repo actions; totals and feature buckets are recomputed from those markers instead of being durable mutable counters.
+- Wired local feedback into store actions, Match Score rows, and export/import. Feedback rows are transparent and capped at `+8 / -10`; closed issues still score zero even when positive feedback exists. Clear Token preserves feedback and contribution preferences; Clear All removes feedback.
+- Added a compact Profile `Learned feedback` summary with local action totals and a reset action that removes only match feedback. Export/import copy now names learned feedback while continuing to exclude GitHub tokens, repo metadata cache, and enrichment cache.
+- Verification on 2026-05-23: `npm test` passed 187/187, `npm run build` passed, `npm run test:layout` passed 9/9, and `git diff --check` passed. Mocked Chromium screenshots covered Profile feedback summary and inspector feedback score rows at 1920x1080, Profile at 390x844 and 375x667, and scrolled mobile Profile feedback cards at 390x844 and 375x667; all had no console warnings/errors and no horizontal overflow. Reset learned feedback was smoke-tested to clear only the feedback key while preserving contribution preferences.
+- Remaining risk: feedback learning is deterministic and local-only. The rendered validation used Chromium with seeded local storage rather than live GitHub data or a real PAT.
+
+## 2026-05-23 Match Score v3 Phase 1B
+
+- Added visible Phase 1A score diagnostics without changing scoring rules: compact Confidence chips on Dashboard/Find Contributions cards, inspector `Preview`/`Enriched` stage and confidence details, mini-score cards, and preserved existing score rows/pass reason chips.
+- Added a compact Profile `Contribution preferences` card with language, preferred work, avoided work, experience, and time-budget controls. Save writes normalized local preferences; Reset removes only contribution preferences. Settings stayed focused on token, hidden items, export/import, and danger actions.
+- Verification on 2026-05-23: `npm test` passed 177/177, `npm run build` passed, `git diff --check` passed, and `npm run test:layout` passed 9/9. Browser smoke at `http://127.0.0.1:4173/#profile` verified Profile preferences at 1920x1080 and 390x844 with no console warnings/errors or horizontal overflow, including Save/Reset interaction. Mocked Playwright screenshots covered Find Contributions, inspector, and Profile at 1920x1080 and 390x844, plus inspector/Profile at 375x667, all without horizontal overflow.
+- Remaining risk: rendered validation used Chromium only. The deterministic result-card and inspector screenshots used mocked public GitHub responses rather than live GitHub search.
+
+## 2026-05-23 Match Score v3 Phase 1A
+
+- Added structured Match Score v3 data while preserving the existing `score`, `rating`, `rows`, `passReasons`, `flags`, and `isContributionCandidate` contract. New score output includes `stage`, confidence with fixed caps, seven mini-scores, and capped personal-fit adjustments.
+- Added local contribution preference storage under `pr_dashboard_contribution_preferences_v1`, with normalized non-secret fields only. Export/import now includes preferences, merges by newer `saved_at`, and ignores hand-edited token/cache/private fields.
+- Wired preferences into app state and invisible score calculation. Clear Token preserves preferences; Clear All removes preferences along with the existing local app data. Phase 1A made no intentional visible UI or style changes.
+- Verification on 2026-05-23: targeted Phase 1A tests passed, then full gates passed with `npm test` 175/175, `npm run build`, and `git diff --check`.
+- Remaining risk: mini-scores and confidence are deterministic heuristics based only on current local/search/repo data until later UI, feedback, and enrichment phases add more context.
+
 ## 2026-05-23 README Gallery And Docs Sweep
 
 - Refreshed the README hero and added a compact Product Tour gallery under `qa_screenshots/readme/`, using deterministic TEAMMATES public GitHub snapshots for `#13997`, `#13998`, `#14005`, `#13698`, `#13944`, and `#14003`.
@@ -294,3 +366,50 @@
 - Added Playwright route smoke coverage to `npm run test:layout` so blank valid routes and dashboard runtime errors fail the layout gate.
 - Verification on 2026-05-22: `npm test` passed 148/148, `npm run build` passed, `npm run test:layout` passed 8/8, and a targeted built-preview route smoke passed for all requested routes.
 - Remaining risk: this hotfix only covers local route rendering and did not exercise live GitHub API responses or real PAT behavior.
+
+## 2026-05-24 Same-Label History Review Fix
+
+- Fixed repo-history enrichment so the current issue is excluded from the same-label peer sample before `activeSameLabelIssues` and `staleSameLabelSample` are computed.
+- Same-label search now fetches one extra issue (`per_page=6`) and keeps at most five peer issues after filtering, preserving the compact sample size while avoiding self-inflated scoring.
+- Added regression coverage where the current issue is fresh but the only peer issue is stale; the summary now reports the stale peer sample instead of active same-label history.
+- Verification on 2026-05-24: `npm test -- test/repo-history.test.js` passed 222/222 after the fix.
+- Remaining risk: GitHub Search ordering and live metadata can still vary, but the current issue no longer contributes to same-label activity or stale-sample signals.
+
+## 2026-05-24 Native Token Masking Review Fix
+
+- Changed the GitHub token settings input to use native `type="password"` masking by default while preserving the existing eye-toggle UX.
+- The visibility toggle now switches the input type between `password` and `text`, and the WebKit-only `-webkit-text-security` masking dependency was removed.
+- Password-manager suppression attributes remain on the token input; token storage behavior was not changed.
+- Verification on 2026-05-24: `node --test test/ui-copy.test.js` passed 25/25 after first failing against the old `type="text"` behavior.
+- Remaining risk: native password inputs can still trigger some password-manager heuristics, but hidden-by-default masking no longer depends on non-standard CSS.
+
+## 2026-05-24 Full Enrichment Pagination Review Fix
+
+- Added shared read-only GitHub pagination for JSON array endpoints, following `rel="next"` links until no next page remains and validating every page URL through the GitHub API guard.
+- Issue comments and issue timeline enrichment now inspect all returned pages instead of only the first 100 comments/events, preserving existing summary, cache, scoring, and inspector data shapes.
+- Added regression coverage for page-two comment ownership/blocking signals, page-two timeline PR/assignment signals, final-page rate-limit reporting, and blocked non-GitHub pagination links.
+- Verification on 2026-05-24: `node --test test/github-read-only.test.js test/issue-comments.test.js test/issue-timeline.test.js` passed 15/15 after first failing against the old one-page behavior.
+- Remaining risk: full pagination can consume more GitHub core requests for very active issues, especially without a token.
+
+## 2026-05-24 Duplicate Timeline + Repo Rate-Limit Review Fix
+
+- Timeline summaries now treat duplicate/blocked event names as caution signals, covering GitHub duplicate timeline events even when no body text mentions duplication.
+- Repo-history enrichment now returns both core and search rate-limit buckets while preserving the legacy single `rateLimit` field for compatibility.
+- Inspector rate-limit updates now accept multi-bucket enrichment snapshots through the existing `store.setRateLimits` path.
+- Verification on 2026-05-24: `node --test test/issue-timeline.test.js test/repo-history.test.js test/ui-copy.test.js` passed 37/37 after first failing against the old event-name and single-bucket behavior.
+- Remaining risk: live GitHub rate-limit headers can vary, and duplicate/blocked timeline detection remains intentionally conservative to event names and existing text fields.
+
+## 2026-05-24 Optional Same-Label Repo History Review Fix
+
+- Repo-history enrichment now treats same-label sampling as optional for unlabeled issues, preserving recent PR history evidence instead of failing the full history step.
+- Unlabeled issues skip the impossible search request and return a core-only rate-limit snapshot with `lastResource: 'core'`; labeled issues keep the existing core plus search snapshot.
+- Verification on 2026-05-24: `node --test test/repo-history.test.js` passed 6/6 after first failing against the old no-label throw.
+- Remaining risk: unlabeled issues have no same-label freshness signal, so repo history for them is intentionally PR-sample only.
+
+## 2026-05-24 Hidden Lookup Suppression Fix
+
+- Removed the Lookup exception that let hidden issues and hidden repositories reappear as result cards with `Hidden locally` recovery UI.
+- Find Contributions and Lookup now both filter hidden results before rendering, scoring, sorting, card actions, and result-count display. Hidden item recovery remains in Settings and inspector contexts, not search results.
+- Browser smoke on `http://127.0.0.1:5173/#find-issues`: looked up `facebook/react#1`, hid it, repeated the exact Lookup, and verified `Showing 0 issues` with no result card, `Hidden locally`, `Unhide`, or hidden-count hint.
+- Verification on 2026-05-24: `node --test test/ui-copy.test.js test/hidden-items.test.js`, `npm test`, `npm run build`, and `git diff --check` passed.
+- Remaining risk: GitHub Search can still return low-quality automation-created issues, but the matcher flags them as likely pass/low match; this change only enforces hidden suppression.

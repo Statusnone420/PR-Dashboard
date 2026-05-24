@@ -6,18 +6,25 @@ import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, sa
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
+import { fetchIssueCommentsEnrichment, getCachedIssueCommentEnrichment, getIssueCommentsCacheKey } from './api/issueComments.js';
+import { fetchIssueTimelineEnrichment } from './api/issueTimeline.js';
+import { fetchRepoSetupEnrichment } from './api/repoSetup.js';
+import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { summarizeDashboardMetrics } from './dashboardMetrics.js';
+import { summarizeAppMetrics } from './appMetrics.js';
 import { buildContributionBrief } from './contributionBrief.js';
 import { filterHiddenIssues, isIssueHidden, isRepoHidden, listHiddenItems } from './hiddenItems.js';
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
 import { getCanonicalIssueKey, getCanonicalRepoKey } from './issueKeys.js';
 import { exportLocalData, importLocalData } from './localData.js';
+import { summarizeMatchFeedback } from './matchFeedback.js';
 import { buildLocalAlerts } from './localAlerts.js';
 import { isGitHubActivityVisible } from './githubActivity.js';
 import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
+import { getBoardMode } from './boardMode.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -34,6 +41,13 @@ let hiddenSettingsFilter = '';
 let localAlertsOpen = false;
 let inspectorRefreshStatus = '';
 let inspectorRefreshStatusCardId = null;
+const inspectorCommentEnrichmentStates = new Map();
+const inspectorTimelineEnrichmentStates = new Map();
+const inspectorRepoSetupEnrichmentStates = new Map();
+const inspectorRepoHistoryEnrichmentStates = new Map();
+const ADVANCED_CONTEXT_MIN_LOADING_MS = 300;
+let activeAdvancedContextIssueKey = '';
+let boardViewMode = 'auto';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -61,8 +75,12 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Calculates issue match score from 0-100.
  */
-function calculateFitScore(issue) {
-  const result = calculateMatchScore(issue);
+function calculateFitScore(issue, options = {}) {
+  const result = calculateMatchScore(issue, {
+    profile: store.contributionPreferences,
+    feedback: store.matchFeedback,
+    enrichment: options.enrichment
+  });
   return {
     ...result,
     logs: result.rows.map(row => `${row.points >= 0 ? '+' : ''}${row.points} ${row.label}`),
@@ -89,6 +107,569 @@ function getInspectorBestFitLabel(bestFor) {
   return bestFor;
 }
 
+function getConfidenceTone(level) {
+  if (level === 'High') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
+  if (level === 'Medium') return 'border-primary/20 bg-primary/10 text-primary';
+  return 'border-error/25 bg-error-container/10 text-error';
+}
+
+function getIssueLabelNames(labels = []) {
+  return (labels || [])
+    .map(label => String(typeof label === 'object' ? label.name : label || '').trim())
+    .filter(Boolean);
+}
+
+function getIssueLabelCount(labels = []) {
+  return getIssueLabelNames(labels).length;
+}
+
+function getPrimaryIssueLabel(labels = []) {
+  const names = getIssueLabelNames(labels);
+  const preferred = names.find(name => /good first issue|help wanted|documentation|docs|bug/i.test(name));
+  return preferred || names[0] || '';
+}
+
+function getIssueLabelTone(name = '') {
+  if (/help wanted|good first/i.test(name)) return 'border-primary/30 bg-primary/10 text-primary';
+  if (/enhancement|feature/i.test(name)) return 'border-tertiary/30 bg-tertiary/10 text-tertiary';
+  return 'border-outline-variant bg-surface-dim text-on-surface-variant';
+}
+
+function getStageLabel(stage) {
+  return stage === 'enriched' ? 'Enriched' : 'Preview';
+}
+
+function formatPreferenceList(list) {
+  return Array.isArray(list) ? list.join(', ') : '';
+}
+
+function parsePreferenceList(value) {
+  const seen = new Set();
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function renderSelectOption(value, label, selectedValue) {
+  return `<option value="${escapeHTML(value)}" ${selectedValue === value ? 'selected' : ''}>${escapeHTML(label)}</option>`;
+}
+
+function renderPreferenceField(id, label, value, placeholder) {
+  return `
+    <label class="block">
+      <span class="mb-1 block text-xs font-medium text-on-surface-variant">${escapeHTML(label)}</span>
+      <input
+        class="w-full rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+        id="${escapeHTML(id)}"
+        type="text"
+        value="${escapeHTML(value)}"
+        placeholder="${escapeHTML(placeholder)}"
+      />
+    </label>
+  `;
+}
+
+function renderContributionPreferencesCard(preferences) {
+  const saved = preferences || {};
+  const experience = saved.experience || '';
+  const timeBudget = saved.timeBudget || '';
+  const savedAt = saved.saved_at ? `Saved ${escapeHTML(formatDate(saved.saved_at))}` : 'No preferences saved yet';
+
+  return `
+    <section class="interactive-card rounded-xl p-6">
+      <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 class="text-lg font-headline font-bold text-on-surface">Contribution preferences</h2>
+          <p class="mt-1 text-xs text-on-surface-variant">Saved locally and used only to explain personal fit in deterministic scores.</p>
+        </div>
+        <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${savedAt}</span>
+      </div>
+      <form class="space-y-4" id="contribution-preferences-form">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          ${renderPreferenceField('profile-preference-languages', 'Languages', formatPreferenceList(saved.languages), 'TypeScript, Rust')}
+          ${renderPreferenceField('profile-preference-preferred-work', 'Preferred work', formatPreferenceList(saved.preferredWork), 'docs, tests, config')}
+          ${renderPreferenceField('profile-preference-avoid-work', 'Avoid work', formatPreferenceList(saved.avoidWork), 'refactor, migration')}
+        </div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium text-on-surface-variant">Experience</span>
+            <select class="w-full rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary" id="profile-preference-experience">
+              ${renderSelectOption('', 'Not set', experience)}
+              ${renderSelectOption('first-pr', 'First PR', experience)}
+              ${renderSelectOption('comfortable', 'Comfortable', experience)}
+              ${renderSelectOption('advanced', 'Advanced', experience)}
+            </select>
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium text-on-surface-variant">Time budget</span>
+            <select class="w-full rounded border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none focus:border-primary" id="profile-preference-time-budget">
+              ${renderSelectOption('', 'Not set', timeBudget)}
+              ${renderSelectOption('under-1-hour', 'Under 1 hour', timeBudget)}
+              ${renderSelectOption('half-day', 'Half day', timeBudget)}
+              ${renderSelectOption('weekend', 'Weekend', timeBudget)}
+            </select>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="interactive-button interactive-button-primary px-4 py-2" id="profile-preferences-save-btn" type="submit">Save preferences</button>
+          <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-preferences-reset-btn" type="button">Reset preferences</button>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+function renderFeedbackMetric(label, value) {
+  return `
+    <div class="rounded border border-outline-variant bg-surface-container-lowest p-3">
+      <div class="text-[11px] text-on-surface-variant">${escapeHTML(label)}</div>
+      <div class="mt-1 text-lg font-headline font-bold text-on-surface">${safeInteger(value)}</div>
+    </div>
+  `;
+}
+
+function renderMatchFeedbackCard(feedback) {
+  const summary = summarizeMatchFeedback(feedback);
+  const totals = summary.totals || {};
+  const updated = summary.eventCount > 0
+    ? `Updated ${escapeHTML(formatDate(summary.updated_at))}`
+    : 'No learned feedback yet';
+
+  return `
+    <section class="interactive-card rounded-xl p-6">
+      <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 class="text-lg font-headline font-bold text-on-surface">Learned feedback</h2>
+          <p class="mt-1 text-xs text-on-surface-variant">Derived from local Board and Hidden Results actions, then used as small explainable score nudges.</p>
+        </div>
+        <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${updated}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-6">
+        ${renderFeedbackMetric('Saved to board', totals.saved)}
+        ${renderFeedbackMetric('Moved to Working', totals.working)}
+        ${renderFeedbackMetric('Moved to Merged', totals.merged)}
+        ${renderFeedbackMetric('Moved to Passed', totals.passed)}
+        ${renderFeedbackMetric('Hidden issue', totals.hiddenIssue)}
+        ${renderFeedbackMetric('Hidden repo', totals.hiddenRepo)}
+      </div>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs text-on-surface-variant">${safeInteger(summary.eventCount)} local event markers. Aggregates are recomputed from markers.</p>
+        <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-match-feedback-reset-btn" type="button">Reset learned feedback</button>
+      </div>
+    </section>
+  `;
+}
+
+function getMiniScoreTitle(key) {
+  return {
+    opportunityFit: 'Opportunity Fit',
+    issueClarity: 'Issue Clarity',
+    scope: 'Scope',
+    repoHealth: 'Repo Health',
+    socialRisk: 'Social Risk',
+    setupEase: 'Setup Ease',
+    personalFit: 'Personal Fit'
+  }[key] || key;
+}
+
+function renderMiniScoreList(miniScores = {}) {
+  return ['opportunityFit', 'issueClarity', 'scope', 'repoHealth', 'socialRisk', 'setupEase', 'personalFit'].map(key => {
+    const item = miniScores[key] || { label: 'Unknown', level: 'Unknown', reasons: [] };
+    const tone = item.level === 'High'
+      ? 'border-tertiary/25 bg-tertiary/10 text-tertiary'
+      : item.level === 'Medium'
+        ? 'border-primary/20 bg-primary/10 text-primary'
+        : item.level === 'Low'
+          ? 'border-error/25 bg-error-container/10 text-error'
+          : 'border-outline-variant bg-surface-container-high text-on-surface-variant';
+    const reason = Array.isArray(item.reasons) && item.reasons.length ? item.reasons[0] : '';
+    return `
+      <div class="rounded border border-outline-variant bg-surface-container-lowest p-3">
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="text-xs font-medium text-on-surface">${escapeHTML(getMiniScoreTitle(key))}</span>
+          <span class="rounded border ${tone} px-2 py-0.5 text-[11px]">${escapeHTML(item.label || 'Unknown')}</span>
+        </div>
+        ${reason ? `<p class="text-[11px] text-on-surface-variant">${escapeHTML(reason)}</p>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function getInspectorCommentEnrichmentState(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) {
+    return {
+      status: 'error',
+      error: 'Valid GitHub issue reference required for comment enrichment.'
+    };
+  }
+
+  const existing = inspectorCommentEnrichmentStates.get(key);
+  if (existing) return existing;
+
+  const cached = getCachedIssueCommentEnrichment(issue, localStorage);
+  if (cached?.summary) {
+    const loaded = { status: 'loaded', summary: cached.summary, fromCache: true };
+    inspectorCommentEnrichmentStates.set(key, loaded);
+    return loaded;
+  }
+
+  const loading = { status: 'loading', started: false };
+  inspectorCommentEnrichmentStates.set(key, loading);
+  return loading;
+}
+
+function getInspectorAdvancedEnrichmentState(issue, stateMap, invalidMessage) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) {
+    return {
+      status: 'error',
+      error: invalidMessage
+    };
+  }
+
+  const existing = stateMap.get(key);
+  if (existing) return existing;
+
+  const loading = { status: 'loading', started: false };
+  stateMap.set(key, loading);
+  return loading;
+}
+
+function getInspectorTimelineEnrichmentState(issue) {
+  return getInspectorAdvancedEnrichmentState(
+    issue,
+    inspectorTimelineEnrichmentStates,
+    'Valid GitHub issue reference required for timeline enrichment.'
+  );
+}
+
+function getInspectorRepoSetupEnrichmentState(issue) {
+  return getInspectorAdvancedEnrichmentState(
+    issue,
+    inspectorRepoSetupEnrichmentStates,
+    'Valid GitHub issue reference required for repo setup enrichment.'
+  );
+}
+
+function getInspectorRepoHistoryEnrichmentState(issue) {
+  return getInspectorAdvancedEnrichmentState(
+    issue,
+    inspectorRepoHistoryEnrichmentStates,
+    'Valid GitHub issue reference and label required for repo history enrichment.'
+  );
+}
+
+function resetAdvancedContextLoadingForIssue(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) {
+    activeAdvancedContextIssueKey = '';
+    return;
+  }
+  if (activeAdvancedContextIssueKey === key) return;
+
+  activeAdvancedContextIssueKey = key;
+  [
+    inspectorTimelineEnrichmentStates,
+    inspectorRepoSetupEnrichmentStates,
+    inspectorRepoHistoryEnrichmentStates
+  ].forEach(stateMap => {
+    stateMap.set(key, { status: 'loading', started: false });
+  });
+}
+
+function clearInspectorEnrichmentStates() {
+  inspectorCommentEnrichmentStates.clear();
+  inspectorTimelineEnrichmentStates.clear();
+  inspectorRepoSetupEnrichmentStates.clear();
+  inspectorRepoHistoryEnrichmentStates.clear();
+  activeAdvancedContextIssueKey = '';
+}
+
+function getInspectorEnrichmentForScore(states = {}) {
+  const enrichment = {};
+  if (states.comments?.status === 'loaded' && states.comments.summary) {
+    enrichment.comments = states.comments.summary;
+  }
+  if (states.timeline?.status === 'loaded' && states.timeline.summary) {
+    enrichment.timeline = states.timeline.summary;
+  }
+  if (states.setup?.status === 'loaded' && states.setup.summary) {
+    enrichment.setup = states.setup.summary;
+  }
+  if (states.history?.status === 'loaded' && states.history.summary) {
+    enrichment.history = states.history.summary;
+  }
+
+  return Object.keys(enrichment).length ? enrichment : undefined;
+}
+
+function renderCommentEnrichmentCard(state) {
+  if (state?.status === 'loaded') {
+    const reasons = Array.isArray(state.summary?.reasons) && state.summary.reasons.length
+      ? state.summary.reasons
+      : ['No comments found'];
+    return `
+      <div class="rounded-lg border border-tertiary/25 bg-tertiary/10 p-4">
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold text-tertiary">Comments inspected</h3>
+          <span class="rounded border border-tertiary/25 px-2 py-0.5 text-[11px] text-tertiary">${safeInteger(state.summary?.totalComments)} comments</span>
+        </div>
+        <ul class="space-y-1">
+          ${reasons.map(reason => `<li class="text-xs text-on-surface-variant">${escapeHTML(reason)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  if (state?.status === 'error') {
+    return `
+      <div class="rounded-lg border border-error/25 bg-error-container/10 p-4">
+        <h3 class="text-sm font-semibold text-error mb-1">Comment enrichment unavailable</h3>
+        <p class="text-sm text-on-surface-variant">Score uses preview context. Save, Hide, and Open on GitHub still work.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="rounded-lg border border-primary/20 bg-primary/10 p-4">
+      <h3 class="text-sm font-semibold text-primary mb-1">Inspecting comments</h3>
+      <p class="text-sm text-on-surface-variant">Fetching public issue comments for this inspector only.</p>
+    </div>
+  `;
+}
+
+function getAdvancedContextMeta(kind, summary = {}) {
+  if (kind === 'timeline') {
+    return `${safeInteger(summary.totalEvents)} events`;
+  }
+  if (kind === 'setup') {
+    return `${safeInteger(summary.filesChecked)} files`;
+  }
+  if (kind === 'history') {
+    return `${safeInteger(summary.sampledPullRequests)} PRs / ${safeInteger(summary.sampledSameLabelIssues)} issues`;
+  }
+  return '';
+}
+
+function renderAdvancedContextRow({ kind, state, loadedLabel, loadingLabel, unavailableLabel, scanDelay, fadeDelay }) {
+  if (state?.status === 'loaded') {
+    const reasons = Array.isArray(state.summary?.reasons) && state.summary.reasons.length
+      ? state.summary.reasons.slice(0, 2)
+      : ['No strong signals found'];
+    const meta = getAdvancedContextMeta(kind, state.summary);
+    return `
+      <div class="advanced-context-card advanced-context-card-loaded rounded border border-outline-variant bg-surface-container-lowest p-3" style="--advanced-context-fade-delay: ${escapeHTML(fadeDelay)};">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-on-surface">${escapeHTML(loadedLabel)}</span>
+          ${meta ? `<span class="shrink-0 rounded border border-tertiary/25 px-2 py-0.5 text-[11px] text-tertiary">${escapeHTML(meta)}</span>` : ''}
+        </div>
+        <ul class="space-y-1">
+          ${reasons.map(reason => `<li class="text-[11px] text-on-surface-variant">${escapeHTML(reason)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  if (state?.status === 'error') {
+    return `
+      <div class="advanced-context-card rounded border border-error/25 bg-error-container/10 p-3">
+        <div class="mb-1 flex items-center gap-2">
+          <span class="material-symbols-outlined text-error text-[16px]">error</span>
+          <span class="text-xs font-semibold text-error">${escapeHTML(unavailableLabel)}</span>
+        </div>
+        <p class="text-[11px] text-on-surface-variant">Score keeps the available context.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="advanced-context-card advanced-context-card-loading rounded border p-3" style="--advanced-context-scan-delay: ${escapeHTML(scanDelay)};" aria-busy="true">
+      <div class="advanced-context-scan-line" aria-hidden="true"></div>
+      <div class="advanced-context-loading-content">
+        <div class="advanced-context-dots" aria-hidden="true">
+          <span class="advanced-context-dot"></span>
+          <span class="advanced-context-dot"></span>
+          <span class="advanced-context-dot"></span>
+        </div>
+        <div class="advanced-context-loading-label">${escapeHTML(loadingLabel)}</div>
+        <div class="advanced-context-skeleton-list" aria-hidden="true">
+          <div class="advanced-context-skeleton-line advanced-context-skeleton-line-wide"></div>
+          <div class="advanced-context-skeleton-line advanced-context-skeleton-line-mid"></div>
+          <div class="advanced-context-skeleton-line advanced-context-skeleton-line-short"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdvancedEnrichmentCard(states = {}) {
+  return `
+    <div class="rounded-lg border border-outline-variant bg-surface-container p-4">
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-on-background">Advanced context</h3>
+        <span class="rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant">Inspector only</span>
+      </div>
+      <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        ${renderAdvancedContextRow({
+          kind: 'timeline',
+          state: states.timeline,
+          loadedLabel: 'Timeline inspected',
+          loadingLabel: 'Fetching timeline',
+          unavailableLabel: 'Timeline unavailable',
+          scanDelay: '0s',
+          fadeDelay: '0s'
+        })}
+        ${renderAdvancedContextRow({
+          kind: 'setup',
+          state: states.setup,
+          loadedLabel: 'Setup files inspected',
+          loadingLabel: 'Scanning setup files',
+          unavailableLabel: 'Setup files unavailable',
+          scanDelay: '0.4s',
+          fadeDelay: '0.1s'
+        })}
+        ${renderAdvancedContextRow({
+          kind: 'history',
+          state: states.history,
+          loadedLabel: 'Repo history inspected',
+          loadingLabel: 'Reading repo history',
+          unavailableLabel: 'Repo history unavailable',
+          scanDelay: '0.8s',
+          fadeDelay: '0.2s'
+        })}
+      </div>
+    </div>
+  `;
+}
+
+function updateInspectorRateLimit(rateLimit) {
+  if (!rateLimit) return;
+  if (rateLimit.core || rateLimit.search) {
+    store.setRateLimits(rateLimit, { notify: false });
+  } else {
+    store.setRateLimit(rateLimit, rateLimit.resource || 'core', { notify: false });
+  }
+  renderApiLimitsTracker(store.rateLimits);
+}
+
+function rerenderInspectorForKey(key) {
+  if (getIssueCommentsCacheKey(store.inspectedIssue) === key) {
+    openInspector();
+  }
+}
+
+function waitForAdvancedContextMinimum(startedAt) {
+  const remaining = ADVANCED_CONTEXT_MIN_LOADING_MS - (Date.now() - startedAt);
+  if (remaining <= 0) return Promise.resolve();
+  return new Promise(resolve => {
+    setTimeout(resolve, remaining);
+  });
+}
+
+async function ensureInspectorCommentEnrichment(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) return;
+  const state = getInspectorCommentEnrichmentState(issue);
+  if (state.status !== 'loading' || state.started) return;
+  state.started = true;
+
+  try {
+    const result = await fetchIssueCommentsEnrichment(issue, {
+      token: store.githubToken,
+      storage: localStorage
+    });
+    updateInspectorRateLimit(result.rateLimit);
+    inspectorCommentEnrichmentStates.set(key, {
+      status: 'loaded',
+      summary: result.summary,
+      fromCache: result.fromCache
+    });
+  } catch {
+    inspectorCommentEnrichmentStates.set(key, {
+      status: 'error',
+      error: 'Comment enrichment unavailable.'
+    });
+  }
+
+  rerenderInspectorForKey(key);
+}
+
+async function ensureInspectorAdvancedEnrichment(issue) {
+  const key = getIssueCommentsCacheKey(issue);
+  if (!key) return;
+
+  const steps = [
+    {
+      stateMap: inspectorTimelineEnrichmentStates,
+      getState: getInspectorTimelineEnrichmentState,
+      fetcher: fetchIssueTimelineEnrichment,
+      error: 'Timeline unavailable.'
+    },
+    {
+      stateMap: inspectorRepoSetupEnrichmentStates,
+      getState: getInspectorRepoSetupEnrichmentState,
+      fetcher: fetchRepoSetupEnrichment,
+      error: 'Setup files unavailable.'
+    },
+    {
+      stateMap: inspectorRepoHistoryEnrichmentStates,
+      getState: getInspectorRepoHistoryEnrichmentState,
+      fetcher: fetchRepoHistoryEnrichment,
+      error: 'Repo history unavailable.'
+    }
+  ];
+
+  const pendingSteps = [];
+  for (const step of steps) {
+    const state = step.getState(issue);
+    if (state.status !== 'loading' || state.started) continue;
+    state.started = true;
+    pendingSteps.push(step);
+  }
+
+  if (!pendingSteps.length) return;
+
+  const startedAt = Date.now();
+  const results = await Promise.all(pendingSteps.map(async step => {
+    try {
+      const result = await step.fetcher(issue, {
+        token: store.githubToken,
+        storage: localStorage
+      });
+      updateInspectorRateLimit(result.rateLimits || result.rateLimit);
+      return {
+        step,
+        nextState: {
+          status: 'loaded',
+          summary: result.summary,
+          fromCache: result.fromCache
+        }
+      };
+    } catch {
+      return {
+        step,
+        nextState: {
+          status: 'error',
+          error: step.error
+        }
+      };
+    }
+  }));
+
+  await waitForAdvancedContextMinimum(startedAt);
+  results.forEach(({ step, nextState }) => {
+    step.stateMap.set(key, nextState);
+  });
+  rerenderInspectorForKey(key);
+}
+
 function isIssueSavedToBoard(issue) {
   return Boolean(findSavedBoardCard(issue));
 }
@@ -103,7 +684,7 @@ function findSavedBoardCard(issue) {
 
 function getSearchItemsForActions() {
   const items = store.searchResults || [];
-  return store.lastSearchMode === 'lookup' ? items : filterHiddenIssues(items);
+  return filterHiddenIssues(items);
 }
 
 function updateInspectorTaskVisualState(checkbox) {
@@ -132,6 +713,7 @@ function setupNavigation() {
     { id: 'dashboard', navId: 'tab-dashboard', mobileId: 'mobile-tab-dashboard' },
     { id: 'find-issues', navId: 'tab-find-issues', mobileId: 'mobile-tab-find-issues' },
     { id: 'board', navId: 'tab-board', mobileId: 'mobile-tab-board' },
+    { id: 'activity', navId: 'tab-activity', mobileId: 'mobile-tab-activity' },
     { id: 'settings', navId: 'btn-settings', mobileId: 'mobile-tab-settings' },
     { id: 'help', navId: 'tab-help', mobileId: 'mobile-tab-help' },
     { id: 'feedback', navId: 'tab-feedback', mobileId: 'mobile-tab-feedback' }
@@ -349,6 +931,7 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'tab-dashboard',
     'find-issues': 'tab-find-issues',
     'board': 'tab-board',
+    'activity': 'tab-activity',
     'settings': 'btn-settings',
     'help': 'tab-help',
     'feedback': 'tab-feedback'
@@ -375,6 +958,7 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'mobile-tab-dashboard',
     'find-issues': 'mobile-tab-find-issues',
     'board': 'mobile-tab-board',
+    'activity': 'mobile-tab-activity',
     'settings': 'mobile-tab-settings',
     'help': 'mobile-tab-help',
     'feedback': 'mobile-tab-feedback'
@@ -597,6 +1181,9 @@ function renderActiveScreen() {
     case 'board':
       renderBoard(container);
       break;
+    case 'activity':
+      renderActivity(container);
+      break;
     case 'settings':
       renderSettings(container);
       break;
@@ -794,6 +1381,7 @@ function renderDashboard(container) {
                 ${score}% Match
               </div>
               <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+              <span class="px-2 py-0.5 rounded text-xs border ${getConfidenceTone(fitObj.confidence.level)} whitespace-nowrap">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
             </div>
           </div>
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
@@ -1148,12 +1736,7 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
-  const applyHiddenFilter = store.lastSearchMode !== 'lookup';
-  const visibleResults = Array.isArray(results) && applyHiddenFilter ? filterHiddenIssues(results) : results;
-  const hiddenResultsCount = Array.isArray(results) && Array.isArray(visibleResults) && applyHiddenFilter
-    ? results.length - visibleResults.length
-    : 0;
-  const hiddenCountText = hiddenResultsCount > 0 ? ` (${hiddenResultsCount} hidden)` : '';
+  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.draftFilters;
@@ -1236,16 +1819,16 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${visibleResults ? renderIssueCardsList(visibleResults, { applyHiddenFilter }) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
       </div>
     `;
-    countText = visibleResults ? `Showing ${visibleResults.length} issues${hiddenCountText}` : 'Request failed';
+    countText = visibleResults ? `Showing ${visibleResults.length} issues` : 'Request failed';
   } else if (visibleResults !== null) {
-    countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}${hiddenCountText}`;
+    countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}`;
     if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(visibleResults, { applyHiddenFilter });
+      resultsHTML = renderIssueCardsList(visibleResults);
     }
   } else {
     // Initial screen state - explain Token details
@@ -1305,26 +1888,10 @@ function renderFindIssues(container) {
               Search
             </button>
           </div>
-          <div class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
-            <div class="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1">GitHub query preview</div>
-            <code class="block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
-          </div>
-          
-          <!-- Presets -->
-          <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
-              <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
-              <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
-              <span class="material-symbols-outlined text-[16px]">description</span> Documentation Only
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
-              <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
-            </button>
-          </div>
+          <details class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
+            <summary class="cursor-pointer text-xs font-medium text-on-surface-variant">View GitHub query</summary>
+            <code class="mt-2 block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
+          </details>
         </div>
       </section>
       
@@ -1347,6 +1914,24 @@ function renderFindIssues(container) {
                 <span class="text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">Use filters in Lookup</span>
               </label>
             ` : ''}
+          </div>
+
+          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Quick filters</h3>
+            <div class="flex flex-wrap gap-2">
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
+                <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
+                <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
+                <span class="material-symbols-outlined text-[16px]">description</span> Docs
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
+                <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
+              </button>
+            </div>
           </div>
           
           <!-- Language Filter -->
@@ -1578,10 +2163,9 @@ function renderFindIssues(container) {
 /**
  * Render lists of cards
  */
-function renderIssueCardsList(issuesList, options = {}) {
+function renderIssueCardsList(issuesList) {
   // Sort list if local sorting is needed
-  const applyHiddenFilter = options.applyHiddenFilter !== false;
-  let sorted = applyHiddenFilter ? filterHiddenIssues(issuesList) : [...(issuesList || [])];
+  let sorted = filterHiddenIssues(issuesList);
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
@@ -1618,33 +2202,27 @@ function renderIssueCardsList(issuesList, options = {}) {
     const issueBody = escapeHTML(issue.body || 'No summary description provided.');
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
+    const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
-    const hiddenLocally = !applyHiddenFilter && (isIssueHidden(issue) || isRepoHidden(issue));
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
         <span class="material-symbols-outlined text-[15px]">warning</span>
         Not a contribution candidate
       </div>
     ` : '';
-    const hiddenBadgeHTML = hiddenLocally ? `
-      <div class="rounded border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-primary flex items-center gap-2">
-        <span class="material-symbols-outlined text-[15px]">visibility_off</span>
-        Hidden locally
-      </div>
-    ` : '';
     const repoUnavailableHTML = repoMetadataUnavailable ? `
       <span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">Repo metadata unavailable</span>
     ` : '';
 
-    const labelsHTML = (issue.labels || []).slice(0, 3).map(l => {
-      const name = String(typeof l === 'object' ? l.name : l || '');
-      const tone = name.includes('help wanted') || name.includes('good first') 
-        ? 'border-primary/30 bg-primary/10 text-primary' 
-        : name.includes('enhancement') || name.includes('feature') 
-          ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
-          : 'border-outline-variant bg-surface-dim text-on-surface-variant';
-      return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${escapeHTML(name)}</span>`;
-    }).join(' ');
+    const primaryLabel = getPrimaryIssueLabel(issue.labels);
+    const labelCount = getIssueLabelCount(issue.labels);
+    const hiddenLabelCount = Math.max(0, labelCount - (primaryLabel ? 1 : 0));
+    const primaryLabelHTML = primaryLabel
+      ? `<span class="rounded border ${getIssueLabelTone(primaryLabel)} px-2 py-0.5 text-xs">${escapeHTML(primaryLabel)}</span>`
+      : '';
+    const labelOverflowHTML = hiddenLabelCount > 0
+      ? `<span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">+${safeInteger(hiddenLabelCount)} labels</span>`
+      : '';
 
     const saved = isIssueSavedToBoard(issue);
 
@@ -1663,13 +2241,16 @@ function renderIssueCardsList(issuesList, options = {}) {
         </h3>
         
         <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issueBody}</p>
+        <p class="text-xs text-on-surface-variant/90 line-clamp-1">
+          <span class="text-tertiary">Why:</span> ${escapeHTML(topReason || 'Review the inspector for fit details.')}
+        </p>
         ${lookupWarningHTML}
-        ${hiddenBadgeHTML}
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
-          ${labelsHTML}
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="interactive-chip rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
+          <span class="interactive-chip rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          ${primaryLabelHTML}
+          ${labelOverflowHTML}
           ${repoUnavailableHTML}
         </div>
         
@@ -1691,10 +2272,6 @@ function renderIssueCardsList(issuesList, options = {}) {
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'View on board' : 'Save'}
             </button>
-            ${hiddenLocally ? `<button class="action-button interactive-button-secondary px-3 py-1.5 text-xs unhide-card-btn" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">visibility</span>
-              Unhide
-            </button>` : ''}
             <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
               Hide
@@ -1797,19 +2374,6 @@ function bindIssueCardListEvents() {
     });
   });
 
-  document.querySelectorAll('.unhide-card-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const issue = getSearchItemsForActions().find(i => i.id === issueId);
-      if (issue) {
-        const issueKey = getCanonicalIssueKey(issue);
-        const repoKey = getCanonicalRepoKey(issue);
-        if (issueKey) store.unhideHiddenItem('issue', issueKey);
-        if (repoKey) store.unhideHiddenItem('repo', repoKey);
-      }
-    });
-  });
 }
 
 /**
@@ -1945,6 +2509,7 @@ async function refreshSingleSavedBoardCard(card) {
 
 function renderBoard(container) {
   const totalCards = Object.values(store.boardCards).flat().length;
+  const boardMode = getBoardMode(store.boardCards, boardViewMode);
   const activeRefreshRequestCount = getActiveBoardRefreshRequestCount(store.boardCards);
   const staleRefreshRequestCount = getStaleBoardRefreshRequestCount(store.boardCards);
   const staleRefreshTotalCount = getStaleBoardRefreshTotalCount(store.boardCards);
@@ -2111,8 +2676,118 @@ function renderBoard(container) {
       </div>
     `;
   }).join('');
+  const activeBoardEntries = ACTIVE_BOARD_COLUMNS.flatMap(column =>
+    (store.boardCards[column] || [])
+      .filter(card => !isClosedIssue(card))
+      .map(card => ({ column, card }))
+  );
+  const compactLaneRowsHTML = ACTIVE_BOARD_COLUMNS.map(column => {
+    const count = (store.boardCards[column] || []).filter(card => !isClosedIssue(card)).length;
+    return `
+      <div class="board-compact-lane-row">
+        <span>${escapeHTML(column)}</span>
+        <strong>${count}</strong>
+      </div>
+    `;
+  }).join('');
+  const compactCardsHTML = activeBoardEntries.length ? activeBoardEntries.map(({ column, card }) => {
+    const cIdx = BOARD_COLUMNS.indexOf(column);
+    const nextColumn = BOARD_COLUMNS[cIdx + 1];
+    const fitObj = calculateFitScore(card);
+    const rating = getFitScoreRating(fitObj.score);
+    const brief = buildContributionBrief(card, fitObj);
+    const repoName = escapeHTML(card.repository?.full_name || card.repository?.name || 'github');
+    const cardId = safeInteger(card.id);
+    const cardNumber = safeInteger(card.number);
+    const cardTitle = escapeHTML(card.title);
+    const cardDate = escapeHTML(formatDate(card.updated_at));
+    return `
+      <div class="board-compact-card board-card-item" data-id="${cardId}">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="min-w-0 truncate font-mono text-xs text-on-surface-variant">${repoName} #${cardNumber}</span>
+          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">${escapeHTML(column)}</span>
+        </div>
+        <h3 class="mt-3 text-lg font-semibold leading-snug text-on-surface">${cardTitle}</h3>
+        <p class="mt-2 text-sm text-on-surface-variant">Next: ${escapeHTML(brief.firstMove)}</p>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          <span class="rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          <span class="text-xs text-on-surface-variant">${cardDate}</span>
+        </div>
+        <div class="mt-5 flex flex-wrap gap-2">
+          ${nextColumn ? `
+            <button class="interactive-button interactive-button-primary px-3 py-2 text-xs move-right-btn" data-id="${cardId}">
+              Move to ${escapeHTML(nextColumn)}
+            </button>
+          ` : ''}
+          <button class="interactive-button interactive-button-secondary px-3 py-2 text-xs move-passed-btn" data-id="${cardId}">
+            Pass
+          </button>
+          <button class="interactive-button interactive-button-secondary px-3 py-2 text-xs compact-inspect-btn" data-id="${cardId}" type="button">
+            Inspect
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('') : `
+    <div class="board-compact-empty">
+      <span class="material-symbols-outlined text-4xl text-primary">view_kanban</span>
+      <h3>Save a candidate to start tracking it.</h3>
+      <p>Find Contributions is where new board cards begin.</p>
+      <button class="interactive-button interactive-button-primary px-4 py-2" id="board-go-find-btn" type="button">
+        <span class="material-symbols-outlined text-[16px]">search</span>
+        Find Contributions
+      </button>
+    </div>
+  `;
+  const compactBoardHTML = `
+    <section class="board-section board-compact-section" data-board-section="active">
+      <div class="board-section-heading">
+        <h2>Active workflow</h2>
+        <span>${activeBoardEntries.length <= 3 ? 'Compact mode for focused board work.' : 'Compact mode selected manually.'}</span>
+      </div>
+      <div class="board-compact-layout">
+        <div class="board-compact-cards">${compactCardsHTML}</div>
+        <aside class="board-compact-lanes" aria-label="Board lane counts">
+          <h3>Lane counts</h3>
+          ${compactLaneRowsHTML}
+        </aside>
+      </div>
+    </section>
+  `;
   const activeColumnsHTML = renderColumnsHTML(ACTIVE_BOARD_COLUMNS);
   const completedColumnsHTML = renderColumnsHTML(COMPLETED_BOARD_COLUMNS, { compact: true });
+  const boardWorkflowHTML = boardMode === 'compact' ? `
+    ${compactBoardHTML}
+    <section class="board-section board-completed-section" data-board-section="completed">
+      <div class="board-section-heading">
+        <h2>Completed</h2>
+        <span>Compact local outcomes.</span>
+      </div>
+      <div class="board-completed-grid">
+        ${completedColumnsHTML}
+      </div>
+    </section>
+  ` : `
+    <section class="board-section board-active-section" data-board-section="active">
+      <div class="board-section-heading">
+        <h2>Active workflow</h2>
+        <span>Manual refreshes run only from saved active cards.</span>
+      </div>
+      <div class="board-active-grid">
+        ${activeColumnsHTML}
+      </div>
+    </section>
+    <section class="board-section board-completed-section" data-board-section="completed">
+      <div class="board-section-heading">
+        <h2>Completed</h2>
+        <span>Compact local outcomes.</span>
+      </div>
+      <div class="board-completed-grid">
+        ${completedColumnsHTML}
+      </div>
+    </section>
+  `;
 
   container.innerHTML = `
     <!-- Kanban Board layout -->
@@ -2126,6 +2801,10 @@ function renderBoard(container) {
         </div>
         
         <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+          <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" aria-label="Board view mode">
+            <button class="board-view-mode-btn interactive-button rounded-md px-3 py-1.5 text-xs ${boardMode === 'compact' ? 'bg-primary text-on-primary border-primary' : 'interactive-button-secondary'}" data-board-view-mode="compact" type="button">Compact</button>
+            <button class="board-view-mode-btn interactive-button rounded-md px-3 py-1.5 text-xs ${boardMode === 'kanban' ? 'bg-primary text-on-primary border-primary' : 'interactive-button-secondary'}" data-board-view-mode="kanban" type="button">Full Kanban</button>
+          </div>
           <div class="min-w-0 text-xs text-on-surface-variant">
             <div id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</div>
             ${staleRefreshHelper ? `<div>${escapeHTML(staleRefreshHelper)}</div>` : ''}
@@ -2145,28 +2824,38 @@ function renderBoard(container) {
       <!-- Scrollable Kanban Area -->
       <div class="board-page-body flex-1 p-4 sm:p-6 md:p-8">
         <div class="board-layout-shell" style="--board-layout-max-width: ${BOARD_LAYOUT_MAX_WIDTH}px;">
-          <section class="board-section board-active-section" data-board-section="active">
-            <div class="board-section-heading">
-              <h2>Active workflow</h2>
-              <span>Manual refreshes run only from saved active cards.</span>
-            </div>
-            <div class="board-active-grid">
-              ${activeColumnsHTML}
-            </div>
-          </section>
-          <section class="board-section board-completed-section" data-board-section="completed">
-            <div class="board-section-heading">
-              <h2>Completed</h2>
-              <span>Compact local outcomes.</span>
-            </div>
-            <div class="board-completed-grid">
-              ${completedColumnsHTML}
-            </div>
-          </section>
+          ${boardWorkflowHTML}
         </div>
       </div>
     </section>
   `;
+
+  document.querySelectorAll('.board-view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      boardViewMode = btn.getAttribute('data-board-view-mode') === 'kanban' ? 'kanban' : 'compact';
+      renderBoard(container);
+    });
+  });
+
+  const boardGoFindBtn = document.getElementById('board-go-find-btn');
+  if (boardGoFindBtn) {
+    boardGoFindBtn.addEventListener('click', () => {
+      store.setScreen('find-issues');
+    });
+  }
+
+  document.querySelectorAll('.compact-inspect-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const cardId = parseInt(btn.getAttribute('data-id'), 10);
+      const allCards = Object.values(store.boardCards).flat();
+      const match = allCards.find(c => c.id === cardId);
+      if (match) {
+        store.setInspectedIssue(match);
+        openInspector();
+      }
+    });
+  });
 
   // Bind Lane Card Clicks
   document.querySelectorAll('.board-card-item').forEach(card => {
@@ -2406,6 +3095,8 @@ function bindLocalDataImport(inputId, statusId) {
       const result = importLocalData(localStorage, payload);
       store.boardCards = result.boardCards || store.boardCards;
       store.profile = result.profile || store.profile;
+      store.contributionPreferences = result.contributionPreferences || store.contributionPreferences;
+      store.matchFeedback = result.matchFeedback || store.matchFeedback;
       store.notify();
       if (status) {
         status.textContent = result.imported ? 'Local data imported.' : 'Import failed: unsupported file.';
@@ -2467,8 +3158,9 @@ function renderProofLogRows(entries) {
 }
 
 function renderProfile(container) {
-  const proofEntries = listProofEntries(localStorage);
-  const alerts = buildLocalAlerts(store.boardCards);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards
+  });
   const profile = store.profile;
   const displayName = profile?.name || profile?.login || 'Local contributor';
   const loginLine = profile?.login ? `GitHub: ${profile.login}` : 'No GitHub identity saved yet';
@@ -2489,29 +3181,103 @@ function renderProfile(container) {
                 <p class="text-sm text-on-surface-variant">${escapeHTML(displayName)} - ${escapeHTML(loginLine)}</p>
               </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-export-btn">Export Local Data</button>
-              <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
-                Import Local Data
-                <input class="hidden" id="profile-import-input" type="file" accept="application/json" />
-              </label>
+          </div>
+          <p class="mt-3 text-xs text-on-surface-variant">Identity and contribution preferences stay local to this browser. Export, import, and reset controls live in Settings.</p>
+        </header>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Saved candidates</span>
+            <div class="mt-4 metric-card-value">${appMetrics.savedCandidates}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Active board work</span>
+            <div class="mt-4 metric-card-value">${appMetrics.activeBoardWork}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Resolved / Passed</span>
+            <div class="mt-4 metric-card-value">${appMetrics.resolvedOrPassed}</div>
+          </div>
+        </div>
+
+        ${renderContributionPreferencesCard(store.contributionPreferences)}
+      </div>
+    </section>
+  `;
+
+  bindAvatarFallbacks(container);
+  const preferencesForm = document.getElementById('contribution-preferences-form');
+  if (preferencesForm) {
+    preferencesForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      store.updateContributionPreferences({
+        languages: parsePreferenceList(document.getElementById('profile-preference-languages')?.value),
+        preferredWork: parsePreferenceList(document.getElementById('profile-preference-preferred-work')?.value),
+        avoidWork: parsePreferenceList(document.getElementById('profile-preference-avoid-work')?.value),
+        experience: document.getElementById('profile-preference-experience')?.value || '',
+        timeBudget: document.getElementById('profile-preference-time-budget')?.value || '',
+        saved_at: new Date().toISOString()
+      });
+    });
+  }
+  const resetPreferencesBtn = document.getElementById('profile-preferences-reset-btn');
+  if (resetPreferencesBtn) {
+    resetPreferencesBtn.addEventListener('click', () => {
+      store.clearContributionPreferences();
+    });
+  }
+}
+
+function renderActivity(container) {
+  const proofEntries = listProofEntries(localStorage);
+  const alerts = buildLocalAlerts(store.boardCards);
+  const feedbackSummary = summarizeMatchFeedback(store.matchFeedback);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards,
+    proofEntries,
+    reviewReminders: alerts
+  });
+
+  const remindersHTML = alerts.length ? alerts.map(alert => `
+    <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4 activity-alert-row" data-card-id="${escapeHTML(String(alert.cardId || ''))}">
+      <div class="mb-1 flex items-center justify-between gap-3">
+        <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
+        <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
+      </div>
+      <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
+      ${alert.kind === 'github-activity' ? `
+        <button class="action-button mt-3 px-2 py-1 text-[11px] mark-activity-reviewed-btn" data-id="${escapeHTML(String(alert.cardId || ''))}">
+          Mark reviewed
+        </button>
+      ` : ''}
+    </div>
+  `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</p>';
+
+  container.innerHTML = `
+    <section class="p-6 md:p-12">
+      <div class="mx-auto max-w-5xl space-y-8">
+        <header class="interactive-card rounded-xl p-6">
+          <div class="flex items-start gap-4">
+            <span class="material-symbols-outlined text-primary text-3xl">timeline</span>
+            <div>
+              <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Activity</h1>
+              <p class="mt-1 text-sm text-on-surface-variant">Proof Log, Review reminders, and Personal scoring signals from local workflow actions.</p>
             </div>
           </div>
-          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include Board cards, Hidden Results, profile, and Proof Log. GitHub tokens and repo metadata cache are excluded.</p>
         </header>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div class="metric-card">
             <span class="text-sm text-on-surface-variant">Proof Log</span>
-            <div class="mt-4 metric-card-value">${proofEntries.length}</div>
-          </div>
-          <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Saved candidates</span>
-            <div class="mt-4 metric-card-value">${Object.values(store.boardCards).flat().length}</div>
+            <div class="mt-4 metric-card-value">${appMetrics.proofLogEntries}</div>
           </div>
           <div class="metric-card">
             <span class="text-sm text-on-surface-variant">Review reminders</span>
-            <div class="mt-4 metric-card-value">${alerts.length}</div>
+            <div class="mt-4 metric-card-value">${appMetrics.reviewReminders}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Personal scoring signals</span>
+            <div class="mt-4 metric-card-value">${safeInteger(feedbackSummary.eventCount)}</div>
           </div>
         </div>
 
@@ -2526,29 +3292,40 @@ function renderProfile(container) {
         <section class="interactive-card rounded-xl p-6">
           <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
           <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
-          <div class="space-y-3">
-            ${alerts.length ? alerts.map(alert => `
-              <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-                <div class="mb-1 flex items-center justify-between gap-3">
-                  <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
-                  <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
-                </div>
-                <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
-              </div>
-            `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</p>'}
-          </div>
+          <div class="space-y-3">${remindersHTML}</div>
         </section>
+
+        ${renderMatchFeedbackCard(store.matchFeedback)}
       </div>
     </section>
   `;
 
-  const exportBtn = document.getElementById('profile-export-btn');
-  if (exportBtn) exportBtn.addEventListener('click', handleExportLocalData);
-  bindAvatarFallbacks(container);
-  bindLocalDataImport('profile-import-input', 'profile-import-status');
+  const resetFeedbackBtn = document.getElementById('profile-match-feedback-reset-btn');
+  if (resetFeedbackBtn) {
+    resetFeedbackBtn.addEventListener('click', () => {
+      store.clearMatchFeedback();
+    });
+  }
   document.querySelectorAll('.proof-remove-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       store.removeProofLogEntry(btn.getAttribute('data-key'));
+    });
+  });
+  document.querySelectorAll('.mark-activity-reviewed-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const cardId = parseInt(btn.getAttribute('data-id'), 10);
+      store.markGitHubActivityReviewed(cardId);
+    });
+  });
+  document.querySelectorAll('.activity-alert-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const cardId = parseInt(row.getAttribute('data-card-id'), 10);
+      const card = Object.values(store.boardCards).flat().find(item => item.id === cardId);
+      if (card) {
+        store.setInspectedIssue(card);
+        openInspector();
+      }
     });
   });
 }
@@ -2731,7 +3508,7 @@ function renderSettings(container) {
             <div class="space-y-3">
               <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">GitHub token</label>
               <div class="relative group">
-                <input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password"/>
+                <input class="secure-token-input w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-token-visible="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
                 <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" aria-label="Show token" data-tooltip="Show token" data-tooltip-position="left" style="background:none; border:none;">
                   <span class="material-symbols-outlined" id="visibility-icon">visibility</span>
                 </button>
@@ -2803,7 +3580,7 @@ function renderSettings(container) {
             </h2>
           </div>
           <div class="p-6 space-y-4">
-            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
+            <p class="text-sm text-on-surface-variant">Export Local Data and Import Local Data move Board cards, Hidden Results, profile metadata, contribution preferences, learned feedback, and Proof Log entries between browsers. GitHub tokens and repo metadata cache are excluded.</p>
             <div class="flex flex-wrap gap-3">
               <button class="interactive-button interactive-button-secondary px-4 py-2" id="settings-export-local-data-btn">Export Local Data</button>
               <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
@@ -2881,12 +3658,14 @@ function renderSettings(container) {
   const visibilityIcon = document.getElementById('visibility-icon');
   if (visibilityToggle && patInput && visibilityIcon) {
     visibilityToggle.addEventListener('click', () => {
-      if (patInput.type === 'password') {
+      if (patInput.dataset.tokenVisible !== 'true') {
+        patInput.dataset.tokenVisible = 'true';
         patInput.type = 'text';
         visibilityIcon.textContent = 'visibility_off';
         visibilityToggle.setAttribute('aria-label', 'Hide token');
         visibilityToggle.setAttribute('data-tooltip', 'Hide token');
       } else {
+        patInput.dataset.tokenVisible = 'false';
         patInput.type = 'password';
         visibilityIcon.textContent = 'visibility';
         visibilityToggle.setAttribute('aria-label', 'Show token');
@@ -2901,6 +3680,7 @@ function renderSettings(container) {
     saveBtn.addEventListener('click', () => {
       const tokVal = patInput.value.trim();
       const remVal = rememberCheckbox.checked;
+      clearInspectorEnrichmentStates();
       store.updateToken(tokVal, remVal);
 
       // Show temporary save feedback
@@ -2948,6 +3728,7 @@ function renderSettings(container) {
   const clearTokenBtn = document.getElementById('clear-token-settings-btn');
   if (clearTokenBtn) {
     clearTokenBtn.addEventListener('click', () => {
+      clearInspectorEnrichmentStates();
       store.clearToken();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;
@@ -2995,6 +3776,7 @@ function renderSettings(container) {
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
       hiddenSettingsFilter = '';
+      clearInspectorEnrichmentStates();
       store.clearAllLocalData();
       if (patInput) patInput.value = '';
       if (rememberCheckbox) rememberCheckbox.checked = false;
@@ -3025,7 +3807,20 @@ function openInspector() {
   const issue = store.inspectedIssue;
   if (!issue) return;
 
-  const fitObj = calculateFitScore(issue);
+  resetAdvancedContextLoadingForIssue(issue);
+  const commentEnrichmentState = getInspectorCommentEnrichmentState(issue);
+  const timelineEnrichmentState = getInspectorTimelineEnrichmentState(issue);
+  const repoSetupEnrichmentState = getInspectorRepoSetupEnrichmentState(issue);
+  const repoHistoryEnrichmentState = getInspectorRepoHistoryEnrichmentState(issue);
+  const inspectorEnrichment = getInspectorEnrichmentForScore({
+    comments: commentEnrichmentState,
+    timeline: timelineEnrichmentState,
+    setup: repoSetupEnrichmentState,
+    history: repoHistoryEnrichmentState
+  });
+  const fitObj = calculateFitScore(issue, {
+    enrichment: inspectorEnrichment
+  });
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const contributionBrief = buildContributionBrief(issue, fitObj);
@@ -3066,7 +3861,7 @@ function openInspector() {
     <div class="rounded-lg border border-primary/25 bg-primary/10 p-4">
       <div>
         <h3 class="text-sm font-semibold text-primary mb-1">Hidden locally</h3>
-        <p class="text-sm text-on-surface-variant">Hidden Results suppress Find Contributions suggestions only. Lookup can still recover this item.</p>
+        <p class="text-sm text-on-surface-variant">Hidden items stay out of Find Contributions and Lookup results.</p>
       </div>
     </div>
   ` : '';
@@ -3081,9 +3876,24 @@ function openInspector() {
       </div>
     </div>
   ` : '';
+  const commentEnrichmentHTML = renderCommentEnrichmentCard(commentEnrichmentState);
+  const advancedEnrichmentHTML = renderAdvancedEnrichmentCard({
+    timeline: timelineEnrichmentState,
+    setup: repoSetupEnrichmentState,
+    history: repoHistoryEnrichmentState
+  });
   const refreshStatusHTML = inspectorRefreshStatus && inspectorRefreshStatusCardId === issue.id ? `
     <span class="text-xs text-on-surface-variant" id="inspector-refresh-status">${escapeHTML(inspectorRefreshStatus)}</span>
   ` : '';
+  const stageLabel = getStageLabel(fitObj.stage);
+  const confidenceTone = getConfidenceTone(fitObj.confidence.level);
+  const confidenceReasonsHTML = (fitObj.confidence.reasons || []).map(reason => `
+    <li class="flex items-start gap-2 text-xs text-on-surface-variant">
+      <span class="material-symbols-outlined text-primary text-[13px] mt-0.5">info</span>
+      <span>${escapeHTML(reason)}</span>
+    </li>
+  `).join('');
+  const miniScoresHTML = renderMiniScoreList(fitObj.miniScores);
 
   // Render match score explanations
   const fitScoreReasonsHTML = fitObj.rows.map(row => {
@@ -3147,6 +3957,8 @@ function openInspector() {
         <div class="flex items-center flex-wrap gap-2 mb-3">
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${safeIssueLanguage}</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${rating.rating}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border border-outline-variant bg-surface-container-high text-on-surface-variant">${stageLabel}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${confidenceTone}">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
           <span class="text-xs text-on-surface-variant font-mono">${repoName} #${safeIssueNumber}</span>
         </div>
         <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${safeIssueTitle}</h2>
@@ -3212,6 +4024,8 @@ function openInspector() {
       ${riskyLookupHTML}
       ${hiddenInspectorHTML}
       ${activityInspectorHTML}
+      ${commentEnrichmentHTML}
+      ${advancedEnrichmentHTML}
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -3222,6 +4036,30 @@ function openInspector() {
       
       <!-- Fit Details & Analytics Bento -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
+
+        <!-- Score Diagnostics -->
+        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h4 class="text-xs font-headline font-semibold text-on-background mb-1 flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary text-[18px]">monitoring</span>
+                Score diagnostics
+              </h4>
+              <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${stageLabel} stage</p>
+            </div>
+            <span class="w-fit rounded border ${confidenceTone} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          </div>
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Confidence</div>
+              <ul class="space-y-2">${confidenceReasonsHTML}</ul>
+            </div>
+            <div>
+              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
+            </div>
+          </div>
+        </div>
 
         <!-- Contribution Coach Brief -->
         <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
@@ -3403,6 +4241,9 @@ function openInspector() {
     });
   }
 
+  ensureInspectorCommentEnrichment(issue);
+  ensureInspectorAdvancedEnrichment(issue);
+
   // Checkbox toggle inside action plan
   document.querySelectorAll('.inspector-task-checkbox').forEach(cb => {
     cb.addEventListener('change', () => {
@@ -3420,6 +4261,7 @@ function closeInspector() {
 
   inspectorRefreshStatus = '';
   inspectorRefreshStatusCardId = null;
+  activeAdvancedContextIssueKey = '';
   panel.classList.add('translate-x-full');
   setTimeout(() => {
     panel.style.display = 'none';

@@ -81,6 +81,30 @@ test('settings exposes hidden results management copy', () => {
   assert.match(mainJs, /Clear Hidden/);
 });
 
+test('settings token input discourages browser password saving', () => {
+  const { mainJs } = readCopySources();
+  const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
+  const tokenInput = settings.match(/<input[^>]+id="settings-pat-input"[^>]*>/)?.[0] || '';
+
+  assert.match(tokenInput, /type="password"/);
+  assert.doesNotMatch(tokenInput, /type="text"/);
+  assert.match(tokenInput, /autocomplete="off"/);
+  assert.doesNotMatch(tokenInput, /autocomplete="new-password"/);
+  assert.match(tokenInput, /secure-token-input/);
+  assert.match(tokenInput, /data-token-visible="false"/);
+  assert.match(tokenInput, /autocapitalize="off"/);
+  assert.match(tokenInput, /autocorrect="off"/);
+  assert.match(tokenInput, /spellcheck="false"/);
+  assert.match(tokenInput, /data-lpignore="true"/);
+  assert.match(tokenInput, /data-1p-ignore="true"/);
+  assert.match(tokenInput, /data-bwignore="true"/);
+  assert.doesNotMatch(styles, /-webkit-text-security/);
+  assert.match(settings, /patInput\.dataset\.tokenVisible/);
+  assert.match(settings, /patInput\.type = 'text'/);
+  assert.match(settings, /patInput\.type = 'password'/);
+});
+
 test('profile, proof log, export import, and review reminders are visible product surfaces', () => {
   const { indexHtml, mainJs, boardRefreshJs } = readCopySources();
   const copy = visibleAppCopy({ indexHtml, mainJs, boardRefreshJs });
@@ -111,8 +135,101 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.match(copy, /not directly exposed by GitHub/);
   assert.match(copy, /Do not paste GitHub tokens or private data/);
   assert.match(mainJs, /No review reminders right now\./);
+  assert.match(mainJs, /Contribution preferences/);
+  assert.match(mainJs, /Save preferences/);
+  assert.match(mainJs, /Reset preferences/);
+  assert.match(mainJs, /Learned feedback/);
+  assert.match(mainJs, /Reset learned feedback/);
   assert.doesNotMatch(indexHtml, /aria-disabled="true" disabled/);
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
+});
+
+test('match score v3 UI exposes compact confidence and inspector diagnostics', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(resultCards, /% Match/);
+  assert.match(resultCards, /Why:/);
+  assert.match(resultCards, /Confidence:/);
+  assert.match(inspector, /Score diagnostics/);
+  assert.match(inspector, /Confidence/);
+  assert.match(inspector, /Mini-scores/);
+  assert.match(inspector, /Opportunity Fit/);
+  assert.match(inspector, /Issue Clarity/);
+  assert.match(inspector, /Repo Health/);
+  assert.match(inspector, /Social Risk/);
+  assert.match(inspector, /Setup Ease/);
+  assert.match(inspector, /Personal Fit/);
+  assert.match(inspector, /Why this score\?/);
+});
+
+test('profile preferences UI does not auto-apply search filters', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function hiddenItemMatchesFilter');
+
+  assert.match(profile, /contribution-preferences-form/);
+  assert.match(mainJs, /profile-preferences-save-btn/);
+  assert.match(profile, /profile-preferences-reset-btn/);
+  assert.doesNotMatch(profile, /runGitHubSearch|performSearch|applyDraftFilters|setFilters/);
+});
+
+test('profile learned feedback summary exposes reset without private data wording', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /renderMatchFeedbackCard/);
+  assert.match(mainJs, /Saved to board/);
+  assert.match(mainJs, /Moved to Merged/);
+  assert.match(mainJs, /Hidden issue/);
+  assert.match(mainJs, /Hidden repo/);
+  assert.doesNotMatch(mainJs, /private repo data|tokens in feedback|full issue body/i);
+});
+
+test('inspector comment enrichment exposes loading and error states without card fetching', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const matchScoreJs = readFileSync(new URL('../src/matchScore.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(mainJs, /Inspecting comments/);
+  assert.match(mainJs, /Comment enrichment unavailable/);
+  assert.match(mainJs, /Comments inspected/);
+  assert.match(matchScoreJs, /Maintainer appears open to PRs/);
+  assert.match(matchScoreJs, /Comment thread suggests someone may be working on this/);
+  assert.match(inspector, /commentEnrichmentHTML/);
+  assert.doesNotMatch(resultCards, /fetchIssueCommentsEnrichment|ensureInspectorCommentEnrichment|Inspecting comments/);
+});
+
+test('inspector advanced enrichment stays off result cards', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(mainJs, /Advanced context/);
+  assert.match(mainJs, /Fetching timeline/);
+  assert.match(mainJs, /Scanning setup files/);
+  assert.match(mainJs, /Reading repo history/);
+  assert.match(mainJs, /ADVANCED_CONTEXT_MIN_LOADING_MS\s*=\s*300/);
+  assert.match(mainJs, /Timeline inspected/);
+  assert.match(mainJs, /Setup files inspected/);
+  assert.match(mainJs, /Repo history inspected/);
+  assert.match(mainJs, /scanDelay:\s*'0s'/);
+  assert.match(mainJs, /scanDelay:\s*'0\.4s'/);
+  assert.match(mainJs, /scanDelay:\s*'0\.8s'/);
+  assert.match(mainJs, /fadeDelay:\s*'0s'/);
+  assert.match(mainJs, /fadeDelay:\s*'0\.1s'/);
+  assert.match(mainJs, /fadeDelay:\s*'0\.2s'/);
+  assert.match(inspector, /advancedEnrichmentHTML/);
+  assert.doesNotMatch(resultCards, /fetchIssueTimelineEnrichment|fetchRepoSetupEnrichment|fetchRepoHistoryEnrichment|Advanced context/);
+});
+
+test('inspector rate-limit updates accept multi-bucket enrichment snapshots', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const updater = sliceBetween(mainJs, 'function updateInspectorRateLimit', 'function rerenderInspectorForKey');
+
+  assert.match(updater, /store\.setRateLimits\(rateLimit,\s*\{\s*notify:\s*false\s*\}\)/);
+  assert.match(updater, /store\.setRateLimit\(rateLimit,\s*rateLimit\.resource \|\| 'core',\s*\{\s*notify:\s*false\s*\}\)/);
+  assert.match(mainJs, /updateInspectorRateLimit\(result\.rateLimits \|\| result\.rateLimit\)/);
 });
 
 test('help and feedback routes are included in navigation setup', () => {
@@ -129,6 +246,74 @@ test('help and feedback routes are included in navigation setup', () => {
   }
 });
 
+test('activity route is included in navigation setup', () => {
+  const { indexHtml, mainJs } = readCopySources();
+
+  for (const navId of [
+    'tab-activity',
+    'mobile-tab-activity'
+  ]) {
+    assert.match(indexHtml, new RegExp(`id="${navId}"`));
+    assert.match(mainJs, new RegExp(`['"]${navId}['"]`));
+  }
+  assert.match(mainJs, /function renderActivity\(container\)/);
+  assert.match(mainJs, /case 'activity'/);
+});
+
+test('profile is separated from activity and settings responsibilities', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function renderActivity(container)');
+  const activity = sliceBetween(mainJs, 'function renderActivity(container)', 'function hiddenItemMatchesFilter');
+  const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
+
+  assert.match(profile, /renderContributionPreferencesCard/);
+  assert.match(profile, /Saved candidates/);
+  assert.match(profile, /Active board work/);
+  assert.doesNotMatch(profile, /Export Local Data/);
+  assert.doesNotMatch(profile, /Import Local Data/);
+  assert.doesNotMatch(profile, /Proof Log/);
+  assert.doesNotMatch(profile, /Review reminders/);
+  assert.doesNotMatch(profile, /Learned feedback/);
+
+  assert.match(activity, /Proof Log/);
+  assert.match(activity, /Review reminders/);
+  assert.match(activity, /Personal scoring signals/);
+  assert.match(activity, /renderMatchFeedbackCard/);
+  assert.match(settings, /Export Local Data/);
+  assert.match(settings, /Import Local Data/);
+});
+
+test('find contributions keeps exact scores while reducing card chip noise', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
+
+  assert.match(resultCards, /% Match/);
+  assert.match(resultCards, /Confidence:/);
+  assert.match(resultCards, /\+\$\{safeInteger\(hiddenLabelCount\)\} labels/);
+  assert.match(resultCards, /Why:/);
+  assert.doesNotMatch(resultCards, /\.slice\(0,\s*3\)\.map/);
+
+  assert.match(finder, /Quick filters/);
+  assert.match(finder, /View GitHub query/);
+  assert.doesNotMatch(finder, /GitHub query preview<\/div>\s*<code/);
+});
+
+test('board exposes compact mode without importing inspector tabs', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const board = sliceBetween(mainJs, 'function renderBoard(container)', 'function getFeedbackIssueUrl');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(mainJs, /getBoardMode/);
+  assert.match(board, /Compact/);
+  assert.match(board, /Full Kanban/);
+  assert.match(board, /board-compact-card/);
+  assert.match(board, /compact-inspect-btn/);
+  assert.match(board, /Move to \$\{escapeHTML\(nextColumn\)\}/);
+  assert.doesNotMatch(mainJs, /INSPECTOR_TABS/);
+  assert.doesNotMatch(inspector, /role="tablist"|inspector-tab|activeInspectorTab|>\s*Overview\s*<|>\s*Evidence\s*</);
+});
+
 test('interactive chrome uses app tooltips instead of native title attributes', () => {
   const { indexHtml, mainJs } = readCopySources();
 
@@ -141,12 +326,17 @@ test('interactive chrome uses app tooltips instead of native title attributes', 
   assert.match(mainJs, /data-tooltip="\$\{safeColumn\}: \$\{lane\.count\}"/);
 });
 
-test('lookup hidden recovery is represented without inspector proof status', () => {
+test('lookup and search keep hidden results out of result cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
 
-  assert.match(mainJs, /Hidden locally/);
-  assert.match(mainJs, /Lookup can still recover this item/);
-  assert.match(mainJs, /applyHiddenFilter/);
+  assert.match(mainJs, /return filterHiddenIssues\(items\)/);
+  assert.match(mainJs, /const visibleResults = Array\.isArray\(results\) \? filterHiddenIssues\(results\) : results/);
+  assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
+  assert.doesNotMatch(mainJs, /const applyHiddenFilter = store\.lastSearchMode !== 'lookup'/);
+  assert.doesNotMatch(mainJs, /hiddenCountText|hiddenResultsCount/);
+  assert.doesNotMatch(cardsRenderer, /Hidden locally|unhide-card-btn|!applyHiddenFilter/);
+  assert.doesNotMatch(mainJs, /Lookup can still recover this item/);
   assert.doesNotMatch(mainJs, /proof-status-chip/);
   assert.doesNotMatch(mainJs, /Proof Log status/);
   assert.doesNotMatch(mainJs, /Not in Proof Log/);

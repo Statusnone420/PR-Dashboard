@@ -45,6 +45,17 @@ test('board uses responsive grid contract instead of fixed horizontal row', asyn
   assert.doesNotMatch(css, /w-\[280px\]|shrink-0/);
 });
 
+test('board compact mode styles are defined without inspector tab styles', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.board-compact-layout\b/);
+  assert.match(css, /\.board-compact-cards\b/);
+  assert.match(css, /\.board-compact-card\b/);
+  assert.match(css, /\.board-compact-lanes\b/);
+  assert.match(css, /\.board-compact-lane-row\b/);
+  assert.doesNotMatch(css, /\.inspector-tab\b/);
+});
+
 test('app scrollbars and tooltip contracts are defined in CSS', async () => {
   const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
 
@@ -60,4 +71,37 @@ test('app scrollbars and tooltip contracts are defined in CSS', async () => {
   assert.match(css, /\[data-tooltip\]::before/);
   assert.match(css, /\[data-tooltip\]:hover::before/);
   assert.match(css, /\[data-tooltip\]:focus-visible::before/);
+});
+
+test('advanced context scan loading animation contract is defined', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /@keyframes\s+scanLine/);
+  assert.match(css, /0%\s*{\s*top:\s*-2px;\s*opacity:\s*0\s*}/);
+  assert.match(css, /5%\s*{\s*opacity:\s*1\s*}/);
+  assert.match(css, /90%\s*{\s*opacity:\s*\.8\s*}/);
+  assert.match(css, /100%\s*{\s*top:\s*100%;\s*opacity:\s*0\s*}/);
+  assert.match(css, /@keyframes\s+scanPulse/);
+  assert.match(css, /0%,\s*100%\s*{\s*opacity:\s*\.3\s*}/);
+  assert.match(css, /50%\s*{\s*opacity:\s*1\s*}/);
+  assert.match(css, /@keyframes\s+fadeUp/);
+  assert.match(css, /from\s*{\s*opacity:\s*0;\s*transform:\s*translateY\(4px\)\s*}/);
+  assert.match(css, /to\s*{\s*opacity:\s*1;\s*transform:\s*translateY\(0\)\s*}/);
+
+  assert.match(css, /\.advanced-context-card\b/);
+  assert.match(css, /min-height:\s*94px/);
+  assert.match(css, /@media\s*\(min-width:\s*1024px\)/);
+  assert.match(css, /min-height:\s*152px/);
+  assert.match(css, /\.advanced-context-card-loading\b/);
+  assert.match(css, /background(?:-color)?:\s*#0d1117/i);
+  assert.match(css, /border-color:\s*#1a2332/i);
+  assert.match(css, /\.advanced-context-scan-line\b/);
+  assert.match(css, /background(?:-color)?:\s*#378ADD/i);
+  assert.match(css, /animation:\s*scanLine\s+2s\s+ease-in-out\s+infinite/);
+  assert.match(css, /\.advanced-context-dot:nth-child\(2\)/);
+  assert.match(css, /background(?:-color)?:\s*#534AB7/i);
+  assert.match(css, /\.advanced-context-dot:nth-child\(3\)/);
+  assert.match(css, /background(?:-color)?:\s*#5DCAA5/i);
+  assert.match(css, /\.advanced-context-card-loaded\b/);
+  assert.match(css, /animation:\s*fadeUp\s+220ms\s+ease-out\s+both/);
 });

@@ -21,6 +21,33 @@ test('exported local data excludes token and repo metadata cache', async () => {
   const { exportLocalData } = await import('../src/localData.js');
   storage.setItem('pr_dashboard_token', 'secret-token');
   storage.setItem('pr_dashboard_repo_metadata_cache_v1', JSON.stringify({ 'owner/repo': { stargazers_count: 1 } }));
+  storage.setItem('pr_dashboard_score_enrichment_cache_v1', JSON.stringify({ 'owner/repo#1': { token: 'secret-token' } }));
+  storage.setItem('pr_dashboard_contribution_preferences_v1', JSON.stringify({
+    version: 1,
+    languages: ['TypeScript'],
+    preferredWork: ['docs'],
+    avoidWork: ['refactor'],
+    experience: 'first-pr',
+    timeBudget: 'under-1-hour',
+    token: 'nested-secret',
+    email: 'private@example.com',
+    saved_at: '2026-05-23T12:00:00.000Z'
+  }));
+  storage.setItem('pr_dashboard_match_feedback_v1', JSON.stringify({
+    version: 1,
+    updated_at: '2026-05-23T12:00:00.000Z',
+    totals: { saved: 1, working: 0, passed: 0, merged: 0, hiddenIssue: 0, hiddenRepo: 0 },
+    buckets: { languages: {}, workTypes: {}, scope: {}, repo: {}, labels: {} },
+    events: {
+      'owner/repo#1|saved': {
+        at: '2026-05-23T12:00:00.000Z',
+        action: 'saved',
+        features: { language: 'TypeScript', labels: ['docs'] },
+        body: 'must not persist',
+        token: 'feedback-secret'
+      }
+    }
+  }));
   storage.setItem('pr_dashboard_board_cards', JSON.stringify({ Considering: [{ id: 1, number: 1, repository: { full_name: 'Owner/Repo' } }] }));
   storage.setItem('pr_dashboard_profile_v1', JSON.stringify({
     version: 1,
@@ -37,9 +64,21 @@ test('exported local data excludes token and repo metadata cache', async () => {
   assert.equal(exported.version, 1);
   assert.equal(exported.exported_at, '2026-05-22T12:00:00.000Z');
   assert.equal(exported.profile.avatar_url, 'https://avatars.githubusercontent.com/u/123?v=4');
+  assert.deepEqual(exported.contributionPreferences, {
+    version: 1,
+    languages: ['TypeScript'],
+    preferredWork: ['docs'],
+    avoidWork: ['refactor'],
+    experience: 'first-pr',
+    timeBudget: 'under-1-hour',
+    saved_at: '2026-05-23T12:00:00.000Z'
+  });
+  assert.equal(exported.matchFeedback.totals.saved, 1);
+  assert.equal(exported.matchFeedback.events['owner/repo#1|saved'].features.language, 'TypeScript');
   assert.equal(exported.token, undefined);
   assert.equal(exported.repoMetadata, undefined);
-  assert.doesNotMatch(JSON.stringify(exported), /secret-token|repo_metadata_cache/i);
+  assert.equal(exported.scoreEnrichmentCache, undefined);
+  assert.doesNotMatch(JSON.stringify(exported), /secret-token|nested-secret|feedback-secret|must not persist|private@example|repo_metadata_cache|score_enrichment_cache/i);
 });
 
 test('export and import preserve GitHub activity acknowledgement as board metadata', async () => {
@@ -125,6 +164,32 @@ test('imported local data ignores token and repo metadata cache fields', async (
     token: 'imported-secret-token',
     rememberToken: true,
     repoMetadata: { 'owner/repo': { stargazers_count: 999 } },
+    scoreEnrichmentCache: { 'owner/repo#1': { token: 'imported-secret-token' } },
+    matchFeedback: {
+      version: 1,
+      totals: { saved: 1 },
+      events: {
+        'owner/repo#1|saved': {
+          at: '2026-05-23T12:00:00.000Z',
+          action: 'saved',
+          features: { language: 'TypeScript' },
+          token: 'feedback-secret',
+          body: 'do not store'
+        }
+      }
+    },
+    contributionPreferences: {
+      version: 1,
+      languages: ['TypeScript'],
+      preferredWork: ['docs'],
+      avoidWork: ['refactor'],
+      experience: 'first-pr',
+      timeBudget: 'under-1-hour',
+      token: 'nested-secret',
+      email: 'private@example.com',
+      privateRepos: ['owner/private'],
+      saved_at: '2026-05-23T12:00:00.000Z'
+    },
     boardCards: {
       Considering: [{
         id: 1,
@@ -138,6 +203,9 @@ test('imported local data ignores token and repo metadata cache fields', async (
   assert.equal(storage.getItem('pr_dashboard_token'), null);
   assert.equal(storage.getItem('pr_dashboard_remember_token'), null);
   assert.equal(storage.getItem('pr_dashboard_repo_metadata_cache_v1'), null);
+  assert.equal(storage.getItem('pr_dashboard_score_enrichment_cache_v1'), null);
+  assert.doesNotMatch(storage.getItem('pr_dashboard_contribution_preferences_v1'), /nested-secret|private@example|owner\/private/i);
+  assert.doesNotMatch(storage.getItem('pr_dashboard_match_feedback_v1'), /feedback-secret|do not store/i);
 });
 
 test('import merges board cards by canonical issue before numeric id and keeps one lane', async () => {
@@ -321,4 +389,83 @@ test('import keeps newer profile and returns retained merged data for UI state',
   assert.equal(storedProfile.login, 'local-user');
   assert.equal(storedProfile.saved_at, '2026-05-22T12:00:00.000Z');
   assert.equal(result.profile.login, 'local-user');
+});
+
+test('import accepts older payloads without contribution preferences and merges newer preferences', async () => {
+  const storage = createLocalStorage();
+  const { importLocalData } = await import('../src/localData.js');
+  storage.setItem('pr_dashboard_contribution_preferences_v1', JSON.stringify({
+    version: 1,
+    languages: ['Rust'],
+    preferredWork: ['tests'],
+    avoidWork: [],
+    experience: 'comfortable',
+    timeBudget: 'half-day',
+    saved_at: '2026-05-23T12:00:00.000Z'
+  }));
+
+  const oldPayloadResult = importLocalData(storage, { version: 1, boardCards: {} });
+  assert.equal(oldPayloadResult.imported, true);
+  assert.equal(JSON.parse(storage.getItem('pr_dashboard_contribution_preferences_v1')).languages[0], 'Rust');
+
+  const result = importLocalData(storage, {
+    version: 1,
+    contributionPreferences: {
+      version: 1,
+      languages: ['TypeScript'],
+      preferredWork: ['docs'],
+      avoidWork: ['migration'],
+      experience: 'first-pr',
+      timeBudget: 'weekend',
+      saved_at: '2026-05-24T12:00:00.000Z'
+    }
+  });
+
+  const stored = JSON.parse(storage.getItem('pr_dashboard_contribution_preferences_v1'));
+  assert.equal(stored.languages[0], 'TypeScript');
+  assert.equal(result.contributionPreferences.languages[0], 'TypeScript');
+});
+
+test('import merges match feedback events without duplicating known markers', async () => {
+  const storage = createLocalStorage();
+  const { importLocalData } = await import('../src/localData.js');
+  storage.setItem('pr_dashboard_match_feedback_v1', JSON.stringify({
+    version: 1,
+    updated_at: '2026-05-23T12:00:00.000Z',
+    totals: { saved: 1, working: 0, passed: 0, merged: 0, hiddenIssue: 0, hiddenRepo: 0 },
+    buckets: { languages: {}, workTypes: {}, scope: {}, repo: {}, labels: {} },
+    events: {
+      'owner/repo#1|saved': {
+        at: '2026-05-23T12:00:00.000Z',
+        action: 'saved',
+        features: { language: 'TypeScript' }
+      }
+    }
+  }));
+
+  const result = importLocalData(storage, {
+    version: 1,
+    matchFeedback: {
+      version: 1,
+      totals: { saved: 1, merged: 1 },
+      events: {
+        'owner/repo#1|saved': {
+          at: '2026-05-23T12:00:00.000Z',
+          action: 'saved',
+          features: { language: 'TypeScript' }
+        },
+        'owner/repo#1|entered:Merged': {
+          at: '2026-05-23T13:00:00.000Z',
+          action: 'entered:Merged',
+          features: { language: 'TypeScript' }
+        }
+      }
+    }
+  });
+
+  const stored = JSON.parse(storage.getItem('pr_dashboard_match_feedback_v1'));
+  assert.equal(stored.totals.saved, 1);
+  assert.equal(stored.totals.merged, 1);
+  assert.equal(Object.keys(stored.events).length, 2);
+  assert.equal(result.matchFeedback.totals.merged, 1);
 });

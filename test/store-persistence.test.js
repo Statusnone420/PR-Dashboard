@@ -205,6 +205,7 @@ test('moving to Merged through moveBoardCard creates proof log entry and stamps 
   assert.equal(appStore.boardCards.Merged[0].last_moved_at, appStore.boardCards.Merged[0].column_entered_at);
   assert.equal(listProofEntries(globalThis.localStorage)[0].key, 'teammates/teammates#13998');
   assert.equal(listProofEntries(globalThis.localStorage)[0].source, 'board_merged');
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Merged/);
 });
 
 test('moving to Merged through moveCardToColumn creates proof log entry', async () => {
@@ -250,6 +251,38 @@ test('moving a card to Passed clears matching proof log entry', async () => {
 
   assert.equal(appStore.boardCards.Passed[0].id, 13997);
   assert.equal(listProofEntries(globalThis.localStorage).length, 0);
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Passed/);
+});
+
+test('save, repeated save, Working move, and hide actions record feedback once', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13997,
+    number: 13997,
+    title: 'Feedback issue',
+    body: 'Expected behavior: update README docs and tests.',
+    labels: [{ name: 'documentation' }],
+    repository: { full_name: 'TEAMMATES/teammates', language: 'TypeScript' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13997'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(13997, 'Working');
+  appStore.moveCardToColumn(13997, 'Working');
+  appStore.hideIssue(target);
+  appStore.hideIssue(target);
+  appStore.hideRepo(target);
+  appStore.hideRepo(target);
+
+  const feedback = JSON.parse(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'));
+  assert.equal(feedback.totals.saved, 1);
+  assert.equal(feedback.totals.working, 1);
+  assert.equal(feedback.totals.hiddenIssue, 1);
+  assert.equal(feedback.totals.hiddenRepo, 1);
 });
 
 test('marking GitHub activity reviewed stamps acknowledgement without clearing summary', async () => {
@@ -362,17 +395,37 @@ test('clearing token and settings clears profile but keeps board and proof log',
   });
   appStore.addIssueToProofLog(appStore.boardCards.Considering[0], { source: 'manual_lookup' });
   appStore.updateProfileFromGitHubUser({ login: 'Statusnone420', html_url: 'https://github.com/Statusnone420' }, { notify: false });
+  appStore.updateContributionPreferences({
+    languages: ['TypeScript'],
+    preferredWork: ['docs'],
+    saved_at: '2026-05-23T12:00:00.000Z'
+  }, { notify: false });
+  globalThis.localStorage.setItem('pr_dashboard_score_enrichment_cache_v1', JSON.stringify({
+    version: 1,
+    entries: { 'teammates/teammates#13997': { summary: { inspected: true } } }
+  }));
+  appStore.saveIssueToBoard({
+    id: 14000,
+    number: 14000,
+    title: 'Feedback stays',
+    repository: { full_name: 'TEAMMATES/teammates', language: 'TypeScript' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/14000'
+  });
   appStore.updateToken('sample-token', true);
 
   appStore.clearToken();
 
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_token'), null);
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_profile_v1'), null);
-  assert.equal(Object.values(appStore.boardCards).flat().length, 1);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_score_enrichment_cache_v1'), null);
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_contribution_preferences_v1'), /TypeScript/);
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /saved/);
+  assert.equal(appStore.contributionPreferences.languages[0], 'TypeScript');
+  assert.equal(Object.values(appStore.boardCards).flat().length, 2);
   assert.equal(listProofEntries(globalThis.localStorage).length, 1);
 });
 
-test('clearing all local app data removes proof, profile, hidden, and repo metadata cache', async () => {
+test('clearing all local app data removes proof, profile, hidden, preferences, and caches', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');
 
@@ -382,6 +435,9 @@ test('clearing all local app data removes proof, profile, hidden, and repo metad
   globalThis.localStorage.setItem('pr_dashboard_board_migration_v1', 'board-cleared-by-user');
   globalThis.localStorage.setItem('pr_dashboard_proof_log_v1', JSON.stringify({ version: 1, entries: {} }));
   globalThis.localStorage.setItem('pr_dashboard_profile_v1', JSON.stringify({ version: 1, login: 'Statusnone420' }));
+  globalThis.localStorage.setItem('pr_dashboard_contribution_preferences_v1', JSON.stringify({ version: 1, languages: ['TypeScript'], saved_at: '2026-05-23T12:00:00.000Z' }));
+  globalThis.localStorage.setItem('pr_dashboard_match_feedback_v1', JSON.stringify({ version: 1, events: {} }));
+  globalThis.localStorage.setItem('pr_dashboard_score_enrichment_cache_v1', JSON.stringify({ version: 1, entries: {} }));
   globalThis.localStorage.setItem('pr_dashboard_hidden_v1', JSON.stringify({ version: 1, issues: {}, repos: {} }));
   globalThis.localStorage.setItem('pr_dashboard_repo_metadata_cache_v1', JSON.stringify({ 'owner/repo': {} }));
 
@@ -393,6 +449,11 @@ test('clearing all local app data removes proof, profile, hidden, and repo metad
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_token'), null);
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_proof_log_v1'), null);
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_profile_v1'), null);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_contribution_preferences_v1'), null);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), null);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_score_enrichment_cache_v1'), null);
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_hidden_v1'), null);
   assert.equal(globalThis.localStorage.getItem('pr_dashboard_repo_metadata_cache_v1'), null);
+  assert.equal(appStore.contributionPreferences, null);
+  assert.equal(appStore.matchFeedback.totals.saved, 0);
 });
