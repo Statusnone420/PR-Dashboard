@@ -1,11 +1,14 @@
 const { defineConfig } = require('@playwright/test');
 const path = require('node:path');
 
+const port = process.env.PR_DASHBOARD_LAYOUT_PORT || '3000';
+const host = `http://127.0.0.1:${port}`;
+
 module.exports = defineConfig({
   webServer: {
-    command: 'npm run build && npx vite preview --host 127.0.0.1 --port 3000',
+    command: `node node_modules/vite/bin/vite.js build && node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port ${port}`,
     cwd: path.resolve(__dirname, '..'),
-    url: 'http://127.0.0.1:3000',
+    url: host,
     reuseExistingServer: true,
     timeout: 120000
   }

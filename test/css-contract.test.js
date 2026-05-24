@@ -105,3 +105,17 @@ test('advanced context scan loading animation contract is defined', async () => 
   assert.match(css, /\.advanced-context-card-loaded\b/);
   assert.match(css, /animation:\s*fadeUp\s+220ms\s+ease-out\s+both/);
 });
+
+test('inspector and finder polish styles are defined', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.inspector-resize-handle\b/);
+  assert.match(css, /cursor:\s*col-resize/);
+  assert.match(css, /\.inspector-resizing\b/);
+  assert.match(css, /@media\s*\(max-width:\s*779px\)/);
+  assert.match(css, /\.advanced-context-grid\b/);
+  assert.match(css, /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(220px,\s*1fr\)\)/);
+  assert.match(css, /\.filter-select\b/);
+  assert.match(css, /\.filter-disclosure\b/);
+  assert.match(css, /\.filter-disclosure\s*>\s*summary/);
+});

@@ -6,7 +6,7 @@ const host = `http://127.0.0.1:${port}`;
 
 module.exports = defineConfig({
   webServer: {
-    command: `npm run build && npx vite preview --host 127.0.0.1 --port ${port}`,
+    command: `node node_modules/vite/bin/vite.js build && node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port ${port}`,
     cwd: path.resolve(__dirname, '..'),
     url: host,
     reuseExistingServer: false,

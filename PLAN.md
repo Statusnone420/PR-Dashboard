@@ -30,7 +30,7 @@ The scan-line keyframes are correct and visually distinctive (2s cycle with 0/0.
 Current width is `100% / md:60% / lg:48%`. On a 3440px ultrawide the inspector becomes ~1651px — way too wide, splitting the screen unevenly. There is also no user override.
 
 - File: [index.html:172](index.html:172) — extend the className from `md:w-[60%] lg:w-[48%]` to `md:w-[60%] lg:w-[48%] xl:w-[44%] 2xl:w-[40%]`. Tighter defaults at wider breakpoints.
-- File: [index.html:172](index.html:172) — add a 6px-wide drag handle element on the left edge of `#inspector-overlay-drawer`: `<div class="inspector-resize-handle" aria-hidden="true"></div>` positioned absolutely at `left: 0; top: 0; bottom: 0; cursor: col-resize`.
+- File: [src/main.js](src/main.js) `openInspector()` — render the 6px-wide drag handle inside the inspector template as `<div class="inspector-resize-handle" aria-hidden="true"></div>`. Do not add it as a static child of `#inspector-overlay-drawer` in `index.html`, because `panel.innerHTML = ...` replaces drawer children on every inspector render.
 - New file: `src/inspectorResize.js` (matches the project's small-module convention — see `src/dashboardHero.js`, `src/contributionBrief.js`, `src/hiddenItems.js`, `src/boardConstants.js`, `src/boardMode.js`, `src/localAlerts.js`). Exports:
   - `clampWidth(rawWidth, viewport)` — pure, returns the bounded width
   - `bucketForViewport(viewport)` — pure, returns the storage bucket key (e.g. `'lg'`, `'xl'`, `'2xl'`)
@@ -77,9 +77,11 @@ After restyling, group Comments + Updated Date + State under a single collapsibl
 
 - [src/main.js](src/main.js) — inspector layout, animation constant, Advanced Context grid, Find Contributions hero/filters
 - [src/styles.css](src/styles.css) — sticky action strip surface, resize handle, optional new filter-disclosure / filter-select classes
-- [index.html](index.html:172) — inspector drawer classes + resize handle markup
+- [index.html](index.html:172) — inspector drawer width classes
 - New: [src/inspectorResize.js](src/inspectorResize.js) — drag handle behavior, bucketed width persistence, pure clamp/bucket helpers
 - New: [test/inspector-resize.test.js](test/inspector-resize.test.js) — unit coverage for the pure helpers
+- [docs/archived/PLAN.md](docs/archived/PLAN.md) — archived-plan banner pointing to this active plan
+- [STATE.md](STATE.md) — one compact top entry after implementation and verification
 
 ## Verification
 
@@ -107,4 +109,4 @@ After restyling, group Comments + Updated Date + State under a single collapsibl
 - Settings vs Profile boundary clarification
 - Hidden Results manager surfacing
 - Dashboard hero stickiness
-- Any change to scoring, enrichment, storage, routing, or API behavior
+- Any change to scoring, enrichment, storage, routing, or API behavior, except the two UI-only localStorage keys for inspector width and filter disclosure state

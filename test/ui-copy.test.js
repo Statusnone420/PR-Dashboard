@@ -178,6 +178,16 @@ test('match score v3 UI exposes compact confidence and inspector diagnostics', (
 test('inspector source order keeps decision brief before evidence and action plan', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+  const actionStrip = sliceBetween(
+    inspector,
+    '<!-- inspector-section:action-center -->',
+    '<!-- Scrollable Content Viewport -->'
+  );
+  const scrollContent = sliceBetween(
+    inspector,
+    '<!-- Scrollable Content Viewport -->',
+    '<!-- inspector-section:alerts -->'
+  );
   const evidence = sliceBetween(
     inspector,
     '<!-- inspector-section:score-evidence -->',
@@ -185,6 +195,8 @@ test('inspector source order keeps decision brief before evidence and action pla
   );
 
   assertSourceOrder(inspector, '<!-- inspector-section:action-center -->', '<!-- inspector-section:alerts -->');
+  assertSourceOrder(inspector, '<!-- Inspector Title Header -->', '<!-- inspector-section:action-center -->');
+  assertSourceOrder(inspector, '<!-- inspector-section:action-center -->', '<!-- Scrollable Content Viewport -->');
   assertSourceOrder(inspector, '<!-- inspector-section:alerts -->', '<!-- inspector-section:advanced-context -->');
   assertSourceOrder(inspector, '<!-- inspector-section:advanced-context -->', '${advancedEnrichmentHTML}');
   assertSourceOrder(inspector, '${advancedEnrichmentHTML}', '<!-- inspector-section:comment-enrichment -->');
@@ -205,6 +217,9 @@ test('inspector source order keeps decision brief before evidence and action pla
   assert.match(evidence, /\$\{fitScoreReasonsHTML\}/);
   assert.match(evidence, /\$\{passChipsHTML\}/);
   assert.doesNotMatch(evidence, /Score diagnostics/);
+  assert.match(actionStrip, /action-toolbar/);
+  assert.match(actionStrip, /Refresh this card/);
+  assert.doesNotMatch(scrollContent, /action-toolbar|Refresh this card|Open on GitHub/);
 });
 
 test('profile preferences UI does not auto-apply search filters', () => {
@@ -252,7 +267,8 @@ test('inspector advanced enrichment stays off result cards', () => {
   assert.match(mainJs, /Fetching timeline/);
   assert.match(mainJs, /Scanning setup files/);
   assert.match(mainJs, /Reading repo history/);
-  assert.match(mainJs, /ADVANCED_CONTEXT_MIN_LOADING_MS\s*=\s*300/);
+  assert.match(mainJs, /ADVANCED_CONTEXT_MIN_LOADING_MS\s*=\s*1200/);
+  assert.match(mainJs, /advanced-context-grid/);
   assert.match(mainJs, /Timeline inspected/);
   assert.match(mainJs, /Setup files inspected/);
   assert.match(mainJs, /Repo history inspected/);
@@ -264,6 +280,20 @@ test('inspector advanced enrichment stays off result cards', () => {
   assert.match(mainJs, /fadeDelay:\s*'0\.2s'/);
   assert.match(inspector, /advancedEnrichmentHTML/);
   assert.doesNotMatch(resultCards, /fetchIssueTimelineEnrichment|fetchRepoSetupEnrichment|fetchRepoHistoryEnrichment|Advanced context/);
+});
+
+test('inspector resize chrome is wired without changing storage or API contracts', () => {
+  const { indexHtml, mainJs } = readCopySources();
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(indexHtml, /xl:w-\[44%\]\s+2xl:w-\[40%\]/);
+  assert.match(mainJs, /attachResize/);
+  assert.match(mainJs, /inspectorResizeDetach/);
+  assert.match(mainJs, /inspectorTitleResizeObserver/);
+  assert.match(mainJs, /--inspector-title-height/);
+  assert.match(inspector, /data-inspector-title-header/);
+  assert.match(inspector, /class="inspector-resize-handle"/);
+  assert.match(inspector, /aria-hidden="true"/);
 });
 
 test('inspector rate-limit updates accept multi-bucket enrichment snapshots', () => {
@@ -330,6 +360,7 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
   const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
+  const moreFilters = sliceBetween(finder, '<details class="filter-disclosure"', '</details>');
 
   assert.match(resultCards, /% Match/);
   assert.match(resultCards, /Confidence:/);
@@ -339,7 +370,16 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
 
   assert.match(finder, /Quick filters/);
   assert.match(finder, /View GitHub query/);
+  assert.match(mainJs, /pr_dashboard_find_filters_expanded_v1/);
+  assert.match(finder, /More filters/);
+  assert.match(finder, /filter-select/);
+  assert.match(finder, /<h1 class="text-2xl[^"]*">Find your next contribution<\/h1>/);
+  assert.doesNotMatch(finder, /<h1 class="text-3xl[^"]*">Find your next contribution<\/h1>/);
   assert.doesNotMatch(finder, /GitHub query preview<\/div>\s*<code/);
+  assert.match(moreFilters, /Comments/);
+  assert.match(moreFilters, /Updated Date/);
+  assert.match(moreFilters, /Include closed issues/);
+  assert.match(moreFilters, /Unassigned only/);
 });
 
 test('board exposes compact mode without importing inspector tabs', () => {
@@ -468,7 +508,7 @@ test('visible app copy rejects banned product wording', () => {
 test('result cards and inspector action center do not expose proof log controls', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
-  const actionCenter = sliceBetween(mainJs, '<!-- Actions buttons inside details -->', '<!-- Description Block -->');
+  const actionCenter = sliceBetween(mainJs, '<!-- inspector-section:action-center -->', '<!-- Scrollable Content Viewport -->');
 
   assert.doesNotMatch(resultCards, /Proof Log|proof-log|proof-status|proofStatus/);
   assert.match(actionCenter, /Save issue/);

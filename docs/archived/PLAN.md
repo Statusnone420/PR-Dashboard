@@ -1,4 +1,6 @@
-# Match Score Full-System Implementation Plan
+# Archived Plan: Match Score Full-System Implementation Plan
+
+> This document is historical. The active implementation plan is `../../PLAN.md`.
 
 > **For agentic workers:** If your environment supports planning/execution sub-skills, use them. Otherwise, follow this `PLAN.md` task-by-task using the checkbox steps.
 

@@ -15,6 +15,13 @@ const viewports = [
   { width: 3440, height: 1440, file: 'board-a1-3440x1440.png', mobile: false }
 ];
 
+const inspectorViewports = [
+  { width: 1024, height: 768, file: 'inspector-polish-1024x768.png' },
+  { width: 1366, height: 768, file: 'inspector-polish-1366x768.png' },
+  { width: 1920, height: 1080, file: 'inspector-polish-1920x1080.png' },
+  { width: 3440, height: 1440, file: 'inspector-polish-3440x1440.png' }
+];
+
 function card(id, column, index, overrides = {}) {
   return {
     id,
@@ -31,6 +38,28 @@ function card(id, column, index, overrides = {}) {
     html_url: `https://github.com/TEAMMATES/teammates/issues/${id}`,
     ...overrides
   };
+}
+
+async function mockInspectorGitHub(page) {
+  await page.route('https://api.github.com/**', async route => {
+    const url = route.request().url();
+    const body = url.includes('/search/issues')
+      ? JSON.stringify({ items: [] })
+      : JSON.stringify([]);
+
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        'x-ratelimit-resource': url.includes('/search/') ? 'search' : 'core',
+        'x-ratelimit-limit': url.includes('/search/') ? '30' : '5000',
+        'x-ratelimit-remaining': url.includes('/search/') ? '29' : '4990',
+        'x-ratelimit-used': url.includes('/search/') ? '1' : '10',
+        'x-ratelimit-reset': '1770000000'
+      },
+      body
+    });
+  });
 }
 
 function seededBoard() {
@@ -197,7 +226,6 @@ test.describe('A1 board layout', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((board) => {
-      localStorage.clear();
       localStorage.setItem('pr_dashboard_board_cards', JSON.stringify(board));
     }, seededBoard());
   });
@@ -317,5 +345,111 @@ test.describe('A1 board layout', () => {
     expect(metrics.laneScrollTop).toBeGreaterThan(0);
 
     await page.screenshot({ path: path.join(screenshotDir, 'board-a1-1090x1212-crowded.png'), fullPage: false });
+  });
+
+  for (const viewport of inspectorViewports) {
+    test(`inspector polish holds at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await fs.mkdir(screenshotDir, { recursive: true });
+      await mockInspectorGitHub(page);
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto(`${baseURL}/#board`);
+
+      const firstCard = page.locator('.board-card-item').first();
+      await expect(firstCard).toBeVisible();
+      await firstCard.click();
+      await expect(page.locator('#inspector-overlay-drawer')).toBeVisible();
+      await page.waitForTimeout(350);
+
+      const beforeDrag = await page.evaluate(() => {
+        const drawer = document.getElementById('inspector-overlay-drawer');
+        return drawer.getBoundingClientRect().width;
+      });
+
+      const metrics = await page.evaluate(() => {
+        const drawer = document.getElementById('inspector-overlay-drawer');
+        const scroller = drawer.querySelector('.overflow-y-auto');
+        const action = drawer.querySelector('.action-toolbar');
+        const title = drawer.querySelector('[data-inspector-title-header]');
+        const grid = drawer.querySelector('.advanced-context-grid');
+        scroller.scrollTop = 800;
+
+        const drawerRect = drawer.getBoundingClientRect();
+        const actionRect = action.getBoundingClientRect();
+        const titleRect = title.getBoundingClientRect();
+        const cards = Array.from(drawer.querySelectorAll('.advanced-context-card'));
+        return {
+          documentHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+          drawerHorizontalOverflow: drawer.scrollWidth > drawer.clientWidth + 1,
+          scrollerScrollTop: scroller.scrollTop,
+          titleHeightVar: drawer.style.getPropertyValue('--inspector-title-height'),
+          actionVisibleAfterScroll: actionRect.top >= titleRect.bottom - 1 && actionRect.bottom <= drawerRect.bottom,
+          actionSurface: getComputedStyle(action).backgroundColor,
+          advancedColumns: getComputedStyle(grid).gridTemplateColumns
+            .split(' ')
+            .filter(value => Number.parseFloat(value) > 1)
+            .length,
+          clippedCards: cards.filter(card => card.scrollWidth > card.clientWidth + 1).map(card => card.textContent.trim().slice(0, 80))
+        };
+      });
+
+      expect(metrics.documentHorizontalOverflow).toBe(false);
+      expect(metrics.drawerHorizontalOverflow).toBe(false);
+      expect(metrics.scrollerScrollTop).toBeGreaterThan(100);
+      expect(metrics.titleHeightVar).toMatch(/px$/);
+      expect(metrics.actionVisibleAfterScroll).toBe(true);
+      expect(metrics.actionSurface).not.toBe('rgba(0, 0, 0, 0)');
+      expect(metrics.advancedColumns).toBeGreaterThanOrEqual(1);
+      expect(metrics.advancedColumns).toBeLessThanOrEqual(3);
+      expect(metrics.clippedCards).toEqual([]);
+
+      const handleBox = await page.locator('.inspector-resize-handle').boundingBox();
+      expect(handleBox).not.toBeNull();
+      await page.mouse.move(handleBox.x + 3, handleBox.y + 120);
+      await page.mouse.down();
+      await page.mouse.move(handleBox.x - 100, handleBox.y + 120);
+      await page.mouse.up();
+
+      const afterDrag = await page.evaluate(() => {
+        const drawer = document.getElementById('inspector-overlay-drawer');
+        return {
+          width: drawer.getBoundingClientRect().width,
+          stored: JSON.parse(localStorage.getItem('pr_dashboard_inspector_width_v1') || '{}')
+        };
+      });
+      expect(afterDrag.width).toBeGreaterThan(beforeDrag);
+      expect(Object.keys(afterDrag.stored).length).toBeGreaterThan(0);
+
+      await page.reload();
+      await expect(page.locator('.board-card-item').first()).toBeVisible();
+      await page.locator('.board-card-item').first().click();
+      await expect(page.locator('#inspector-overlay-drawer')).toBeVisible();
+      await page.waitForTimeout(350);
+      const reloadedWidth = await page.evaluate(() => document.getElementById('inspector-overlay-drawer').getBoundingClientRect().width);
+      expect(Math.abs(reloadedWidth - afterDrag.width)).toBeLessThanOrEqual(2);
+
+      await page.screenshot({ path: path.join(screenshotDir, viewport.file), fullPage: false });
+    });
+  }
+
+  test('inspector resize handle is hidden on mobile', async ({ page }) => {
+    await mockInspectorGitHub(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${baseURL}/#board`);
+    await page.locator('.board-card-item').first().click();
+    await expect(page.locator('#inspector-overlay-drawer')).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const drawer = document.getElementById('inspector-overlay-drawer');
+      const handle = drawer.querySelector('.inspector-resize-handle');
+      return {
+        handleDisplay: getComputedStyle(handle).display,
+        drawerInlineWidth: drawer.style.width,
+        drawerHorizontalOverflow: drawer.scrollWidth > drawer.clientWidth + 1
+      };
+    });
+
+    expect(metrics.handleDisplay).toBe('none');
+    expect(metrics.drawerInlineWidth).toBe('');
+    expect(metrics.drawerHorizontalOverflow).toBe(false);
   });
 });
