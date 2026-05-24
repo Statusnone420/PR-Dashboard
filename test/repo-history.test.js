@@ -100,7 +100,56 @@ test('fetchRepoHistoryEnrichment caches compact PR and label samples', async () 
   assert.equal(result.summary.recentMergedPrs, true);
   assert.equal(result.summary.activeSameLabelIssues, true);
   assert.equal(getCachedRepoHistoryEnrichment(issue(), storage, { now: Date.parse('2026-05-23T13:00:00.000Z') }).summary.recentMergedPrs, true);
+  const cachedResult = await fetchRepoHistoryEnrichment(issue(), {
+    now: Date.parse('2026-05-23T13:00:00.000Z'),
+    storage,
+    fetchImpl: async () => {
+      throw new Error('cache hit should not fetch');
+    }
+  });
+  assert.equal(cachedResult.fromCache, true);
+  assert.equal(cachedResult.rateLimit, null);
+  assert.equal(cachedResult.rateLimits, null);
   assert.doesNotMatch(storage.getItem(SCORE_ENRICHMENT_CACHE_KEY), /Do not persist|sample-token|Authorization|Bearer/i);
+});
+
+test('repo history returns both core and search rate-limit buckets', async () => {
+  const { fetchRepoHistoryEnrichment } = await import('../src/api/repoHistory.js');
+
+  const result = await fetchRepoHistoryEnrichment(issue(), {
+    now: Date.parse('2026-05-23T12:00:00.000Z'),
+    storage: createLocalStorage(),
+    fetchImpl: async (url) => {
+      if (url.includes('/pulls?')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'x-ratelimit-resource': 'core',
+            'x-ratelimit-remaining': '4996',
+            'x-ratelimit-limit': '5000'
+          }
+        });
+      }
+      return new Response(JSON.stringify({ total_count: 0, items: [] }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'x-ratelimit-resource': 'search',
+          'x-ratelimit-remaining': '27',
+          'x-ratelimit-limit': '30'
+        }
+      });
+    }
+  });
+
+  assert.equal(result.rateLimit.resource, 'search');
+  assert.equal(result.rateLimit.remaining, 27);
+  assert.equal(result.rateLimits.core.resource, 'core');
+  assert.equal(result.rateLimits.core.remaining, 4996);
+  assert.equal(result.rateLimits.search.resource, 'search');
+  assert.equal(result.rateLimits.search.remaining, 27);
+  assert.equal(result.rateLimits.lastResource, 'search');
 });
 
 test('repo history excludes current issue from same-label activity sample', async () => {

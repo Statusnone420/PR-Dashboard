@@ -390,3 +390,11 @@
 - Added regression coverage for page-two comment ownership/blocking signals, page-two timeline PR/assignment signals, final-page rate-limit reporting, and blocked non-GitHub pagination links.
 - Verification on 2026-05-24: `node --test test/github-read-only.test.js test/issue-comments.test.js test/issue-timeline.test.js` passed 15/15 after first failing against the old one-page behavior.
 - Remaining risk: full pagination can consume more GitHub core requests for very active issues, especially without a token.
+
+## 2026-05-24 Duplicate Timeline + Repo Rate-Limit Review Fix
+
+- Timeline summaries now treat duplicate/blocked event names as caution signals, covering GitHub duplicate timeline events even when no body text mentions duplication.
+- Repo-history enrichment now returns both core and search rate-limit buckets while preserving the legacy single `rateLimit` field for compatibility.
+- Inspector rate-limit updates now accept multi-bucket enrichment snapshots through the existing `store.setRateLimits` path.
+- Verification on 2026-05-24: `node --test test/issue-timeline.test.js test/repo-history.test.js test/ui-copy.test.js` passed 37/37 after first failing against the old event-name and single-bucket behavior.
+- Remaining risk: live GitHub rate-limit headers can vary, and duplicate/blocked timeline detection remains intentionally conservative to event names and existing text fields.

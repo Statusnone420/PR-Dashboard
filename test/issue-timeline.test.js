@@ -92,6 +92,18 @@ test('timeline summary does not over-penalize weak non-PR references', async () 
   assert.deepEqual(summary.reasons, ['Timeline inspected without strong claim signals']);
 });
 
+test('timeline summary treats duplicate event types as caution signals', async () => {
+  const { summarizeIssueTimeline } = await import('../src/api/issueTimeline.js');
+
+  const summary = summarizeIssueTimeline([
+    { event: 'marked_as_duplicate' },
+    { event: 'unmarked_as_duplicate' }
+  ]);
+
+  assert.equal(summary.duplicateOrBlockedReference, true);
+  assert.deepEqual(summary.reasons, ['Timeline mentions duplicate or blocked context']);
+});
+
 test('fetchIssueTimelineEnrichment sends one GET and stores compact timeline summary', async () => {
   const { SCORE_ENRICHMENT_CACHE_KEY } = await import('../src/api/issueComments.js');
   const { fetchIssueTimelineEnrichment, getCachedIssueTimelineEnrichment } = await import('../src/api/issueTimeline.js');

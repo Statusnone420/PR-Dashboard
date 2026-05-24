@@ -551,7 +551,11 @@ function renderAdvancedEnrichmentCard(states = {}) {
 
 function updateInspectorRateLimit(rateLimit) {
   if (!rateLimit) return;
-  store.setRateLimit(rateLimit, rateLimit.resource || 'core', { notify: false });
+  if (rateLimit.core || rateLimit.search) {
+    store.setRateLimits(rateLimit, { notify: false });
+  } else {
+    store.setRateLimit(rateLimit, rateLimit.resource || 'core', { notify: false });
+  }
   renderApiLimitsTracker(store.rateLimits);
 }
 
@@ -639,7 +643,7 @@ async function ensureInspectorAdvancedEnrichment(issue) {
         token: store.githubToken,
         storage: localStorage
       });
-      updateInspectorRateLimit(result.rateLimit);
+      updateInspectorRateLimit(result.rateLimits || result.rateLimit);
       return {
         step,
         nextState: {

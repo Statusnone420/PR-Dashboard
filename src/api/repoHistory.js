@@ -119,7 +119,7 @@ export async function fetchRepoHistoryEnrichment(issue, options = {}) {
   const storage = getStorage(options.storage);
   const cached = options.forceRefresh ? null : getCachedRepoHistoryEnrichment(issue, storage, options);
   if (cached) {
-    return { summary: cached.summary, fromCache: true, cached: true, rateLimit: null };
+    return { summary: cached.summary, fromCache: true, cached: true, rateLimit: null, rateLimits: null };
   }
 
   const token = options.token || '';
@@ -155,6 +155,11 @@ export async function fetchRepoHistoryEnrichment(issue, options = {}) {
     summary,
     fromCache: false,
     cached: Boolean(cachedEntry),
-    rateLimit: labelRateLimit || pullRateLimit
+    rateLimit: labelRateLimit || pullRateLimit,
+    rateLimits: {
+      core: pullRateLimit,
+      search: labelRateLimit,
+      lastResource: 'search'
+    }
   };
 }

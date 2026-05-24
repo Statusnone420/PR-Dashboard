@@ -223,6 +223,15 @@ test('inspector advanced enrichment stays off result cards', () => {
   assert.doesNotMatch(resultCards, /fetchIssueTimelineEnrichment|fetchRepoSetupEnrichment|fetchRepoHistoryEnrichment|Advanced context/);
 });
 
+test('inspector rate-limit updates accept multi-bucket enrichment snapshots', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const updater = sliceBetween(mainJs, 'function updateInspectorRateLimit', 'function rerenderInspectorForKey');
+
+  assert.match(updater, /store\.setRateLimits\(rateLimit,\s*\{\s*notify:\s*false\s*\}\)/);
+  assert.match(updater, /store\.setRateLimit\(rateLimit,\s*rateLimit\.resource \|\| 'core',\s*\{\s*notify:\s*false\s*\}\)/);
+  assert.match(mainJs, /updateInspectorRateLimit\(result\.rateLimits \|\| result\.rateLimit\)/);
+});
+
 test('help and feedback routes are included in navigation setup', () => {
   const { indexHtml, mainJs } = readCopySources();
 

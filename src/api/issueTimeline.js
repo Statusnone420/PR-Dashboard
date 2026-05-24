@@ -90,7 +90,10 @@ export function summarizeIssueTimeline(events = []) {
     if (name === 'renamed') {
       renamed = true;
     }
-    if (/duplicate|blocked/i.test(String(item?.body || item?.commit_message || item?.label?.name || ''))) {
+    const duplicateBlockedText = [name, item?.body, item?.commit_message, item?.label?.name]
+      .map((value) => String(value || ''))
+      .join(' ');
+    if (/duplicate|blocked/i.test(duplicateBlockedText)) {
       duplicateOrBlockedReference = true;
     }
   }
