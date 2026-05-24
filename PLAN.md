@@ -3,8 +3,6 @@
 ## Summary
 PR Dashboard already has a strong contribution-finding idea, a coherent dark theme, and unusually useful scoring/explainability, but the product currently makes the user work too hard to decide what to do next. This updated plan replaces the earlier React/TSX assumptions with the actual vanilla JS + Tailwind architecture, folds in the premium micro-interactions, and keeps the work focused on one outcome: faster, calmer contribution decisions.
 
-The completed Match Score full-system implementation plan remains archived at `docs/archive/2026-05-23-match-score-full-system-implementation-plan.md`; this root plan is now the active UX sweep.
-
 Top production risks to fix first: inspector overload, inconsistent local-state counts, chip-heavy cards, excessive Find Contributions header chrome, empty-board dead space, and Profile/Settings scope creep. The Sonnet micro-interactions are worth adding, but they should support the simplified decision flow rather than decorate the current dense layout.
 
 Audit baseline used for prioritization:

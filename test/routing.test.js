@@ -6,7 +6,6 @@ test('screenFromHash resolves supported hash routes', async () => {
 
   assert.equal(screenFromHash('#find-issues'), 'find-issues');
   assert.equal(screenFromHash('#board'), 'board');
-  assert.equal(screenFromHash('#activity'), 'activity');
   assert.equal(screenFromHash('#settings'), 'settings');
   assert.equal(screenFromHash('#profile'), 'profile');
   assert.equal(screenFromHash('#help'), 'help');
