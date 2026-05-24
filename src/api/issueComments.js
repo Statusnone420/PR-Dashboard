@@ -1,5 +1,5 @@
 import { getCanonicalIssueKey, getIssueNumber, getRepoDisplayName } from '../issueKeys.js';
-import { isGitHubApiUrl } from '../security.js';
+import { fetchPaginatedReadOnlyGitHubJson } from './githubReadOnly.js';
 
 export const SCORE_ENRICHMENT_CACHE_KEY = 'pr_dashboard_score_enrichment_cache_v1';
 export const ISSUE_COMMENTS_TTL_MS = 6 * 60 * 60 * 1000;
@@ -162,35 +162,6 @@ export function getIssueCommentsCacheKey(issue) {
   return issueKeyParts(issue)?.key || null;
 }
 
-function createIssueCommentsRequestOptions(url, token = '') {
-  if (!isGitHubApiUrl(url)) {
-    throw new Error('GitHub issue comments request blocked: only https://api.github.com requests are allowed.');
-  }
-  return {
-    method: 'GET',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(String(token || '').trim() ? { Authorization: `Bearer ${String(token).trim()}` } : {})
-    }
-  };
-}
-
-function rateLimitFromResponse(response, options = {}) {
-  const number = value => {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  return {
-    resource: String(response.headers.get('x-ratelimit-resource') || 'core').toLowerCase() === 'search' ? 'search' : 'core',
-    remaining: number(response.headers.get('x-ratelimit-remaining')),
-    limit: number(response.headers.get('x-ratelimit-limit')),
-    used: number(response.headers.get('x-ratelimit-used')),
-    reset: number(response.headers.get('x-ratelimit-reset')),
-    updatedAt: options.nowIso || new Date().toISOString()
-  };
-}
-
 export function summarizeIssueComments(comments = []) {
   const list = Array.isArray(comments) ? comments : [];
   let maintainerEncouragement = false;
@@ -296,15 +267,15 @@ export async function fetchIssueCommentsEnrichment(issue, options = {}) {
   const url = buildIssueCommentsApiUrl(issue);
   const token = options.token || '';
   const fetchImpl = options.fetchImpl || fetch;
-  const response = await fetchImpl(url, createIssueCommentsRequestOptions(url, token));
-  const rateLimit = rateLimitFromResponse(response, { nowIso: isoFromMs(nowMs(options)) });
+  const { items, rateLimit } = await fetchPaginatedReadOnlyGitHubJson(url, {
+    token,
+    fetchImpl,
+    fallbackResource: 'core',
+    now: isoFromMs(nowMs(options)),
+    errorMessage: 'GitHub issue comments failed'
+  });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `GitHub issue comments failed with status code ${response.status}`);
-  }
-
-  const summary = summarizeIssueComments(await response.json());
+  const summary = summarizeIssueComments(items);
   const cachedEntry = saveIssueCommentEnrichment(issue, summary, storage, {
     now: nowMs(options),
     tokenUsed: Boolean(String(token).trim())

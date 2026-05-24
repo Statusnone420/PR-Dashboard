@@ -73,6 +73,56 @@ test('fetchIssueCommentsEnrichment sends GET with Authorization only to GitHub A
   assert.equal(result.rateLimit.resource, 'core');
 });
 
+test('fetchIssueCommentsEnrichment follows pagination for newer comment signals', async () => {
+  const { fetchIssueCommentsEnrichment } = await import('../src/api/issueComments.js');
+  const requests = [];
+
+  const result = await fetchIssueCommentsEnrichment(issue(), {
+    now: Date.parse('2026-05-23T12:00:00.000Z'),
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init });
+      if (url.includes('page=2')) {
+        return new Response(JSON.stringify([
+          {
+            body: 'I am working on this, but it is blocked by setup work.',
+            author_association: 'CONTRIBUTOR',
+            user: { login: 'contributor', type: 'User' }
+          }
+        ]), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'x-ratelimit-resource': 'core',
+            'x-ratelimit-remaining': '4997'
+          }
+        });
+      }
+      return new Response(JSON.stringify([
+        {
+          body: 'Initial discussion.',
+          author_association: 'NONE',
+          user: { login: 'reporter', type: 'User' }
+        }
+      ]), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          link: '<https://api.github.com/repos/TEAMMATES/teammates/issues/13997/comments?per_page=100&page=2>; rel="next"',
+          'x-ratelimit-resource': 'core',
+          'x-ratelimit-remaining': '4998'
+        }
+      });
+    },
+    storage: createLocalStorage()
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(result.summary.totalComments, 2);
+  assert.equal(result.summary.ownershipClaim, true);
+  assert.equal(result.summary.blockedHint, true);
+  assert.equal(result.rateLimit.remaining, 4997);
+});
+
 test('comment summary detects maintainer encouragement, ownership claims, and blocked hints', async () => {
   const { summarizeIssueComments } = await import('../src/api/issueComments.js');
 

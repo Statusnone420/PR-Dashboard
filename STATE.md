@@ -382,3 +382,11 @@
 - Password-manager suppression attributes remain on the token input; token storage behavior was not changed.
 - Verification on 2026-05-24: `node --test test/ui-copy.test.js` passed 25/25 after first failing against the old `type="text"` behavior.
 - Remaining risk: native password inputs can still trigger some password-manager heuristics, but hidden-by-default masking no longer depends on non-standard CSS.
+
+## 2026-05-24 Full Enrichment Pagination Review Fix
+
+- Added shared read-only GitHub pagination for JSON array endpoints, following `rel="next"` links until no next page remains and validating every page URL through the GitHub API guard.
+- Issue comments and issue timeline enrichment now inspect all returned pages instead of only the first 100 comments/events, preserving existing summary, cache, scoring, and inspector data shapes.
+- Added regression coverage for page-two comment ownership/blocking signals, page-two timeline PR/assignment signals, final-page rate-limit reporting, and blocked non-GitHub pagination links.
+- Verification on 2026-05-24: `node --test test/github-read-only.test.js test/issue-comments.test.js test/issue-timeline.test.js` passed 15/15 after first failing against the old one-page behavior.
+- Remaining risk: full pagination can consume more GitHub core requests for very active issues, especially without a token.

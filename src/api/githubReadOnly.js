@@ -39,3 +39,48 @@ export function rateLimitFromReadOnlyResponse(response, fallbackResource = 'core
     updatedAt: options.now || new Date().toISOString()
   };
 }
+
+function getNextLinkUrl(linkHeader) {
+  const links = String(linkHeader || '').split(',');
+  for (const link of links) {
+    const match = link.match(/<([^>]+)>\s*;\s*rel="next"/i);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+export async function fetchPaginatedReadOnlyGitHubJson(url, options = {}) {
+  const fetchImpl = options.fetchImpl || fetch;
+  const token = options.token || '';
+  const fallbackResource = options.fallbackResource || 'core';
+  const now = options.now || new Date().toISOString();
+  const errorMessage = options.errorMessage || 'GitHub paginated request failed';
+  const items = [];
+  const seenUrls = new Set();
+  let nextUrl = url;
+  let rateLimit = null;
+
+  while (nextUrl) {
+    if (seenUrls.has(nextUrl)) {
+      throw new Error('GitHub paginated request failed: repeated pagination URL.');
+    }
+    seenUrls.add(nextUrl);
+
+    const response = await fetchImpl(nextUrl, createReadOnlyGitHubRequestOptions(nextUrl, token));
+    rateLimit = rateLimitFromReadOnlyResponse(response, fallbackResource, { now });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `${errorMessage} with status code ${response.status}`);
+    }
+
+    const pageItems = await response.json();
+    if (!Array.isArray(pageItems)) {
+      throw new Error(`${errorMessage}: expected a JSON array response.`);
+    }
+    items.push(...pageItems);
+    nextUrl = getNextLinkUrl(response.headers.get('link'));
+  }
+
+  return { items, rateLimit };
+}

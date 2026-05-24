@@ -1,5 +1,5 @@
 import { cleanReason, getCachedIssueEnrichmentEntry, getStorage, isoFromMs, nowMs, saveIssueEnrichmentEntry } from './enrichmentCache.js';
-import { createReadOnlyGitHubRequestOptions, rateLimitFromReadOnlyResponse } from './githubReadOnly.js';
+import { fetchPaginatedReadOnlyGitHubJson } from './githubReadOnly.js';
 import { getCanonicalIssueKey, getIssueNumber, getRepoDisplayName } from '../issueKeys.js';
 
 const TIMELINE_CACHE_TYPE = 'issue-timeline';
@@ -134,15 +134,15 @@ export async function fetchIssueTimelineEnrichment(issue, options = {}) {
   const url = buildIssueTimelineApiUrl(issue);
   const token = options.token || '';
   const fetchImpl = options.fetchImpl || fetch;
-  const response = await fetchImpl(url, createReadOnlyGitHubRequestOptions(url, token));
-  const rateLimit = rateLimitFromReadOnlyResponse(response, 'core', { now: isoFromMs(nowMs(options)) });
+  const { items, rateLimit } = await fetchPaginatedReadOnlyGitHubJson(url, {
+    token,
+    fetchImpl,
+    fallbackResource: 'core',
+    now: isoFromMs(nowMs(options)),
+    errorMessage: 'GitHub issue timeline failed'
+  });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `GitHub issue timeline failed with status code ${response.status}`);
-  }
-
-  const summary = summarizeIssueTimeline(await response.json());
+  const summary = summarizeIssueTimeline(items);
   const cachedEntry = saveIssueTimelineEnrichment(issue, summary, storage, {
     now: nowMs(options),
     tokenUsed: Boolean(String(token).trim())
