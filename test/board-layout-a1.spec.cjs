@@ -3,7 +3,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const constantsPromise = import('../src/boardConstants.js');
 
-const baseURL = process.env.PR_DASHBOARD_BASE_URL || 'http://127.0.0.1:3000';
+const layoutPort = process.env.PR_DASHBOARD_LAYOUT_PORT || '3000';
+const baseURL = process.env.PR_DASHBOARD_BASE_URL || `http://127.0.0.1:${layoutPort}`;
 const screenshotDir = 'D:/PR Dashboard/qa_screenshots/board-layout-a1';
 
 const viewports = [
