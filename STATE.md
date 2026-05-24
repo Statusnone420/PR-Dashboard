@@ -405,3 +405,11 @@
 - Unlabeled issues skip the impossible search request and return a core-only rate-limit snapshot with `lastResource: 'core'`; labeled issues keep the existing core plus search snapshot.
 - Verification on 2026-05-24: `node --test test/repo-history.test.js` passed 6/6 after first failing against the old no-label throw.
 - Remaining risk: unlabeled issues have no same-label freshness signal, so repo history for them is intentionally PR-sample only.
+
+## 2026-05-24 Hidden Lookup Suppression Fix
+
+- Removed the Lookup exception that let hidden issues and hidden repositories reappear as result cards with `Hidden locally` recovery UI.
+- Find Contributions and Lookup now both filter hidden results before rendering, scoring, sorting, card actions, and result-count display. Hidden item recovery remains in Settings and inspector contexts, not search results.
+- Browser smoke on `http://127.0.0.1:5173/#find-issues`: looked up `facebook/react#1`, hid it, repeated the exact Lookup, and verified `Showing 0 issues` with no result card, `Hidden locally`, `Unhide`, or hidden-count hint.
+- Verification on 2026-05-24: `node --test test/ui-copy.test.js test/hidden-items.test.js`, `npm test`, `npm run build`, and `git diff --check` passed.
+- Remaining risk: GitHub Search can still return low-quality automation-created issues, but the matcher flags them as likely pass/low match; this change only enforces hidden suppression.

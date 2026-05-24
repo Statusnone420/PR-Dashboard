@@ -326,12 +326,17 @@ test('interactive chrome uses app tooltips instead of native title attributes', 
   assert.match(mainJs, /data-tooltip="\$\{safeColumn\}: \$\{lane\.count\}"/);
 });
 
-test('lookup hidden recovery is represented without inspector proof status', () => {
+test('lookup and search keep hidden results out of result cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
 
-  assert.match(mainJs, /Hidden locally/);
-  assert.match(mainJs, /Lookup can still recover this item/);
-  assert.match(mainJs, /applyHiddenFilter/);
+  assert.match(mainJs, /return filterHiddenIssues\(items\)/);
+  assert.match(mainJs, /const visibleResults = Array\.isArray\(results\) \? filterHiddenIssues\(results\) : results/);
+  assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
+  assert.doesNotMatch(mainJs, /const applyHiddenFilter = store\.lastSearchMode !== 'lookup'/);
+  assert.doesNotMatch(mainJs, /hiddenCountText|hiddenResultsCount/);
+  assert.doesNotMatch(cardsRenderer, /Hidden locally|unhide-card-btn|!applyHiddenFilter/);
+  assert.doesNotMatch(mainJs, /Lookup can still recover this item/);
   assert.doesNotMatch(mainJs, /proof-status-chip/);
   assert.doesNotMatch(mainJs, /Proof Log status/);
   assert.doesNotMatch(mainJs, /Not in Proof Log/);

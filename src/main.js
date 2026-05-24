@@ -684,7 +684,7 @@ function findSavedBoardCard(issue) {
 
 function getSearchItemsForActions() {
   const items = store.searchResults || [];
-  return store.lastSearchMode === 'lookup' ? items : filterHiddenIssues(items);
+  return filterHiddenIssues(items);
 }
 
 function updateInspectorTaskVisualState(checkbox) {
@@ -1736,12 +1736,7 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
-  const applyHiddenFilter = store.lastSearchMode !== 'lookup';
-  const visibleResults = Array.isArray(results) && applyHiddenFilter ? filterHiddenIssues(results) : results;
-  const hiddenResultsCount = Array.isArray(results) && Array.isArray(visibleResults) && applyHiddenFilter
-    ? results.length - visibleResults.length
-    : 0;
-  const hiddenCountText = hiddenResultsCount > 0 ? ` (${hiddenResultsCount} hidden)` : '';
+  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.draftFilters;
@@ -1824,16 +1819,16 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${visibleResults ? renderIssueCardsList(visibleResults, { applyHiddenFilter }) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
       </div>
     `;
-    countText = visibleResults ? `Showing ${visibleResults.length} issues${hiddenCountText}` : 'Request failed';
+    countText = visibleResults ? `Showing ${visibleResults.length} issues` : 'Request failed';
   } else if (visibleResults !== null) {
-    countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}${hiddenCountText}`;
+    countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}`;
     if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(visibleResults, { applyHiddenFilter });
+      resultsHTML = renderIssueCardsList(visibleResults);
     }
   } else {
     // Initial screen state - explain Token details
@@ -2168,10 +2163,9 @@ function renderFindIssues(container) {
 /**
  * Render lists of cards
  */
-function renderIssueCardsList(issuesList, options = {}) {
+function renderIssueCardsList(issuesList) {
   // Sort list if local sorting is needed
-  const applyHiddenFilter = options.applyHiddenFilter !== false;
-  let sorted = applyHiddenFilter ? filterHiddenIssues(issuesList) : [...(issuesList || [])];
+  let sorted = filterHiddenIssues(issuesList);
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
@@ -2210,17 +2204,10 @@ function renderIssueCardsList(issuesList, options = {}) {
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
     const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
-    const hiddenLocally = !applyHiddenFilter && (isIssueHidden(issue) || isRepoHidden(issue));
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
         <span class="material-symbols-outlined text-[15px]">warning</span>
         Not a contribution candidate
-      </div>
-    ` : '';
-    const hiddenBadgeHTML = hiddenLocally ? `
-      <div class="rounded border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-primary flex items-center gap-2">
-        <span class="material-symbols-outlined text-[15px]">visibility_off</span>
-        Hidden locally
       </div>
     ` : '';
     const repoUnavailableHTML = repoMetadataUnavailable ? `
@@ -2258,7 +2245,6 @@ function renderIssueCardsList(issuesList, options = {}) {
           <span class="text-tertiary">Why:</span> ${escapeHTML(topReason || 'Review the inspector for fit details.')}
         </p>
         ${lookupWarningHTML}
-        ${hiddenBadgeHTML}
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
@@ -2286,10 +2272,6 @@ function renderIssueCardsList(issuesList, options = {}) {
               <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
               ${saved ? 'View on board' : 'Save'}
             </button>
-            ${hiddenLocally ? `<button class="action-button interactive-button-secondary px-3 py-1.5 text-xs unhide-card-btn" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">visibility</span>
-              Unhide
-            </button>` : ''}
             <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
               Hide
@@ -2392,19 +2374,6 @@ function bindIssueCardListEvents() {
     });
   });
 
-  document.querySelectorAll('.unhide-card-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const issueId = parseInt(btn.getAttribute('data-id'), 10);
-      const issue = getSearchItemsForActions().find(i => i.id === issueId);
-      if (issue) {
-        const issueKey = getCanonicalIssueKey(issue);
-        const repoKey = getCanonicalRepoKey(issue);
-        if (issueKey) store.unhideHiddenItem('issue', issueKey);
-        if (repoKey) store.unhideHiddenItem('repo', repoKey);
-      }
-    });
-  });
 }
 
 /**
@@ -3892,7 +3861,7 @@ function openInspector() {
     <div class="rounded-lg border border-primary/25 bg-primary/10 p-4">
       <div>
         <h3 class="text-sm font-semibold text-primary mb-1">Hidden locally</h3>
-        <p class="text-sm text-on-surface-variant">Hidden Results suppress Find Contributions suggestions only. Lookup can still recover this item.</p>
+        <p class="text-sm text-on-surface-variant">Hidden items stay out of Find Contributions and Lookup results.</p>
       </div>
     </div>
   ` : '';
