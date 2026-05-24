@@ -45,6 +45,17 @@ test('board uses responsive grid contract instead of fixed horizontal row', asyn
   assert.doesNotMatch(css, /w-\[280px\]|shrink-0/);
 });
 
+test('board compact mode styles are defined without inspector tab styles', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.board-compact-layout\b/);
+  assert.match(css, /\.board-compact-cards\b/);
+  assert.match(css, /\.board-compact-card\b/);
+  assert.match(css, /\.board-compact-lanes\b/);
+  assert.match(css, /\.board-compact-lane-row\b/);
+  assert.doesNotMatch(css, /\.inspector-tab\b/);
+});
+
 test('app scrollbars and tooltip contracts are defined in CSS', async () => {
   const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
 

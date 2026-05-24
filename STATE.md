@@ -1,5 +1,14 @@
 # PR Dashboard State
 
+## 2026-05-24 UX Salvage From TEST-UX
+
+- Salvaged the narrow `TEST-UX` improvements onto `dev` without merging the branch wholesale. Added the Activity route/nav item, kept Profile focused on identity/local contribution preferences, moved Proof Log, Review reminders, and learned feedback into Activity, and left export/import/reset controls in Settings.
+- Added session-local Board view switching with auto Compact mode when active non-closed board work is three cards or fewer, plus a Full Kanban toggle that preserves the existing A1 board layout. Compact mode shows a dense active-card list with lane, exact `% Match`, confidence, next move, Pass, move-forward, and Inspect actions.
+- Reduced Find Contributions card noise while preserving exact score visibility: cards now keep `% Match` and Confidence visible, show one primary GitHub label plus `+N labels`, add a quiet one-line `Why:` reason, and move quick filters into the filter sidebar. The GitHub query preview is now behind a `View GitHub query` disclosure.
+- Preserved the current single-scroll inspector and Advanced Context scan-line loading. No inspector tabs, `Overview` / `Evidence` / `Action` tab flow, or hidden/multi-click inspection model was imported.
+- Verification on 2026-05-24: board mode tests were written first and failed for missing `src/boardMode.js`; routing/copy/CSS tests failed for missing Activity, compact board, Profile split, and compact styles before implementation. Final `npm test` passed 221/221, `npm run build` passed, `npm run test:layout` passed 9/9, and the in-app browser smoke at `http://127.0.0.1:5174` verified Profile cleanup, Activity page, Board Compact/Full Kanban toggle, Find Contributions quick filters/query disclosure/exact score card, and inspector opened from a result card with Action center plus Advanced context and no Overview/Evidence tabs.
+- Remaining risk: the in-app browser inspector smoke used one live public GitHub Lookup result from `TEAMMATES/teammates#13997`, so that exact issue's live state and GitHub rate limits can change. Rendered browser validation was Chromium-only.
+
 ## 2026-05-23 Advanced Context Scan-Line Loading
 
 - Replaced the three inspector Advanced Context loading cards with the Option B scan-line treatment: `Fetching timeline`, `Scanning setup files`, and `Reading repo history` now render a 1px `#378ADD` scan line, staggered scan delays of `0s`, `0.4s`, and `0.8s`, three pulsing colored dots, and pulsing skeleton rows on the `#0d1117` / `#1a2332` loading surface.

@@ -13,6 +13,7 @@ import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
 import { summarizeDashboardMetrics } from './dashboardMetrics.js';
+import { summarizeAppMetrics } from './appMetrics.js';
 import { buildContributionBrief } from './contributionBrief.js';
 import { filterHiddenIssues, isIssueHidden, isRepoHidden, listHiddenItems } from './hiddenItems.js';
 import { REVIEW_FLOW_COLORS, summarizeReviewFlow } from './dashboardReviewFlow.js';
@@ -23,6 +24,7 @@ import { buildLocalAlerts } from './localAlerts.js';
 import { isGitHubActivityVisible } from './githubActivity.js';
 import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
+import { getBoardMode } from './boardMode.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -45,6 +47,7 @@ const inspectorRepoSetupEnrichmentStates = new Map();
 const inspectorRepoHistoryEnrichmentStates = new Map();
 const ADVANCED_CONTEXT_MIN_LOADING_MS = 300;
 let activeAdvancedContextIssueKey = '';
+let boardViewMode = 'auto';
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -108,6 +111,28 @@ function getConfidenceTone(level) {
   if (level === 'High') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
   if (level === 'Medium') return 'border-primary/20 bg-primary/10 text-primary';
   return 'border-error/25 bg-error-container/10 text-error';
+}
+
+function getIssueLabelNames(labels = []) {
+  return (labels || [])
+    .map(label => String(typeof label === 'object' ? label.name : label || '').trim())
+    .filter(Boolean);
+}
+
+function getIssueLabelCount(labels = []) {
+  return getIssueLabelNames(labels).length;
+}
+
+function getPrimaryIssueLabel(labels = []) {
+  const names = getIssueLabelNames(labels);
+  const preferred = names.find(name => /good first issue|help wanted|documentation|docs|bug/i.test(name));
+  return preferred || names[0] || '';
+}
+
+function getIssueLabelTone(name = '') {
+  if (/help wanted|good first/i.test(name)) return 'border-primary/30 bg-primary/10 text-primary';
+  if (/enhancement|feature/i.test(name)) return 'border-tertiary/30 bg-tertiary/10 text-tertiary';
+  return 'border-outline-variant bg-surface-dim text-on-surface-variant';
 }
 
 function getStageLabel(stage) {
@@ -684,6 +709,7 @@ function setupNavigation() {
     { id: 'dashboard', navId: 'tab-dashboard', mobileId: 'mobile-tab-dashboard' },
     { id: 'find-issues', navId: 'tab-find-issues', mobileId: 'mobile-tab-find-issues' },
     { id: 'board', navId: 'tab-board', mobileId: 'mobile-tab-board' },
+    { id: 'activity', navId: 'tab-activity', mobileId: 'mobile-tab-activity' },
     { id: 'settings', navId: 'btn-settings', mobileId: 'mobile-tab-settings' },
     { id: 'help', navId: 'tab-help', mobileId: 'mobile-tab-help' },
     { id: 'feedback', navId: 'tab-feedback', mobileId: 'mobile-tab-feedback' }
@@ -901,6 +927,7 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'tab-dashboard',
     'find-issues': 'tab-find-issues',
     'board': 'tab-board',
+    'activity': 'tab-activity',
     'settings': 'btn-settings',
     'help': 'tab-help',
     'feedback': 'tab-feedback'
@@ -927,6 +954,7 @@ function updateSidebarActiveState(activeScreen) {
     'dashboard': 'mobile-tab-dashboard',
     'find-issues': 'mobile-tab-find-issues',
     'board': 'mobile-tab-board',
+    'activity': 'mobile-tab-activity',
     'settings': 'mobile-tab-settings',
     'help': 'mobile-tab-help',
     'feedback': 'mobile-tab-feedback'
@@ -1148,6 +1176,9 @@ function renderActiveScreen() {
       break;
     case 'board':
       renderBoard(container);
+      break;
+    case 'activity':
+      renderActivity(container);
       break;
     case 'settings':
       renderSettings(container);
@@ -1858,26 +1889,10 @@ function renderFindIssues(container) {
               Search
             </button>
           </div>
-          <div class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
-            <div class="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1">GitHub query preview</div>
-            <code class="block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
-          </div>
-          
-          <!-- Presets -->
-          <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
-              <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
-              <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
-              <span class="material-symbols-outlined text-[16px]">description</span> Documentation Only
-            </button>
-            <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
-              <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
-            </button>
-          </div>
+          <details class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
+            <summary class="cursor-pointer text-xs font-medium text-on-surface-variant">View GitHub query</summary>
+            <code class="mt-2 block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
+          </details>
         </div>
       </section>
       
@@ -1900,6 +1915,24 @@ function renderFindIssues(container) {
                 <span class="text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">Use filters in Lookup</span>
               </label>
             ` : ''}
+          </div>
+
+          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Quick filters</h3>
+            <div class="flex flex-wrap gap-2">
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
+                <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
+                <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
+                <span class="material-symbols-outlined text-[16px]">description</span> Docs
+              </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
+                <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
+              </button>
+            </div>
           </div>
           
           <!-- Language Filter -->
@@ -2171,6 +2204,7 @@ function renderIssueCardsList(issuesList, options = {}) {
     const issueBody = escapeHTML(issue.body || 'No summary description provided.');
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
+    const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const hiddenLocally = !applyHiddenFilter && (isIssueHidden(issue) || isRepoHidden(issue));
     const lookupWarningHTML = lookupRisky ? `
@@ -2189,15 +2223,15 @@ function renderIssueCardsList(issuesList, options = {}) {
       <span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">Repo metadata unavailable</span>
     ` : '';
 
-    const labelsHTML = (issue.labels || []).slice(0, 3).map(l => {
-      const name = String(typeof l === 'object' ? l.name : l || '');
-      const tone = name.includes('help wanted') || name.includes('good first') 
-        ? 'border-primary/30 bg-primary/10 text-primary' 
-        : name.includes('enhancement') || name.includes('feature') 
-          ? 'border-tertiary/30 bg-tertiary/10 text-tertiary'
-          : 'border-outline-variant bg-surface-dim text-on-surface-variant';
-      return `<span class="px-2 py-0.5 rounded text-xs border ${tone}">${escapeHTML(name)}</span>`;
-    }).join(' ');
+    const primaryLabel = getPrimaryIssueLabel(issue.labels);
+    const labelCount = getIssueLabelCount(issue.labels);
+    const hiddenLabelCount = Math.max(0, labelCount - (primaryLabel ? 1 : 0));
+    const primaryLabelHTML = primaryLabel
+      ? `<span class="rounded border ${getIssueLabelTone(primaryLabel)} px-2 py-0.5 text-xs">${escapeHTML(primaryLabel)}</span>`
+      : '';
+    const labelOverflowHTML = hiddenLabelCount > 0
+      ? `<span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">+${safeInteger(hiddenLabelCount)} labels</span>`
+      : '';
 
     const saved = isIssueSavedToBoard(issue);
 
@@ -2216,14 +2250,17 @@ function renderIssueCardsList(issuesList, options = {}) {
         </h3>
         
         <p class="text-sm text-on-surface-variant line-clamp-2 leading-relaxed">${issueBody}</p>
+        <p class="text-xs text-on-surface-variant/90 line-clamp-1">
+          <span class="text-tertiary">Why:</span> ${escapeHTML(topReason || 'Review the inspector for fit details.')}
+        </p>
         ${lookupWarningHTML}
         ${hiddenBadgeHTML}
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
-          ${labelsHTML}
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="interactive-chip rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
           <span class="interactive-chip rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          ${primaryLabelHTML}
+          ${labelOverflowHTML}
           ${repoUnavailableHTML}
         </div>
         
@@ -2499,6 +2536,7 @@ async function refreshSingleSavedBoardCard(card) {
 
 function renderBoard(container) {
   const totalCards = Object.values(store.boardCards).flat().length;
+  const boardMode = getBoardMode(store.boardCards, boardViewMode);
   const activeRefreshRequestCount = getActiveBoardRefreshRequestCount(store.boardCards);
   const staleRefreshRequestCount = getStaleBoardRefreshRequestCount(store.boardCards);
   const staleRefreshTotalCount = getStaleBoardRefreshTotalCount(store.boardCards);
@@ -2665,8 +2703,118 @@ function renderBoard(container) {
       </div>
     `;
   }).join('');
+  const activeBoardEntries = ACTIVE_BOARD_COLUMNS.flatMap(column =>
+    (store.boardCards[column] || [])
+      .filter(card => !isClosedIssue(card))
+      .map(card => ({ column, card }))
+  );
+  const compactLaneRowsHTML = ACTIVE_BOARD_COLUMNS.map(column => {
+    const count = (store.boardCards[column] || []).filter(card => !isClosedIssue(card)).length;
+    return `
+      <div class="board-compact-lane-row">
+        <span>${escapeHTML(column)}</span>
+        <strong>${count}</strong>
+      </div>
+    `;
+  }).join('');
+  const compactCardsHTML = activeBoardEntries.length ? activeBoardEntries.map(({ column, card }) => {
+    const cIdx = BOARD_COLUMNS.indexOf(column);
+    const nextColumn = BOARD_COLUMNS[cIdx + 1];
+    const fitObj = calculateFitScore(card);
+    const rating = getFitScoreRating(fitObj.score);
+    const brief = buildContributionBrief(card, fitObj);
+    const repoName = escapeHTML(card.repository?.full_name || card.repository?.name || 'github');
+    const cardId = safeInteger(card.id);
+    const cardNumber = safeInteger(card.number);
+    const cardTitle = escapeHTML(card.title);
+    const cardDate = escapeHTML(formatDate(card.updated_at));
+    return `
+      <div class="board-compact-card board-card-item" data-id="${cardId}">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="min-w-0 truncate font-mono text-xs text-on-surface-variant">${repoName} #${cardNumber}</span>
+          <span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">${escapeHTML(column)}</span>
+        </div>
+        <h3 class="mt-3 text-lg font-semibold leading-snug text-on-surface">${cardTitle}</h3>
+        <p class="mt-2 text-sm text-on-surface-variant">Next: ${escapeHTML(brief.firstMove)}</p>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          <span class="rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          <span class="text-xs text-on-surface-variant">${cardDate}</span>
+        </div>
+        <div class="mt-5 flex flex-wrap gap-2">
+          ${nextColumn ? `
+            <button class="interactive-button interactive-button-primary px-3 py-2 text-xs move-right-btn" data-id="${cardId}">
+              Move to ${escapeHTML(nextColumn)}
+            </button>
+          ` : ''}
+          <button class="interactive-button interactive-button-secondary px-3 py-2 text-xs move-passed-btn" data-id="${cardId}">
+            Pass
+          </button>
+          <button class="interactive-button interactive-button-secondary px-3 py-2 text-xs compact-inspect-btn" data-id="${cardId}" type="button">
+            Inspect
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('') : `
+    <div class="board-compact-empty">
+      <span class="material-symbols-outlined text-4xl text-primary">view_kanban</span>
+      <h3>Save a candidate to start tracking it.</h3>
+      <p>Find Contributions is where new board cards begin.</p>
+      <button class="interactive-button interactive-button-primary px-4 py-2" id="board-go-find-btn" type="button">
+        <span class="material-symbols-outlined text-[16px]">search</span>
+        Find Contributions
+      </button>
+    </div>
+  `;
+  const compactBoardHTML = `
+    <section class="board-section board-compact-section" data-board-section="active">
+      <div class="board-section-heading">
+        <h2>Active workflow</h2>
+        <span>${activeBoardEntries.length <= 3 ? 'Compact mode for focused board work.' : 'Compact mode selected manually.'}</span>
+      </div>
+      <div class="board-compact-layout">
+        <div class="board-compact-cards">${compactCardsHTML}</div>
+        <aside class="board-compact-lanes" aria-label="Board lane counts">
+          <h3>Lane counts</h3>
+          ${compactLaneRowsHTML}
+        </aside>
+      </div>
+    </section>
+  `;
   const activeColumnsHTML = renderColumnsHTML(ACTIVE_BOARD_COLUMNS);
   const completedColumnsHTML = renderColumnsHTML(COMPLETED_BOARD_COLUMNS, { compact: true });
+  const boardWorkflowHTML = boardMode === 'compact' ? `
+    ${compactBoardHTML}
+    <section class="board-section board-completed-section" data-board-section="completed">
+      <div class="board-section-heading">
+        <h2>Completed</h2>
+        <span>Compact local outcomes.</span>
+      </div>
+      <div class="board-completed-grid">
+        ${completedColumnsHTML}
+      </div>
+    </section>
+  ` : `
+    <section class="board-section board-active-section" data-board-section="active">
+      <div class="board-section-heading">
+        <h2>Active workflow</h2>
+        <span>Manual refreshes run only from saved active cards.</span>
+      </div>
+      <div class="board-active-grid">
+        ${activeColumnsHTML}
+      </div>
+    </section>
+    <section class="board-section board-completed-section" data-board-section="completed">
+      <div class="board-section-heading">
+        <h2>Completed</h2>
+        <span>Compact local outcomes.</span>
+      </div>
+      <div class="board-completed-grid">
+        ${completedColumnsHTML}
+      </div>
+    </section>
+  `;
 
   container.innerHTML = `
     <!-- Kanban Board layout -->
@@ -2680,6 +2828,10 @@ function renderBoard(container) {
         </div>
         
         <div class="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+          <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" aria-label="Board view mode">
+            <button class="board-view-mode-btn interactive-button rounded-md px-3 py-1.5 text-xs ${boardMode === 'compact' ? 'bg-primary text-on-primary border-primary' : 'interactive-button-secondary'}" data-board-view-mode="compact" type="button">Compact</button>
+            <button class="board-view-mode-btn interactive-button rounded-md px-3 py-1.5 text-xs ${boardMode === 'kanban' ? 'bg-primary text-on-primary border-primary' : 'interactive-button-secondary'}" data-board-view-mode="kanban" type="button">Full Kanban</button>
+          </div>
           <div class="min-w-0 text-xs text-on-surface-variant">
             <div id="board-refresh-status">${escapeHTML(store.boardRefreshStatus)}</div>
             ${staleRefreshHelper ? `<div>${escapeHTML(staleRefreshHelper)}</div>` : ''}
@@ -2699,28 +2851,38 @@ function renderBoard(container) {
       <!-- Scrollable Kanban Area -->
       <div class="board-page-body flex-1 p-4 sm:p-6 md:p-8">
         <div class="board-layout-shell" style="--board-layout-max-width: ${BOARD_LAYOUT_MAX_WIDTH}px;">
-          <section class="board-section board-active-section" data-board-section="active">
-            <div class="board-section-heading">
-              <h2>Active workflow</h2>
-              <span>Manual refreshes run only from saved active cards.</span>
-            </div>
-            <div class="board-active-grid">
-              ${activeColumnsHTML}
-            </div>
-          </section>
-          <section class="board-section board-completed-section" data-board-section="completed">
-            <div class="board-section-heading">
-              <h2>Completed</h2>
-              <span>Compact local outcomes.</span>
-            </div>
-            <div class="board-completed-grid">
-              ${completedColumnsHTML}
-            </div>
-          </section>
+          ${boardWorkflowHTML}
         </div>
       </div>
     </section>
   `;
+
+  document.querySelectorAll('.board-view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      boardViewMode = btn.getAttribute('data-board-view-mode') === 'kanban' ? 'kanban' : 'compact';
+      renderBoard(container);
+    });
+  });
+
+  const boardGoFindBtn = document.getElementById('board-go-find-btn');
+  if (boardGoFindBtn) {
+    boardGoFindBtn.addEventListener('click', () => {
+      store.setScreen('find-issues');
+    });
+  }
+
+  document.querySelectorAll('.compact-inspect-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const cardId = parseInt(btn.getAttribute('data-id'), 10);
+      const allCards = Object.values(store.boardCards).flat();
+      const match = allCards.find(c => c.id === cardId);
+      if (match) {
+        store.setInspectedIssue(match);
+        openInspector();
+      }
+    });
+  });
 
   // Bind Lane Card Clicks
   document.querySelectorAll('.board-card-item').forEach(card => {
@@ -3023,8 +3185,9 @@ function renderProofLogRows(entries) {
 }
 
 function renderProfile(container) {
-  const proofEntries = listProofEntries(localStorage);
-  const alerts = buildLocalAlerts(store.boardCards);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards
+  });
   const profile = store.profile;
   const displayName = profile?.name || profile?.login || 'Local contributor';
   const loginLine = profile?.login ? `GitHub: ${profile.login}` : 'No GitHub identity saved yet';
@@ -3045,67 +3208,31 @@ function renderProfile(container) {
                 <p class="text-sm text-on-surface-variant">${escapeHTML(displayName)} - ${escapeHTML(loginLine)}</p>
               </div>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <button class="interactive-button interactive-button-secondary px-4 py-2" id="profile-export-btn">Export Local Data</button>
-              <label class="interactive-button interactive-button-secondary px-4 py-2 cursor-pointer">
-                Import Local Data
-                <input class="hidden" id="profile-import-input" type="file" accept="application/json" />
-              </label>
-            </div>
           </div>
-          <p class="mt-3 text-xs text-on-surface-variant" id="profile-import-status">Exports include Board cards, Hidden Results, profile, contribution preferences, learned feedback, and Proof Log. GitHub tokens and repo metadata cache are excluded.</p>
+          <p class="mt-3 text-xs text-on-surface-variant">Identity and contribution preferences stay local to this browser. Export, import, and reset controls live in Settings.</p>
         </header>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Proof Log</span>
-            <div class="mt-4 metric-card-value">${proofEntries.length}</div>
-          </div>
-          <div class="metric-card">
             <span class="text-sm text-on-surface-variant">Saved candidates</span>
-            <div class="mt-4 metric-card-value">${Object.values(store.boardCards).flat().length}</div>
+            <div class="mt-4 metric-card-value">${appMetrics.savedCandidates}</div>
           </div>
           <div class="metric-card">
-            <span class="text-sm text-on-surface-variant">Review reminders</span>
-            <div class="mt-4 metric-card-value">${alerts.length}</div>
+            <span class="text-sm text-on-surface-variant">Active board work</span>
+            <div class="mt-4 metric-card-value">${appMetrics.activeBoardWork}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Resolved / Passed</span>
+            <div class="mt-4 metric-card-value">${appMetrics.resolvedOrPassed}</div>
           </div>
         </div>
 
         ${renderContributionPreferencesCard(store.contributionPreferences)}
-
-        ${renderMatchFeedbackCard(store.matchFeedback)}
-
-        <section class="interactive-card rounded-xl p-6">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-lg font-headline font-bold text-on-surface">Proof Log</h2>
-            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
-          </div>
-          <div class="space-y-3">${renderProofLogRows(proofEntries)}</div>
-        </section>
-
-        <section class="interactive-card rounded-xl p-6">
-          <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
-          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
-          <div class="space-y-3">
-            ${alerts.length ? alerts.map(alert => `
-              <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-                <div class="mb-1 flex items-center justify-between gap-3">
-                  <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
-                  <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
-                </div>
-                <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
-              </div>
-            `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</p>'}
-          </div>
-        </section>
       </div>
     </section>
   `;
 
-  const exportBtn = document.getElementById('profile-export-btn');
-  if (exportBtn) exportBtn.addEventListener('click', handleExportLocalData);
   bindAvatarFallbacks(container);
-  bindLocalDataImport('profile-import-input', 'profile-import-status');
   const preferencesForm = document.getElementById('contribution-preferences-form');
   if (preferencesForm) {
     preferencesForm.addEventListener('submit', (event) => {
@@ -3126,6 +3253,80 @@ function renderProfile(container) {
       store.clearContributionPreferences();
     });
   }
+}
+
+function renderActivity(container) {
+  const proofEntries = listProofEntries(localStorage);
+  const alerts = buildLocalAlerts(store.boardCards);
+  const feedbackSummary = summarizeMatchFeedback(store.matchFeedback);
+  const appMetrics = summarizeAppMetrics({
+    boardCardsByColumn: store.boardCards,
+    proofEntries,
+    reviewReminders: alerts
+  });
+
+  const remindersHTML = alerts.length ? alerts.map(alert => `
+    <div class="interactive-row rounded-lg border border-outline-variant bg-surface-container-lowest p-4 activity-alert-row" data-card-id="${escapeHTML(String(alert.cardId || ''))}">
+      <div class="mb-1 flex items-center justify-between gap-3">
+        <span class="text-sm font-medium text-on-surface">${escapeHTML(alert.title)}</span>
+        <span class="text-[10px] uppercase tracking-wide text-primary">${escapeHTML(alert.column)}</span>
+      </div>
+      <p class="text-xs text-on-surface-variant">${escapeHTML(alert.message)}</p>
+      ${alert.kind === 'github-activity' ? `
+        <button class="action-button mt-3 px-2 py-1 text-[11px] mark-activity-reviewed-btn" data-id="${escapeHTML(String(alert.cardId || ''))}">
+          Mark reviewed
+        </button>
+      ` : ''}
+    </div>
+  `).join('') : '<p class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">No review reminders right now.</p>';
+
+  container.innerHTML = `
+    <section class="p-6 md:p-12">
+      <div class="mx-auto max-w-5xl space-y-8">
+        <header class="interactive-card rounded-xl p-6">
+          <div class="flex items-start gap-4">
+            <span class="material-symbols-outlined text-primary text-3xl">timeline</span>
+            <div>
+              <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Activity</h1>
+              <p class="mt-1 text-sm text-on-surface-variant">Proof Log, Review reminders, and Personal scoring signals from local workflow actions.</p>
+            </div>
+          </div>
+        </header>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Proof Log</span>
+            <div class="mt-4 metric-card-value">${appMetrics.proofLogEntries}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Review reminders</span>
+            <div class="mt-4 metric-card-value">${appMetrics.reviewReminders}</div>
+          </div>
+          <div class="metric-card">
+            <span class="text-sm text-on-surface-variant">Personal scoring signals</span>
+            <div class="mt-4 metric-card-value">${safeInteger(feedbackSummary.eventCount)}</div>
+          </div>
+        </div>
+
+        <section class="interactive-card rounded-xl p-6">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-headline font-bold text-on-surface">Proof Log</h2>
+            <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
+          </div>
+          <div class="space-y-3">${renderProofLogRows(proofEntries)}</div>
+        </section>
+
+        <section class="interactive-card rounded-xl p-6">
+          <h2 class="mb-2 text-lg font-headline font-bold text-on-surface">Review reminders</h2>
+          <p class="mb-4 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
+          <div class="space-y-3">${remindersHTML}</div>
+        </section>
+
+        ${renderMatchFeedbackCard(store.matchFeedback)}
+      </div>
+    </section>
+  `;
+
   const resetFeedbackBtn = document.getElementById('profile-match-feedback-reset-btn');
   if (resetFeedbackBtn) {
     resetFeedbackBtn.addEventListener('click', () => {
@@ -3135,6 +3336,23 @@ function renderProfile(container) {
   document.querySelectorAll('.proof-remove-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       store.removeProofLogEntry(btn.getAttribute('data-key'));
+    });
+  });
+  document.querySelectorAll('.mark-activity-reviewed-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const cardId = parseInt(btn.getAttribute('data-id'), 10);
+      store.markGitHubActivityReviewed(cardId);
+    });
+  });
+  document.querySelectorAll('.activity-alert-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const cardId = parseInt(row.getAttribute('data-card-id'), 10);
+      const card = Object.values(store.boardCards).flat().find(item => item.id === cardId);
+      if (card) {
+        store.setInspectedIssue(card);
+        openInspector();
+      }
     });
   });
 }

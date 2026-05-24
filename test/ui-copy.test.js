@@ -149,7 +149,7 @@ test('match score v3 UI exposes compact confidence and inspector diagnostics', (
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
 
   assert.match(resultCards, /% Match/);
-  assert.match(resultCards, /Fit:/);
+  assert.match(resultCards, /Why:/);
   assert.match(resultCards, /Confidence:/);
   assert.match(inspector, /Score diagnostics/);
   assert.match(inspector, /Confidence/);
@@ -234,6 +234,74 @@ test('help and feedback routes are included in navigation setup', () => {
     assert.match(indexHtml, new RegExp(`id="${navId}"`));
     assert.match(mainJs, new RegExp(`['"]${navId}['"]`));
   }
+});
+
+test('activity route is included in navigation setup', () => {
+  const { indexHtml, mainJs } = readCopySources();
+
+  for (const navId of [
+    'tab-activity',
+    'mobile-tab-activity'
+  ]) {
+    assert.match(indexHtml, new RegExp(`id="${navId}"`));
+    assert.match(mainJs, new RegExp(`['"]${navId}['"]`));
+  }
+  assert.match(mainJs, /function renderActivity\(container\)/);
+  assert.match(mainJs, /case 'activity'/);
+});
+
+test('profile is separated from activity and settings responsibilities', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const profile = sliceBetween(mainJs, 'function renderProfile(container)', 'function renderActivity(container)');
+  const activity = sliceBetween(mainJs, 'function renderActivity(container)', 'function hiddenItemMatchesFilter');
+  const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
+
+  assert.match(profile, /renderContributionPreferencesCard/);
+  assert.match(profile, /Saved candidates/);
+  assert.match(profile, /Active board work/);
+  assert.doesNotMatch(profile, /Export Local Data/);
+  assert.doesNotMatch(profile, /Import Local Data/);
+  assert.doesNotMatch(profile, /Proof Log/);
+  assert.doesNotMatch(profile, /Review reminders/);
+  assert.doesNotMatch(profile, /Learned feedback/);
+
+  assert.match(activity, /Proof Log/);
+  assert.match(activity, /Review reminders/);
+  assert.match(activity, /Personal scoring signals/);
+  assert.match(activity, /renderMatchFeedbackCard/);
+  assert.match(settings, /Export Local Data/);
+  assert.match(settings, /Import Local Data/);
+});
+
+test('find contributions keeps exact scores while reducing card chip noise', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
+
+  assert.match(resultCards, /% Match/);
+  assert.match(resultCards, /Confidence:/);
+  assert.match(resultCards, /\+\$\{safeInteger\(hiddenLabelCount\)\} labels/);
+  assert.match(resultCards, /Why:/);
+  assert.doesNotMatch(resultCards, /\.slice\(0,\s*3\)\.map/);
+
+  assert.match(finder, /Quick filters/);
+  assert.match(finder, /View GitHub query/);
+  assert.doesNotMatch(finder, /GitHub query preview<\/div>\s*<code/);
+});
+
+test('board exposes compact mode without importing inspector tabs', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const board = sliceBetween(mainJs, 'function renderBoard(container)', 'function getFeedbackIssueUrl');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(mainJs, /getBoardMode/);
+  assert.match(board, /Compact/);
+  assert.match(board, /Full Kanban/);
+  assert.match(board, /board-compact-card/);
+  assert.match(board, /compact-inspect-btn/);
+  assert.match(board, /Move to \$\{escapeHTML\(nextColumn\)\}/);
+  assert.doesNotMatch(mainJs, /INSPECTOR_TABS/);
+  assert.doesNotMatch(inspector, /role="tablist"|inspector-tab|activeInspectorTab|>\s*Overview\s*<|>\s*Evidence\s*</);
 });
 
 test('interactive chrome uses app tooltips instead of native title attributes', () => {
