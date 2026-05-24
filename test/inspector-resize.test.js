@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   INSPECTOR_WIDTH_STORAGE_KEY,
   bucketForViewport,
+  attachResize,
   clampWidth,
   isResizableViewport,
   loadInspectorWidth,
@@ -22,6 +23,36 @@ function createStorage(initial = {}) {
       values.delete(key);
     }
   };
+}
+
+function createResizeHarness({ viewport = 1024, width = '720px' } = {}) {
+  const listeners = new Map();
+  const handle = {
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
+    removeEventListener(type) {
+      listeners.delete(type);
+    }
+  };
+  const drawer = {
+    style: { width },
+    getBoundingClientRect() {
+      return { width: Number.parseFloat(this.style.width) || 0 };
+    }
+  };
+  const classList = {
+    add() {},
+    remove() {}
+  };
+  const win = {
+    innerWidth: viewport,
+    document: { body: { classList } },
+    addEventListener() {},
+    removeEventListener() {}
+  };
+
+  return { drawer, handle, win };
 }
 
 test('bucketForViewport isolates laptop, wide, and ultrawide widths', () => {
@@ -69,4 +100,16 @@ test('invalid stored inspector widths are ignored without overwriting storage', 
   assert.equal(loadInspectorWidth(1440, storage), null);
   assert.equal(loadInspectorWidth(3440, storage), 1600);
   assert.equal(storage.getItem(INSPECTOR_WIDTH_STORAGE_KEY), JSON.stringify({ lg: 'wide', xl: {}, '2xl': 1600 }));
+});
+
+test('attachResize clears stale inline width when current bucket has no saved width', () => {
+  const storage = createStorage({
+    [INSPECTOR_WIDTH_STORAGE_KEY]: JSON.stringify({ xl: 720 })
+  });
+  const { drawer, handle, win } = createResizeHarness({ viewport: 1024, width: '720px' });
+
+  const detach = attachResize(drawer, handle, { window: win, storage });
+
+  assert.equal(drawer.style.width, '');
+  detach();
 });

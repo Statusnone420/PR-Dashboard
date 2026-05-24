@@ -7,6 +7,7 @@
 - Follow-up: inspector `Refresh this card` now force-replays the Advanced Context scan-line loading pass before resolving cached or refreshed context again.
 - Updated the active/archived plan docs, kept `docs/archived/PLAN.md` clearly historical, and adjusted local scripts/Playwright web-server commands to call Vite/Playwright through `node` so Windows does not resolve `.ps1` shims during verification.
 - Verification before handoff: `npm.cmd test`, `npm.cmd run build`, `npm.cmd run test:layout`, and `git diff --check`; in-app Browser smoke at `http://127.0.0.1:3000/#find-issues` opened `More filters`, verified Comments/Updated Date/State controls, persistence after reload, screenshots, and zero app console warnings/errors. Remaining risk: rendered checks are Chromium/localStorage/mocked-GitHub based, not live PAT/GitHub data.
+- Follow-up PR review fix: inspector resize now clears stale inline width when the current viewport bucket has no saved width, preventing one bucket's persisted width from leaking into another. Verified with `node --test test/inspector-resize.test.js`, `npm.cmd test`, `npm.cmd run build`, and `git diff --check`.
 
 ## 2026-05-24 Inspector Advanced-First Score Evidence
 

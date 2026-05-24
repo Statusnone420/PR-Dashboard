@@ -77,6 +77,8 @@ export function attachResize(drawerEl, handleEl, options = {}) {
   const savedWidth = loadInspectorWidth(win.innerWidth, storage);
   if (savedWidth !== null) {
     drawerEl.style.width = `${savedWidth}px`;
+  } else {
+    drawerEl.style.width = '';
   }
 
   let activePointerId = null;
