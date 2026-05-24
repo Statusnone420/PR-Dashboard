@@ -50,6 +50,7 @@ const inspectorRepoHistoryEnrichmentStates = new Map();
 const ADVANCED_CONTEXT_MIN_LOADING_MS = 1200;
 const FIND_FILTERS_EXPANDED_STORAGE_KEY = 'pr_dashboard_find_filters_expanded_v1';
 let activeAdvancedContextIssueKey = '';
+let inspectorAdvancedContextRefreshPendingKey = '';
 let boardViewMode = 'auto';
 let inspectorResizeDetach = () => {};
 let inspectorTitleResizeObserver = null;
@@ -371,13 +372,13 @@ function getInspectorRepoHistoryEnrichmentState(issue) {
   );
 }
 
-function resetAdvancedContextLoadingForIssue(issue) {
+function resetAdvancedContextLoadingForIssue(issue, { force = false } = {}) {
   const key = getIssueCommentsCacheKey(issue);
   if (!key) {
     activeAdvancedContextIssueKey = '';
     return;
   }
-  if (activeAdvancedContextIssueKey === key) return;
+  if (activeAdvancedContextIssueKey === key && !force) return;
 
   activeAdvancedContextIssueKey = key;
   [
@@ -609,6 +610,7 @@ async function ensureInspectorCommentEnrichment(issue) {
 async function ensureInspectorAdvancedEnrichment(issue) {
   const key = getIssueCommentsCacheKey(issue);
   if (!key) return;
+  if (inspectorAdvancedContextRefreshPendingKey === key) return;
 
   const steps = [
     {
@@ -4257,17 +4259,22 @@ function openInspector() {
 
       inspectorRefreshStatusCardId = issue.id;
       inspectorRefreshStatus = 'Checking GitHub...';
+      inspectorAdvancedContextRefreshPendingKey = getIssueCommentsCacheKey(issue) || '';
+      resetAdvancedContextLoadingForIssue(issue, { force: true });
       openInspector();
 
       try {
         const updatedCard = await refreshSingleSavedBoardCard(savedCard);
+        inspectorAdvancedContextRefreshPendingKey = '';
         inspectorRefreshStatusCardId = updatedCard.id;
         inspectorRefreshStatus = isGitHubActivityVisible(updatedCard.github_activity)
           ? 'New GitHub activity found.'
           : 'No changes since last refresh.';
         store.setInspectedIssue(updatedCard);
+        resetAdvancedContextLoadingForIssue(updatedCard, { force: true });
         openInspector();
       } catch (error) {
+        inspectorAdvancedContextRefreshPendingKey = '';
         inspectorRefreshStatusCardId = issue.id;
         inspectorRefreshStatus = `Refresh failed: ${getSafeRefreshErrorMessage(error)}`;
         openInspector();
@@ -4332,6 +4339,7 @@ function closeInspector() {
   inspectorRefreshStatus = '';
   inspectorRefreshStatusCardId = null;
   activeAdvancedContextIssueKey = '';
+  inspectorAdvancedContextRefreshPendingKey = '';
   panel.classList.add('translate-x-full');
   setTimeout(() => {
     panel.style.display = 'none';

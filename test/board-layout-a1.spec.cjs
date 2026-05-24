@@ -40,10 +40,36 @@ function card(id, column, index, overrides = {}) {
   };
 }
 
-async function mockInspectorGitHub(page) {
+async function mockInspectorGitHub(page, options = {}) {
+  let releaseIssueRefresh = () => {};
+  const issueRefreshHold = new Promise(resolve => {
+    releaseIssueRefresh = resolve;
+  });
+
   await page.route('https://api.github.com/**', async route => {
     const url = route.request().url();
-    const body = url.includes('/search/issues')
+    const isHeldIssueRefresh = options.holdIssueRefresh
+      && /\/repos\/[^/]+\/[^/]+\/issues\/1000(?:\?|$)/.test(url);
+
+    if (isHeldIssueRefresh) {
+      await issueRefreshHold;
+    }
+
+    const body = isHeldIssueRefresh
+      ? JSON.stringify({
+        id: 1000,
+        number: 1000,
+        title: '[Bounty $5k] [CLI] Validate logs tail is non-negative - logs arguments',
+        body: 'Seeded by board layout smoke.',
+        state: 'open',
+        comments: 2,
+        labels: [{ name: 'help wanted' }],
+        updated_at: '2026-05-24T10:00:00.000Z',
+        html_url: 'https://github.com/TEAMMATES/teammates/issues/1000',
+        repository_url: 'https://api.github.com/repos/TEAMMATES/teammates',
+        user: { login: 'layout-smoke' }
+      })
+      : url.includes('/search/issues')
       ? JSON.stringify({ items: [] })
       : JSON.stringify([]);
 
@@ -60,6 +86,8 @@ async function mockInspectorGitHub(page) {
       body
     });
   });
+
+  return { releaseIssueRefresh };
 }
 
 function seededBoard() {
@@ -430,6 +458,28 @@ test.describe('A1 board layout', () => {
       await page.screenshot({ path: path.join(screenshotDir, viewport.file), fullPage: false });
     });
   }
+
+  test('inspector refresh replays advanced context scan loading', async ({ page }) => {
+    const { releaseIssueRefresh } = await mockInspectorGitHub(page, { holdIssueRefresh: true });
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(`${baseURL}/#board`);
+
+    await page.locator('.board-card-item').first().click();
+    await expect(page.locator('#inspector-overlay-drawer')).toBeVisible();
+    await expect(page.locator('.advanced-context-card-loaded').filter({ hasText: 'Timeline inspected' })).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.advanced-context-card-loaded').filter({ hasText: 'Setup files inspected' })).toBeVisible();
+    await expect(page.locator('.advanced-context-card-loaded').filter({ hasText: 'Repo history inspected' })).toBeVisible();
+
+    await page.locator('#inspector-refresh-card-btn').click();
+    await expect(page.locator('.advanced-context-card-loading').filter({ hasText: 'Fetching timeline' })).toBeVisible();
+    await expect(page.locator('.advanced-context-card-loading').filter({ hasText: 'Scanning setup files' })).toBeVisible();
+    await expect(page.locator('.advanced-context-card-loading').filter({ hasText: 'Reading repo history' })).toBeVisible();
+    await page.waitForTimeout(1300);
+    await expect(page.locator('.advanced-context-card-loading').filter({ hasText: 'Fetching timeline' })).toBeVisible();
+    await expect(page.locator('.advanced-context-card-loaded').filter({ hasText: 'Timeline inspected' })).toBeHidden();
+    releaseIssueRefresh();
+    await expect(page.locator('.advanced-context-card-loaded').filter({ hasText: 'Timeline inspected' })).toBeVisible({ timeout: 3000 });
+  });
 
   test('inspector resize handle is hidden on mobile', async ({ page }) => {
     await mockInspectorGitHub(page);

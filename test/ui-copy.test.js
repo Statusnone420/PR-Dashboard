@@ -282,6 +282,25 @@ test('inspector advanced enrichment stays off result cards', () => {
   assert.doesNotMatch(resultCards, /fetchIssueTimelineEnrichment|fetchRepoSetupEnrichment|fetchRepoHistoryEnrichment|Advanced context/);
 });
 
+test('inspector refresh forces advanced context loading to replay', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const resetHelper = sliceBetween(mainJs, 'function resetAdvancedContextLoadingForIssue', 'function clearInspectorEnrichmentStates');
+  const refreshHandler = sliceBetween(mainJs, "refreshCardBtn.addEventListener('click'", 'const inspectorMarkReviewedBtn');
+  const successRefresh = sliceBetween(refreshHandler, 'const updatedCard', '} catch');
+
+  assert.match(resetHelper, /force\s*=\s*false/);
+  assert.match(resetHelper, /activeAdvancedContextIssueKey === key && !force/);
+  assert.match(mainJs, /inspectorAdvancedContextRefreshPendingKey/);
+  assert.match(mainJs, /if \(inspectorAdvancedContextRefreshPendingKey === key\) return/);
+  assert.match(refreshHandler, /resetAdvancedContextLoadingForIssue\(issue,\s*\{\s*force:\s*true\s*\}\)/);
+  assert.match(successRefresh, /resetAdvancedContextLoadingForIssue\(updatedCard,\s*\{\s*force:\s*true\s*\}\)/);
+  assertSourceOrder(refreshHandler, "inspectorRefreshStatus = 'Checking GitHub...'", 'resetAdvancedContextLoadingForIssue(issue, { force: true });');
+  assertSourceOrder(refreshHandler, 'resetAdvancedContextLoadingForIssue(issue, { force: true });', 'openInspector()');
+  assertSourceOrder(refreshHandler, "inspectorRefreshStatus = 'Checking GitHub...'", 'openInspector()');
+  assertSourceOrder(successRefresh, 'store.setInspectedIssue(updatedCard);', 'resetAdvancedContextLoadingForIssue(updatedCard, { force: true });');
+  assertSourceOrder(successRefresh, 'resetAdvancedContextLoadingForIssue(updatedCard, { force: true });', 'openInspector()');
+});
+
 test('inspector resize chrome is wired without changing storage or API contracts', () => {
   const { indexHtml, mainJs } = readCopySources();
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');

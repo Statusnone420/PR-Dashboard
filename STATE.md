@@ -4,6 +4,7 @@
 
 - Implemented the scoped polish pass only: inspector Action Center is pinned under the title chrome, title height is set synchronously and watched with `ResizeObserver`, Advanced Context holds for `1200ms`, its cards use an auto-fit grid, and Find Contributions has a smaller hero plus persisted `More filters`.
 - Added inspector width resizing through `src/inspectorResize.js` with bucketed `pr_dashboard_inspector_width_v1` storage, 420px/min and `min(80vw, viewport - 360px)` max bounds, desktop-only handle behavior, and open/close detach cleanup. The only other new storage key is `pr_dashboard_find_filters_expanded_v1`.
+- Follow-up: inspector `Refresh this card` now force-replays the Advanced Context scan-line loading pass before resolving cached or refreshed context again.
 - Updated the active/archived plan docs, kept `docs/archived/PLAN.md` clearly historical, and adjusted local scripts/Playwright web-server commands to call Vite/Playwright through `node` so Windows does not resolve `.ps1` shims during verification.
 - Verification before handoff: `npm.cmd test`, `npm.cmd run build`, `npm.cmd run test:layout`, and `git diff --check`; in-app Browser smoke at `http://127.0.0.1:3000/#find-issues` opened `More filters`, verified Comments/Updated Date/State controls, persistence after reload, screenshots, and zero app console warnings/errors. Remaining risk: rendered checks are Chromium/localStorage/mocked-GitHub based, not live PAT/GitHub data.
 
