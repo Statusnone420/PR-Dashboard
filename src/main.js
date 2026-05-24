@@ -3987,6 +3987,7 @@ function openInspector() {
     <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
       
       <!-- Actions buttons inside details -->
+      <!-- inspector-section:action-center -->
       <div class="action-toolbar shrink-0">
         <span class="text-xs text-on-surface-variant">Action center</span>
         <div class="flex flex-wrap gap-2">
@@ -4020,12 +4021,49 @@ function openInspector() {
       </div>
 
       <!-- Description Block -->
+      <!-- inspector-section:alerts -->
       ${closedInspectorHTML}
       ${riskyLookupHTML}
       ${hiddenInspectorHTML}
       ${activityInspectorHTML}
-      ${commentEnrichmentHTML}
+
+      <!-- inspector-section:advanced-context -->
       ${advancedEnrichmentHTML}
+      <!-- inspector-section:comment-enrichment -->
+      ${commentEnrichmentHTML}
+
+      <!-- inspector-section:contribution-brief -->
+      <section class="bg-surface-container rounded-lg border border-outline-variant p-4">
+        <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-[18px]">assistant_direction</span>
+          Contribution Brief
+        </h4>
+        <div class="mb-4 flex flex-wrap gap-2">
+          <span class="rounded border ${briefVerdictTone} px-2 py-0.5 text-xs">Verdict: ${escapeHTML(contributionBrief.verdict)}</span>
+          <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best fit: ${escapeHTML(inspectorBestFitLabel)}</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Why</div>
+            <ul class="space-y-2">
+              ${contributionBriefWhyHTML}
+            </ul>
+          </div>
+          <div>
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Risks</div>
+            <ul class="space-y-2">
+              ${contributionBriefRisksHTML}
+            </ul>
+          </div>
+        </div>
+        <div class="mt-4 border-t border-outline-variant/40 pt-3">
+          <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-1">First move</div>
+          <p class="text-sm text-on-surface">${escapeHTML(contributionBrief.firstMove)}</p>
+        </div>
+        ${maintainerQuestionHTML}
+      </section>
+
+      <!-- inspector-section:issue-description -->
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
           <span class="material-symbols-outlined text-primary">description</span>
@@ -4033,103 +4071,61 @@ function openInspector() {
         </h3>
         <div class="prose prose-invert text-xs text-on-surface-variant font-body leading-relaxed whitespace-pre-wrap select-text">${safeIssueBody}</div>
       </section>
-      
-      <!-- Fit Details & Analytics Bento -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
 
-        <!-- Score Diagnostics -->
-        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
-          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h4 class="text-xs font-headline font-semibold text-on-background mb-1 flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary text-[18px]">monitoring</span>
-                Score diagnostics
-              </h4>
-              <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${stageLabel} stage</p>
-            </div>
-            <span class="w-fit rounded border ${confidenceTone} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+      <!-- inspector-section:score-evidence -->
+      <section class="bg-surface-container rounded-lg border border-outline-variant p-4">
+        <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h4 class="text-xs font-headline font-semibold text-on-background mb-1 flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary text-[18px]">radar</span>
+              Why this score?
+            </h4>
+            <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${stageLabel} stage</p>
           </div>
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-            <div>
-              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Confidence</div>
-              <ul class="space-y-2">${confidenceReasonsHTML}</ul>
-            </div>
-            <div>
-              <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
-              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
-            </div>
+          <span class="w-fit rounded border ${confidenceTone} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+        </div>
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          <div>
+            <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Confidence</div>
+            <ul class="space-y-2">${confidenceReasonsHTML}</ul>
+          </div>
+          <div>
+            <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
           </div>
         </div>
-
-        <!-- Contribution Coach Brief -->
-        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 md:col-span-2">
-          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary text-[18px]">assistant_direction</span>
-            Contribution Brief
-          </h4>
-          <div class="mb-4 flex flex-wrap gap-2">
-            <span class="rounded border ${briefVerdictTone} px-2 py-0.5 text-xs">Verdict: ${escapeHTML(contributionBrief.verdict)}</span>
-            <span class="rounded border ${briefBestForTone} px-2 py-0.5 text-xs">Best fit: ${escapeHTML(inspectorBestFitLabel)}</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Why</div>
-              <ul class="space-y-2">
-                ${contributionBriefWhyHTML}
-              </ul>
-            </div>
-            <div>
-              <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-2">Risks</div>
-              <ul class="space-y-2">
-                ${contributionBriefRisksHTML}
-              </ul>
-            </div>
-          </div>
-          <div class="mt-4 border-t border-outline-variant/40 pt-3">
-            <div class="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant mb-1">First move</div>
-            <p class="text-sm text-on-surface">${escapeHTML(contributionBrief.firstMove)}</p>
-          </div>
-          ${maintainerQuestionHTML}
-        </div>
-        
-        <!-- Score Fit Analysis -->
-        <div class="bg-surface-container rounded-lg border border-outline-variant p-4 relative overflow-hidden group">
-          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary text-[18px]">radar</span>
-            Why this score?
-          </h4>
+        <div class="mt-5 border-t border-outline-variant/40 pt-4">
           <ul class="space-y-2">
             ${fitScoreReasonsHTML}
           </ul>
           ${passChipsHTML}
         </div>
-        
-        <!-- Action Plan Action checklist -->
-        <div class="bg-surface-container rounded-lg border border-outline-variant p-4">
-          <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary text-[18px]">rule</span>
-            Action Plan
-          </h4>
-          <div class="space-y-2.5">
-            ${actionPlanHTML}
-          </div>
-          
-          <!-- Progress stats if the card is in board -->
-          ${saved ? `
-            <div class="mt-4 pt-3 border-t border-outline-variant/30">
-              <div class="flex justify-between items-center text-[10px] text-on-surface-variant mb-1">
-                <span>Interactive Progress</span>
-                <span data-inspector-progress-value>${safeProgress}%</span>
-              </div>
-              <div class="w-full bg-surface-container-lowest rounded-full h-1 overflow-hidden">
-                <div class="bg-primary h-1 rounded-full" data-inspector-progress-bar style="width: ${safeProgress}%"></div>
-              </div>
-            </div>
-          ` : ''}
+      </section>
+
+      <!-- inspector-section:action-plan -->
+      <section class="bg-surface-container rounded-lg border border-outline-variant p-4">
+        <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-[18px]">rule</span>
+          Action Plan
+        </h4>
+        <div class="space-y-2.5">
+          ${actionPlanHTML}
         </div>
         
-      </div>
-      
+        <!-- Progress stats if the card is in board -->
+        ${saved ? `
+          <div class="mt-4 pt-3 border-t border-outline-variant/30">
+            <div class="flex justify-between items-center text-[10px] text-on-surface-variant mb-1">
+              <span>Interactive Progress</span>
+              <span data-inspector-progress-value>${safeProgress}%</span>
+            </div>
+            <div class="w-full bg-surface-container-lowest rounded-full h-1 overflow-hidden">
+              <div class="bg-primary h-1 rounded-full" data-inspector-progress-bar style="width: ${safeProgress}%"></div>
+            </div>
+          </div>
+        ` : ''}
+      </section>
+
     </div>
   `;
 
