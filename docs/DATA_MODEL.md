@@ -4,15 +4,13 @@
 
 PR Dashboard v1 stores app durability data in the current browser. There is no backend sync, encrypted sync, database, GitHub OAuth, GitHub App auth, or app-owned remote storage in v1.
 
-Export/Import Local Data is the current phone/desktop bridge. Exports include portable local app data only; GitHub tokens, repository metadata cache, and score enrichment cache are never exported. GitHub auth and encrypted sync are future backend-sync work.
+Export/Import Local Data is the current phone/desktop bridge. Exports include portable local app data only; GitHub tokens are never exported, and repository metadata cache is excluded. GitHub auth and encrypted sync are future backend-sync work.
 
 ## Real GitHub Issue Data
 
 Search results come from `GET https://api.github.com/search/issues`. By default the query includes `is:issue state:open`, so closed issues are excluded unless the user explicitly checks "Include closed issues".
 
 Saved board cards are copied from real GitHub search results. The app stores the issue title, body text, repository identity, labels, assignees, comments, state, dates, and GitHub URL as local snapshots so the board still works after a refresh.
-
-Opening the inspector can lazily fetch additional public context for the inspected issue only: comments, timeline events, repo setup files, recent closed pull requests, and same-label issue history. These requests do not run for result cards or saved board cards before the inspector opens.
 
 ## Local Board State
 
@@ -59,27 +57,10 @@ Proof Log entries use canonical lowercase issue keys such as `owner/repo#123` fo
 
 Moving a board card into `Merged` creates or updates a local Proof Log entry with `status=marked_complete`. Startup also backfills entries for existing `Merged` cards. No other v1 UI path creates Proof Log entries. This is intentionally a local history record, not remote merge verification. Re-saving the same proof entry preserves its original `completed_at` and `created_at` values while updating `updated_at` and `last_seen_at`.
 
-## Match Score Local Inputs
-
-Contribution preferences are stored under `pr_dashboard_contribution_preferences_v1`. They contain normalized local preference fields such as languages, preferred work, avoided work, experience level, and time budget.
-
-Learned feedback is stored under `pr_dashboard_match_feedback_v1`. It records compact idempotent action markers for local actions such as saving, moving to Working/Merged/Passed, and hiding issues or repos. Aggregate totals and feature buckets are recomputed from those markers.
-
-Score enrichment summaries are cached under `pr_dashboard_score_enrichment_cache_v1` for six hours. Cache entry types include:
-
-- `issue-comments`
-- `issue-timeline`
-- `repo-setup`
-- `repo-history`
-
-Score enrichment cache entries contain compact normalized summaries only: booleans, counts, timestamps, and short reasons. They do not store raw comment bodies, setup file bodies, raw API responses, tokens, Authorization headers, private repository summaries, or token-used unknown-visibility repository summaries.
-
-The Advanced Context inspector cards use a visual loading state while enrichment resolves or reads from cache. That animation has no data-model impact; resolved cards use the same compact summary data described above.
-
 ## Local Profile, Review Reminders, And Export
 
 Profile metadata is stored under `pr_dashboard_profile_v1` and contains only whitelisted non-secret GitHub identity fields from the Settings connection test: `github_id`, `login`, `name`, `github_url`, `avatar_url`, and `saved_at`. Profile/header avatars render only from safe `https://avatars.githubusercontent.com/...` URLs and fall back to initials when unavailable.
 
 Review reminders are computed from board state and local workflow timestamps such as `column_entered_at`, `last_moved_at`, and `last_refreshed_at`.
 
-Export Local Data includes board cards, hidden keys, Proof Log entries, profile metadata, contribution preferences, and learned feedback. It excludes GitHub tokens, the repository metadata cache, and the score enrichment cache. Import accepts the same local-first payload shape and ignores token/cache fields if they appear in a hand-edited file.
+Export Local Data includes board cards, hidden keys, Proof Log entries, and profile metadata. It excludes GitHub tokens and the repository metadata cache. Import accepts the same local-first payload shape and ignores token/cache fields if they appear in a hand-edited file.
