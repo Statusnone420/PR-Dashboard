@@ -87,8 +87,8 @@ test('settings token input discourages browser password saving', () => {
   const settings = sliceBetween(mainJs, 'function renderSettings(container)', 'function openInspector()');
   const tokenInput = settings.match(/<input[^>]+id="settings-pat-input"[^>]*>/)?.[0] || '';
 
-  assert.match(tokenInput, /type="text"/);
-  assert.doesNotMatch(tokenInput, /type="password"/);
+  assert.match(tokenInput, /type="password"/);
+  assert.doesNotMatch(tokenInput, /type="text"/);
   assert.match(tokenInput, /autocomplete="off"/);
   assert.doesNotMatch(tokenInput, /autocomplete="new-password"/);
   assert.match(tokenInput, /secure-token-input/);
@@ -99,9 +99,10 @@ test('settings token input discourages browser password saving', () => {
   assert.match(tokenInput, /data-lpignore="true"/);
   assert.match(tokenInput, /data-1p-ignore="true"/);
   assert.match(tokenInput, /data-bwignore="true"/);
-  assert.match(styles, /\.secure-token-input\[data-token-visible='false'\]/);
-  assert.match(styles, /-webkit-text-security:\s*disc/);
+  assert.doesNotMatch(styles, /-webkit-text-security/);
   assert.match(settings, /patInput\.dataset\.tokenVisible/);
+  assert.match(settings, /patInput\.type = 'text'/);
+  assert.match(settings, /patInput\.type = 'password'/);
 });
 
 test('profile, proof log, export import, and review reminders are visible product surfaces', () => {

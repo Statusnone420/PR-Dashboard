@@ -374,3 +374,11 @@
 - Added regression coverage where the current issue is fresh but the only peer issue is stale; the summary now reports the stale peer sample instead of active same-label history.
 - Verification on 2026-05-24: `npm test -- test/repo-history.test.js` passed 222/222 after the fix.
 - Remaining risk: GitHub Search ordering and live metadata can still vary, but the current issue no longer contributes to same-label activity or stale-sample signals.
+
+## 2026-05-24 Native Token Masking Review Fix
+
+- Changed the GitHub token settings input to use native `type="password"` masking by default while preserving the existing eye-toggle UX.
+- The visibility toggle now switches the input type between `password` and `text`, and the WebKit-only `-webkit-text-security` masking dependency was removed.
+- Password-manager suppression attributes remain on the token input; token storage behavior was not changed.
+- Verification on 2026-05-24: `node --test test/ui-copy.test.js` passed 25/25 after first failing against the old `type="text"` behavior.
+- Remaining risk: native password inputs can still trigger some password-manager heuristics, but hidden-by-default masking no longer depends on non-standard CSS.

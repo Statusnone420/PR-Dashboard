@@ -115,14 +115,6 @@
     outline: none;
   }
 
-  .secure-token-input[data-token-visible='false'] {
-    -webkit-text-security: disc;
-  }
-
-  .secure-token-input[data-token-visible='true'] {
-    -webkit-text-security: none;
-  }
-
   select option {
     background-color: var(--surface-container);
     color: var(--on-surface);

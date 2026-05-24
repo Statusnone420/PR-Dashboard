@@ -3535,7 +3535,7 @@ function renderSettings(container) {
             <div class="space-y-3">
               <label class="block text-sm font-medium text-on-surface" for="settings-pat-input">GitHub token</label>
               <div class="relative group">
-                <input class="secure-token-input w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-token-visible="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
+                <input class="secure-token-input w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-token-visible="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
                 <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" aria-label="Show token" data-tooltip="Show token" data-tooltip-position="left" style="background:none; border:none;">
                   <span class="material-symbols-outlined" id="visibility-icon">visibility</span>
                 </button>
@@ -3687,11 +3687,13 @@ function renderSettings(container) {
     visibilityToggle.addEventListener('click', () => {
       if (patInput.dataset.tokenVisible !== 'true') {
         patInput.dataset.tokenVisible = 'true';
+        patInput.type = 'text';
         visibilityIcon.textContent = 'visibility_off';
         visibilityToggle.setAttribute('aria-label', 'Hide token');
         visibilityToggle.setAttribute('data-tooltip', 'Hide token');
       } else {
         patInput.dataset.tokenVisible = 'false';
+        patInput.type = 'password';
         visibilityIcon.textContent = 'visibility';
         visibilityToggle.setAttribute('aria-label', 'Show token');
         visibilityToggle.setAttribute('data-tooltip', 'Show token');
