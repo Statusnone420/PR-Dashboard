@@ -398,3 +398,10 @@
 - Inspector rate-limit updates now accept multi-bucket enrichment snapshots through the existing `store.setRateLimits` path.
 - Verification on 2026-05-24: `node --test test/issue-timeline.test.js test/repo-history.test.js test/ui-copy.test.js` passed 37/37 after first failing against the old event-name and single-bucket behavior.
 - Remaining risk: live GitHub rate-limit headers can vary, and duplicate/blocked timeline detection remains intentionally conservative to event names and existing text fields.
+
+## 2026-05-24 Optional Same-Label Repo History Review Fix
+
+- Repo-history enrichment now treats same-label sampling as optional for unlabeled issues, preserving recent PR history evidence instead of failing the full history step.
+- Unlabeled issues skip the impossible search request and return a core-only rate-limit snapshot with `lastResource: 'core'`; labeled issues keep the existing core plus search snapshot.
+- Verification on 2026-05-24: `node --test test/repo-history.test.js` passed 6/6 after first failing against the old no-label throw.
+- Remaining risk: unlabeled issues have no same-label freshness signal, so repo history for them is intentionally PR-sample only.

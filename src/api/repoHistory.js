@@ -132,17 +132,22 @@ export async function fetchRepoHistoryEnrichment(issue, options = {}) {
     throw new Error(errorData.message || `GitHub pull request sample failed with status code ${pullResponse.status}`);
   }
 
-  const labelUrl = buildSameLabelIssueSearchApiUrl(issue);
-  const labelResponse = await fetchImpl(labelUrl, createReadOnlyGitHubRequestOptions(labelUrl, token));
-  const labelRateLimit = rateLimitFromReadOnlyResponse(labelResponse, 'search', { now: isoFromMs(nowMs(options)) });
-  if (!labelResponse.ok) {
-    const errorData = await labelResponse.json().catch(() => ({}));
-    throw new Error(errorData.message || `GitHub same-label issue sample failed with status code ${labelResponse.status}`);
+  let labelRateLimit = null;
+  let sameLabelIssues = { total_count: 0, items: [] };
+  if (firstUsefulLabel(issue)) {
+    const labelUrl = buildSameLabelIssueSearchApiUrl(issue);
+    const labelResponse = await fetchImpl(labelUrl, createReadOnlyGitHubRequestOptions(labelUrl, token));
+    labelRateLimit = rateLimitFromReadOnlyResponse(labelResponse, 'search', { now: isoFromMs(nowMs(options)) });
+    if (!labelResponse.ok) {
+      const errorData = await labelResponse.json().catch(() => ({}));
+      throw new Error(errorData.message || `GitHub same-label issue sample failed with status code ${labelResponse.status}`);
+    }
+    sameLabelIssues = await labelResponse.json();
   }
 
   const summary = summarizeRepoHistory({
     pullRequests: await pullResponse.json(),
-    sameLabelIssues: await labelResponse.json(),
+    sameLabelIssues,
     issue,
     now: nowMs(options)
   });
@@ -159,7 +164,7 @@ export async function fetchRepoHistoryEnrichment(issue, options = {}) {
     rateLimits: {
       core: pullRateLimit,
       search: labelRateLimit,
-      lastResource: 'search'
+      lastResource: labelRateLimit ? 'search' : 'core'
     }
   };
 }

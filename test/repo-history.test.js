@@ -152,6 +152,48 @@ test('repo history returns both core and search rate-limit buckets', async () =>
   assert.equal(result.rateLimits.lastResource, 'search');
 });
 
+test('repo history enriches unlabeled issues with PR-only sample', async () => {
+  const { fetchRepoHistoryEnrichment } = await import('../src/api/repoHistory.js');
+  const requests = [];
+
+  const result = await fetchRepoHistoryEnrichment(issue({ labels: [] }), {
+    now: Date.parse('2026-05-23T12:00:00.000Z'),
+    storage: createLocalStorage(),
+    fetchImpl: async (url) => {
+      requests.push(url);
+      if (url.includes('/search/issues')) {
+        throw new Error('same-label search should not run for unlabeled issues');
+      }
+      return new Response(JSON.stringify([
+        { merged_at: '2026-05-22T12:00:00.000Z', updated_at: '2026-05-22T12:00:00.000Z' }
+      ]), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'x-ratelimit-resource': 'core',
+          'x-ratelimit-remaining': '4998',
+          'x-ratelimit-limit': '5000'
+        }
+      });
+    }
+  });
+
+  assert.equal(requests.length, 1);
+  assert.match(requests[0], /\/pulls\?/);
+  assert.equal(requests.some(url => url.includes('/search/issues')), false);
+  assert.equal(result.summary.recentMergedPrs, true);
+  assert.equal(result.summary.sampledSameLabelIssues, 0);
+  assert.equal(result.summary.activeSameLabelIssues, false);
+  assert.equal(result.summary.staleSameLabelSample, false);
+  assert.deepEqual(result.summary.reasons, ['Recent repo PRs are merging']);
+  assert.equal(result.rateLimit.resource, 'core');
+  assert.equal(result.rateLimit.remaining, 4998);
+  assert.equal(result.rateLimits.core.resource, 'core');
+  assert.equal(result.rateLimits.core.remaining, 4998);
+  assert.equal(result.rateLimits.search, null);
+  assert.equal(result.rateLimits.lastResource, 'core');
+});
+
 test('repo history excludes current issue from same-label activity sample', async () => {
   const { fetchRepoHistoryEnrichment } = await import('../src/api/repoHistory.js');
   const storage = createLocalStorage();
