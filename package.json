@@ -4,12 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node node_modules/vite/bin/vite.js",
+    "build": "node node_modules/vite/bin/vite.js build",
     "test": "node --test test/*.test.js",
-    "test:layout": "playwright test test/board-layout-a1.spec.cjs --config test/playwright-layout.config.cjs --browser=chromium --reporter=line",
-    "test:readme-screenshots": "playwright test test/readme-gallery.spec.cjs --config test/playwright-readme.config.cjs --browser=chromium --reporter=line",
-    "preview": "vite preview"
+    "test:layout": "node node_modules/@playwright/test/cli.js test test/board-layout-a1.spec.cjs --config test/playwright-layout.config.cjs --browser=chromium --reporter=line",
+    "test:readme-screenshots": "node node_modules/@playwright/test/cli.js test test/readme-gallery.spec.cjs --config test/playwright-readme.config.cjs --browser=chromium --reporter=line",
+    "preview": "node node_modules/vite/bin/vite.js preview"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

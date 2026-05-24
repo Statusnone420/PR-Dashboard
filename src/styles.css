@@ -361,6 +361,57 @@
     color: var(--on-surface);
   }
 
+  .filter-select {
+    width: 100%;
+    border: 1px solid var(--outline-variant);
+    border-radius: 0.5rem;
+    background-color: var(--surface-container);
+    color: var(--on-surface);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  }
+
+  .filter-select:hover {
+    border-color: var(--outline);
+    background-color: var(--surface-container-high);
+  }
+
+  .filter-disclosure {
+    border-bottom: 1px solid rgba(39, 39, 42, 0.3);
+    padding-bottom: 1.25rem;
+  }
+
+  .filter-disclosure > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    color: var(--on-surface);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    list-style: none;
+    text-transform: uppercase;
+  }
+
+  .filter-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .filter-disclosure > summary::after {
+    content: 'expand_more';
+    font-family: 'Material Symbols Outlined';
+    font-size: 1.125rem;
+    color: var(--on-surface-variant);
+    transition: transform 160ms ease;
+  }
+
+  .filter-disclosure[open] > summary::after {
+    transform: rotate(180deg);
+  }
+
   .metric-card {
     @apply rounded-lg border border-outline-variant bg-surface-container p-5 transition-all duration-200 ease-in-out;
   }
@@ -417,6 +468,47 @@
 
   .action-toolbar {
     @apply flex flex-wrap items-center justify-between gap-3 rounded-lg border border-outline-variant bg-surface-container/50 p-4;
+  }
+
+  .inspector-action-strip {
+    top: var(--inspector-title-height, 0px);
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+    background-color: rgba(12, 12, 15, 0.95);
+    backdrop-filter: blur(12px);
+  }
+
+  .inspector-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: 6px;
+    cursor: col-resize;
+    touch-action: none;
+    background: transparent;
+    transition: background 140ms ease;
+  }
+
+  .inspector-resize-handle:hover,
+  .inspector-resize-handle:focus-visible,
+  .inspector-resizing .inspector-resize-handle {
+    background: rgba(167, 139, 250, 0.22);
+  }
+
+  .inspector-resizing,
+  .inspector-resizing * {
+    cursor: col-resize !important;
+    user-select: none;
+  }
+
+  @media (max-width: 779px) {
+    .inspector-resize-handle {
+      display: none;
+    }
   }
 
   .bento-grid {
@@ -842,6 +934,10 @@
 
   .callout {
     @apply rounded-lg border border-outline-variant;
+  }
+
+  .advanced-context-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .advanced-context-card {

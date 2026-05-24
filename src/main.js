@@ -25,6 +25,7 @@ import { isGitHubActivityVisible } from './githubActivity.js';
 import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
 import { getBoardMode } from './boardMode.js';
+import { attachResize } from './inspectorResize.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -45,9 +46,14 @@ const inspectorCommentEnrichmentStates = new Map();
 const inspectorTimelineEnrichmentStates = new Map();
 const inspectorRepoSetupEnrichmentStates = new Map();
 const inspectorRepoHistoryEnrichmentStates = new Map();
-const ADVANCED_CONTEXT_MIN_LOADING_MS = 300;
+// Let cached advanced-context scans read as intentional instead of a 300ms flash.
+const ADVANCED_CONTEXT_MIN_LOADING_MS = 1200;
+const FIND_FILTERS_EXPANDED_STORAGE_KEY = 'pr_dashboard_find_filters_expanded_v1';
 let activeAdvancedContextIssueKey = '';
+let inspectorAdvancedContextRefreshPendingKey = '';
 let boardViewMode = 'auto';
+let inspectorResizeDetach = () => {};
+let inspectorTitleResizeObserver = null;
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -366,13 +372,13 @@ function getInspectorRepoHistoryEnrichmentState(issue) {
   );
 }
 
-function resetAdvancedContextLoadingForIssue(issue) {
+function resetAdvancedContextLoadingForIssue(issue, { force = false } = {}) {
   const key = getIssueCommentsCacheKey(issue);
   if (!key) {
     activeAdvancedContextIssueKey = '';
     return;
   }
-  if (activeAdvancedContextIssueKey === key) return;
+  if (activeAdvancedContextIssueKey === key && !force) return;
 
   activeAdvancedContextIssueKey = key;
   [
@@ -516,7 +522,7 @@ function renderAdvancedEnrichmentCard(states = {}) {
         <h3 class="text-sm font-semibold text-on-background">Advanced context</h3>
         <span class="rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface-variant">Inspector only</span>
       </div>
-      <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <div class="advanced-context-grid grid gap-3">
         ${renderAdvancedContextRow({
           kind: 'timeline',
           state: states.timeline,
@@ -604,6 +610,7 @@ async function ensureInspectorCommentEnrichment(issue) {
 async function ensureInspectorAdvancedEnrichment(issue) {
   const key = getIssueCommentsCacheKey(issue);
   if (!key) return;
+  if (inspectorAdvancedContextRefreshPendingKey === key) return;
 
   const steps = [
     {
@@ -1674,6 +1681,32 @@ function getFirstRelaxationHint(filters) {
   return 'PR Dashboard searches GitHub issues, not users or profiles. Try an issue topic, repo name, or owner/repo.';
 }
 
+function hasActiveMoreFilters(filters = {}) {
+  return (
+    (filters.comments && filters.comments !== 'Any') ||
+    (filters.updatedDate && filters.updatedDate !== 'Any') ||
+    Boolean(filters.includeClosed) ||
+    Boolean(filters.unassigned)
+  );
+}
+
+function shouldOpenMoreFilters(filters = {}) {
+  if (hasActiveMoreFilters(filters)) return true;
+  try {
+    return localStorage.getItem(FIND_FILTERS_EXPANDED_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveMoreFiltersOpen(open) {
+  try {
+    localStorage.setItem(FIND_FILTERS_EXPANDED_STORAGE_KEY, open ? 'true' : 'false');
+  } catch {
+    // Local UI preference only; ignore unavailable storage.
+  }
+}
+
 function renderNoResults(queryPreview, filters) {
   const filtersHTML = describeActiveFilters(filters)
     .map(filter => `<li>${escapeHTML(filter)}</li>`)
@@ -1756,6 +1789,8 @@ function renderFindIssues(container) {
   const lookupModeClass = isLookupMode
     ? 'bg-primary text-on-primary border-primary'
     : 'bg-surface-container text-on-surface-variant border-outline-variant hover:text-on-surface';
+  const moreFiltersOpen = shouldOpenMoreFilters(filters);
+  const moreFiltersOpenAttr = moreFiltersOpen ? ' open' : '';
 
   // Language checkboxes HTML
   const languages = ['TypeScript', 'Rust', 'Go', 'JavaScript', 'CSS', 'HTML'];
@@ -1866,10 +1901,10 @@ function renderFindIssues(container) {
     <div class="bg-background flex min-h-[calc(100vh-3.5rem)] flex-col relative hide-scrollbar">
       
       <!-- Command Palette Search Hero -->
-      <section class="w-full pt-12 pb-8 px-6 md:px-8 border-b border-outline-variant/30 bg-surface-container-lowest relative">
+      <section class="w-full pt-6 pb-5 px-6 md:px-8 border-b border-outline-variant/30 bg-surface-container-lowest relative">
         <div class="max-w-3xl mx-auto relative z-10">
-          <h1 class="text-3xl font-headline font-bold text-on-surface mb-6 tracking-tight text-center">Find your next contribution</h1>
-          <div class="mb-4 flex justify-center">
+          <h1 class="text-2xl font-headline font-bold text-on-surface mb-4 tracking-tight text-center">Find your next contribution</h1>
+          <div class="mb-3 flex justify-center">
             <div class="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1" role="group" aria-label="Finder mode">
               <button class="finder-mode-btn interactive-button rounded-md px-3 py-1.5 text-sm ${findModeClass}" data-mode="find" type="button">Find Contributions</button>
               <button class="finder-mode-btn interactive-button rounded-md px-3 py-1.5 text-sm ${lookupModeClass}" data-mode="lookup" type="button">Lookup</button>
@@ -1877,7 +1912,7 @@ function renderFindIssues(container) {
           </div>
           
           <!-- Command Bar -->
-          <div class="flex gap-3">
+          <div class="flex flex-col gap-3 sm:flex-row">
             <div class="relative flex-1 group">
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
@@ -1888,7 +1923,7 @@ function renderFindIssues(container) {
               Search
             </button>
           </div>
-          <details class="mt-3 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
+          <details class="mt-2 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-left">
             <summary class="cursor-pointer text-xs font-medium text-on-surface-variant">View GitHub query</summary>
             <code class="mt-2 block text-xs text-on-surface break-words" id="github-query-preview">${escapeHTML(queryPreview)}</code>
           </details>
@@ -1958,39 +1993,44 @@ function renderFindIssues(container) {
             </div>
           </div>
           
-          <!-- Comments Filter -->
-          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
-            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Comments</h3>
-            <select class="p-2" id="comments-filter-select">
-              <option ${filters.comments === 'Any' ? 'selected' : ''}>Any</option>
-              <option ${filters.comments === 'Low (0-5)' ? 'selected' : ''}>Low (0-5)</option>
-              <option ${filters.comments === 'Medium (6-15)' ? 'selected' : ''}>Medium (6-15)</option>
-              <option ${filters.comments === 'High (15+)' ? 'selected' : ''}>High (15+)</option>
-            </select>
-          </div>
+          <details class="filter-disclosure" id="more-filters-disclosure"${moreFiltersOpenAttr}>
+            <summary>More filters</summary>
+            <div class="mt-4 flex flex-col gap-5">
+              <!-- Comments Filter -->
+              <div class="flex flex-col gap-3">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Comments</h3>
+                <select class="filter-select" id="comments-filter-select">
+                  <option ${filters.comments === 'Any' ? 'selected' : ''}>Any</option>
+                  <option ${filters.comments === 'Low (0-5)' ? 'selected' : ''}>Low (0-5)</option>
+                  <option ${filters.comments === 'Medium (6-15)' ? 'selected' : ''}>Medium (6-15)</option>
+                  <option ${filters.comments === 'High (15+)' ? 'selected' : ''}>High (15+)</option>
+                </select>
+              </div>
 
-          <!-- Updated Date Filter -->
-          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
-            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Updated Date</h3>
-            <select class="p-2" id="updated-filter-select">
-              <option ${filters.updatedDate === 'Any' ? 'selected' : ''}>Any</option>
-              <option ${filters.updatedDate === 'Last 24h' ? 'selected' : ''}>Last 24h</option>
-              <option ${filters.updatedDate === 'Last week' ? 'selected' : ''}>Last week</option>
-              <option ${filters.updatedDate === 'Last month' ? 'selected' : ''}>Last month</option>
-            </select>
-          </div>
+              <!-- Updated Date Filter -->
+              <div class="flex flex-col gap-3">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Updated Date</h3>
+                <select class="filter-select" id="updated-filter-select">
+                  <option ${filters.updatedDate === 'Any' ? 'selected' : ''}>Any</option>
+                  <option ${filters.updatedDate === 'Last 24h' ? 'selected' : ''}>Last 24h</option>
+                  <option ${filters.updatedDate === 'Last week' ? 'selected' : ''}>Last week</option>
+                  <option ${filters.updatedDate === 'Last month' ? 'selected' : ''}>Last month</option>
+                </select>
+              </div>
 
-          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
-            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">State</h3>
-            <label class="flex items-center gap-3 group cursor-pointer">
-              <input class="include-closed-checkbox" type="checkbox" ${filters.includeClosed ? 'checked' : ''} />
-              <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Include closed issues</span>
-            </label>
-            <label class="flex items-center gap-3 group cursor-pointer">
-              <input class="unassigned-checkbox" type="checkbox" ${filters.unassigned ? 'checked' : ''} />
-              <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Unassigned only</span>
-            </label>
-          </div>
+              <div class="flex flex-col gap-3">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">State</h3>
+                <label class="flex items-center gap-3 group cursor-pointer">
+                  <input class="include-closed-checkbox" type="checkbox" ${filters.includeClosed ? 'checked' : ''} />
+                  <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Include closed issues</span>
+                </label>
+                <label class="flex items-center gap-3 group cursor-pointer">
+                  <input class="unassigned-checkbox" type="checkbox" ${filters.unassigned ? 'checked' : ''} />
+                  <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Unassigned only</span>
+                </label>
+              </div>
+            </div>
+          </details>
           
         </aside>
         
@@ -2068,6 +2108,13 @@ function renderFindIssues(container) {
   if (applyFiltersBtn) {
     applyFiltersBtn.addEventListener('click', () => {
       runFinderSearch(store.searchQuery);
+    });
+  }
+
+  const moreFiltersDisclosure = document.getElementById('more-filters-disclosure');
+  if (moreFiltersDisclosure) {
+    moreFiltersDisclosure.addEventListener('toggle', () => {
+      saveMoreFiltersOpen(moreFiltersDisclosure.open);
     });
   }
 
@@ -3800,6 +3847,32 @@ function renderSettings(container) {
 /**
  * 5. DETAILS INSPECTOR DRAW PANEL VIEW
  */
+function detachInspectorChrome() {
+  inspectorResizeDetach();
+  inspectorResizeDetach = () => {};
+  if (inspectorTitleResizeObserver) {
+    inspectorTitleResizeObserver.disconnect();
+    inspectorTitleResizeObserver = null;
+  }
+}
+
+function setupInspectorChrome(panel) {
+  const titleHeader = panel.querySelector('[data-inspector-title-header]');
+  const resizeHandle = panel.querySelector('.inspector-resize-handle');
+  if (!titleHeader) return;
+
+  const updateTitleHeight = () => {
+    panel.style.setProperty('--inspector-title-height', `${titleHeader.offsetHeight}px`);
+  };
+
+  updateTitleHeight();
+  if (typeof ResizeObserver !== 'undefined') {
+    inspectorTitleResizeObserver = new ResizeObserver(updateTitleHeight);
+    inspectorTitleResizeObserver.observe(titleHeader);
+  }
+  inspectorResizeDetach = attachResize(panel, resizeHandle);
+}
+
 function openInspector() {
   const panel = document.getElementById('inspector-overlay-drawer');
   if (!panel) return;
@@ -3807,6 +3880,7 @@ function openInspector() {
   const issue = store.inspectedIssue;
   if (!issue) return;
 
+  detachInspectorChrome();
   resetAdvancedContextLoadingForIssue(issue);
   const commentEnrichmentState = getInspectorCommentEnrichmentState(issue);
   const timelineEnrichmentState = getInspectorTimelineEnrichmentState(issue);
@@ -3951,8 +4025,9 @@ function openInspector() {
   }).join('');
 
   panel.innerHTML = `
-    <!-- Sticky Header -->
-    <div class="sticky top-0 bg-surface-dim/95 backdrop-blur-md border-b border-outline-variant p-6 z-20 flex justify-between items-start shrink-0">
+    <div class="inspector-resize-handle" aria-hidden="true"></div>
+    <!-- Inspector Title Header -->
+    <div class="sticky top-0 bg-surface-dim/95 backdrop-blur-md border-b border-outline-variant p-6 z-20 flex justify-between items-start shrink-0" data-inspector-title-header>
       <div class="max-w-2xl">
         <div class="flex items-center flex-wrap gap-2 mb-3">
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${safeIssueLanguage}</span>
@@ -3982,43 +4057,42 @@ function openInspector() {
         <span class="material-symbols-outlined">close</span>
       </button>
     </div>
+
+    <!-- inspector-section:action-center -->
+    <div class="action-toolbar inspector-action-strip sticky z-10 shrink-0">
+      <span class="text-xs text-on-surface-variant">Action center</span>
+      <div class="flex flex-wrap gap-2">
+        <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn">
+          <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
+          ${saved ? 'Saved to board' : 'Save issue'}
+        </button>
+        <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
+          <span class="material-symbols-outlined text-[16px]">visibility_off</span>
+          Hide issue
+        </button>
+        <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-repo-btn">
+          <span class="material-symbols-outlined text-[16px]">folder_off</span>
+          Hide repo
+        </button>
+        ${hiddenLocally ? `<button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-unhide-btn">
+          <span class="material-symbols-outlined text-[16px]">visibility</span>
+          Unhide
+        </button>` : ''}
+        <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-refresh-card-btn" ${saved ? '' : 'disabled'}>
+          <span class="material-symbols-outlined text-[16px]">sync</span>
+          Refresh this card
+        </button>
+
+        ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
+          Open on GitHub
+          <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+        </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}
+      </div>
+      ${refreshStatusHTML}
+    </div>
     
     <!-- Scrollable Content Viewport -->
     <div class="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
-      
-      <!-- Actions buttons inside details -->
-      <!-- inspector-section:action-center -->
-      <div class="action-toolbar shrink-0">
-        <span class="text-xs text-on-surface-variant">Action center</span>
-        <div class="flex flex-wrap gap-2">
-          <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn">
-            <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
-            ${saved ? 'Saved to board' : 'Save issue'}
-          </button>
-          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
-            <span class="material-symbols-outlined text-[16px]">visibility_off</span>
-            Hide issue
-          </button>
-          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-repo-btn">
-            <span class="material-symbols-outlined text-[16px]">folder_off</span>
-            Hide repo
-          </button>
-          ${hiddenLocally ? `<button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-unhide-btn">
-            <span class="material-symbols-outlined text-[16px]">visibility</span>
-            Unhide
-          </button>` : ''}
-          <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-refresh-card-btn" ${saved ? '' : 'disabled'}>
-            <span class="material-symbols-outlined text-[16px]">sync</span>
-            Refresh this card
-          </button>
-          
-          ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
-            Open on GitHub
-            <span class="material-symbols-outlined text-[16px]">open_in_new</span>
-          </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}
-        </div>
-        ${refreshStatusHTML}
-      </div>
 
       <!-- Description Block -->
       <!-- inspector-section:alerts -->
@@ -4131,6 +4205,7 @@ function openInspector() {
 
   // Display drawer panel
   panel.style.display = 'flex';
+  setupInspectorChrome(panel);
   setTimeout(() => {
     panel.classList.remove('translate-x-full');
   }, 20);
@@ -4184,17 +4259,22 @@ function openInspector() {
 
       inspectorRefreshStatusCardId = issue.id;
       inspectorRefreshStatus = 'Checking GitHub...';
+      inspectorAdvancedContextRefreshPendingKey = getIssueCommentsCacheKey(issue) || '';
+      resetAdvancedContextLoadingForIssue(issue, { force: true });
       openInspector();
 
       try {
         const updatedCard = await refreshSingleSavedBoardCard(savedCard);
+        inspectorAdvancedContextRefreshPendingKey = '';
         inspectorRefreshStatusCardId = updatedCard.id;
         inspectorRefreshStatus = isGitHubActivityVisible(updatedCard.github_activity)
           ? 'New GitHub activity found.'
           : 'No changes since last refresh.';
         store.setInspectedIssue(updatedCard);
+        resetAdvancedContextLoadingForIssue(updatedCard, { force: true });
         openInspector();
       } catch (error) {
+        inspectorAdvancedContextRefreshPendingKey = '';
         inspectorRefreshStatusCardId = issue.id;
         inspectorRefreshStatus = `Refresh failed: ${getSafeRefreshErrorMessage(error)}`;
         openInspector();
@@ -4255,9 +4335,11 @@ function closeInspector() {
   const panel = document.getElementById('inspector-overlay-drawer');
   if (!panel) return;
 
+  detachInspectorChrome();
   inspectorRefreshStatus = '';
   inspectorRefreshStatusCardId = null;
   activeAdvancedContextIssueKey = '';
+  inspectorAdvancedContextRefreshPendingKey = '';
   panel.classList.add('translate-x-full');
   setTimeout(() => {
     panel.style.display = 'none';
