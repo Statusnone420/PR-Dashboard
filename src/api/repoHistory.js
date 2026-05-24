@@ -1,9 +1,10 @@
 import { cleanReason, getCachedIssueEnrichmentEntry, getStorage, isoFromMs, nowMs, saveIssueEnrichmentEntry } from './enrichmentCache.js';
 import { createReadOnlyGitHubRequestOptions, rateLimitFromReadOnlyResponse } from './githubReadOnly.js';
-import { getCanonicalIssueKey, getRepoDisplayName } from '../issueKeys.js';
+import { getCanonicalIssueKey, getIssueNumber, getRepoDisplayName } from '../issueKeys.js';
 
 const REPO_HISTORY_CACHE_TYPE = 'repo-history';
 const SAMPLE_SIZE = 5;
+const SAME_LABEL_FETCH_SIZE = SAMPLE_SIZE + 1;
 
 function repoParts(issue) {
   const key = getCanonicalIssueKey(issue);
@@ -25,6 +26,23 @@ function daysSince(value, now) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY;
   return (now - date.getTime()) / (24 * 60 * 60 * 1000);
+}
+
+function isCurrentIssueSample(item, issue) {
+  const currentKey = getCanonicalIssueKey(issue);
+  const itemKey = getCanonicalIssueKey(item);
+  if (currentKey && itemKey) return currentKey === itemKey;
+
+  const currentNumber = getIssueNumber(issue);
+  const itemNumber = getIssueNumber(item);
+  return Boolean(currentNumber && itemNumber && currentNumber === itemNumber);
+}
+
+function getPeerSameLabelIssueItems(sameLabelIssues, issue) {
+  const items = Array.isArray(sameLabelIssues?.items) ? sameLabelIssues.items : [];
+  return items
+    .filter(item => !isCurrentIssueSample(item, issue))
+    .slice(0, SAMPLE_SIZE);
 }
 
 function normalizeRepoHistorySummary(summary = {}) {
@@ -58,13 +76,13 @@ export function buildSameLabelIssueSearchApiUrl(issue) {
     throw new Error('Cannot inspect same-label issues without a valid GitHub issue reference and label.');
   }
   const q = `repo:${parts.fullName} is:issue label:"${label}"`;
-  return `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&sort=updated&order=desc&per_page=${SAMPLE_SIZE}`;
+  return `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&sort=updated&order=desc&per_page=${SAME_LABEL_FETCH_SIZE}`;
 }
 
 export function summarizeRepoHistory(options = {}) {
   const now = nowMs(options);
   const pullRequests = Array.isArray(options.pullRequests) ? options.pullRequests : [];
-  const labelItems = Array.isArray(options.sameLabelIssues?.items) ? options.sameLabelIssues.items : [];
+  const labelItems = getPeerSameLabelIssueItems(options.sameLabelIssues, options.issue);
   const mergedPullRequests = pullRequests.filter(pr => pr?.merged_at).length;
   const recentMergedPrs = pullRequests.some(pr => pr?.merged_at && daysSince(pr.merged_at, now) <= 180);
   const activeSameLabelIssues = labelItems.some(item => daysSince(item?.updated_at, now) <= 180);
@@ -125,6 +143,7 @@ export async function fetchRepoHistoryEnrichment(issue, options = {}) {
   const summary = summarizeRepoHistory({
     pullRequests: await pullResponse.json(),
     sameLabelIssues: await labelResponse.json(),
+    issue,
     now: nowMs(options)
   });
   const cachedEntry = saveRepoHistoryEnrichment(issue, summary, storage, {

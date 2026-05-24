@@ -366,3 +366,11 @@
 - Added Playwright route smoke coverage to `npm run test:layout` so blank valid routes and dashboard runtime errors fail the layout gate.
 - Verification on 2026-05-22: `npm test` passed 148/148, `npm run build` passed, `npm run test:layout` passed 8/8, and a targeted built-preview route smoke passed for all requested routes.
 - Remaining risk: this hotfix only covers local route rendering and did not exercise live GitHub API responses or real PAT behavior.
+
+## 2026-05-24 Same-Label History Review Fix
+
+- Fixed repo-history enrichment so the current issue is excluded from the same-label peer sample before `activeSameLabelIssues` and `staleSameLabelSample` are computed.
+- Same-label search now fetches one extra issue (`per_page=6`) and keeps at most five peer issues after filtering, preserving the compact sample size while avoiding self-inflated scoring.
+- Added regression coverage where the current issue is fresh but the only peer issue is stale; the summary now reports the stale peer sample instead of active same-label history.
+- Verification on 2026-05-24: `npm test -- test/repo-history.test.js` passed 222/222 after the fix.
+- Remaining risk: GitHub Search ordering and live metadata can still vary, but the current issue no longer contributes to same-label activity or stale-sample signals.
