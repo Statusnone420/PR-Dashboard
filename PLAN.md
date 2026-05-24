@@ -13,7 +13,7 @@ These are all "polish" changes — no scoring, enrichment, storage, routing, or 
 The Action Center (`Save / Hide issue / Hide repo / Refresh / Open on GitHub`) is the most-clicked region in the inspector but currently scrolls away with content. Pin it directly below the existing sticky title header as its own sticky strip — two stacked sticky rows.
 
 - File: [src/main.js](src/main.js) `openInspector()` around lines 3990–4021 — extract the `<div class="action-toolbar shrink-0">` block out of the scrollable content region and make it a sibling of the sticky title header, with its own `sticky top-[<title-header-height>] z-10` positioning.
-- File: [index.html](index.html:172) `#inspector-overlay-drawer` — the existing structure already has the title header as `sticky top-0`. The new action strip needs `sticky top-[N]` where N is the rendered height of the title header (measure in dev tools — likely ~88px given `p-6` plus single-line title; if the title can wrap, switch to a CSS variable set from a `ResizeObserver` on the title header).
+- File: [index.html](index.html:172) `#inspector-overlay-drawer` — the existing structure already has the title header as `sticky top-0`. The new action strip uses `sticky top-[var(--inspector-title-height)]`. Issue titles wrap to 2 lines often (e.g. *incident_dispatcher email channel: accept array of recipients + CC/BCC/reply-to*), so a fixed offset is wrong. Set up a `ResizeObserver` on the title header in `openInspector()` that writes the rendered height to the `--inspector-title-height` custom property on the drawer element. Disconnect the observer when the inspector closes. Initial value before the observer fires: read `offsetHeight` on first render to avoid a one-frame jump.
 - Surface: use the existing `bg-surface-dim/95 backdrop-blur-md border-b border-outline-variant` treatment so the two sticky rows feel like one chrome unit.
 - Active board work alerts (closed status, hidden status, GitHub activity) remain in the scrollable area below the strip — they are state, not action.
 
@@ -31,7 +31,15 @@ Current width is `100% / md:60% / lg:48%`. On a 3440px ultrawide the inspector b
 
 - File: [index.html:172](index.html:172) — extend the className from `md:w-[60%] lg:w-[48%]` to `md:w-[60%] lg:w-[48%] xl:w-[44%] 2xl:w-[40%]`. Tighter defaults at wider breakpoints.
 - File: [index.html:172](index.html:172) — add a 6px-wide drag handle element on the left edge of `#inspector-overlay-drawer`: `<div class="inspector-resize-handle" aria-hidden="true"></div>` positioned absolutely at `left: 0; top: 0; bottom: 0; cursor: col-resize`.
-- File: [src/main.js](src/main.js) — add a new module `src/inspectorResize.js` (or inline into main.js if you prefer fewer new files). It binds `pointerdown` on the handle, captures pointer, updates the drawer's inline width style on `pointermove`, and on `pointerup` persists the width in `localStorage` under `pr_dashboard_inspector_width_v1` keyed by viewport width bucket (so a wide-monitor setting does not carry over to a laptop). Bounds: minimum width is `420px` (small enough this only matters on narrow laptops); maximum width is `min(80vw, viewport - 360px)` so the underlying page keeps at least 360px of usable content. If the viewport is too small for both minimums (e.g., under ~780px), fall back to the responsive breakpoint width and skip the drag handle entirely on that viewport.
+- New file: `src/inspectorResize.js` (matches the project's small-module convention — see `src/dashboardHero.js`, `src/contributionBrief.js`, `src/hiddenItems.js`, `src/boardConstants.js`, `src/boardMode.js`, `src/localAlerts.js`). Exports:
+  - `clampWidth(rawWidth, viewport)` — pure, returns the bounded width
+  - `bucketForViewport(viewport)` — pure, returns the storage bucket key (e.g. `'lg'`, `'xl'`, `'2xl'`)
+  - `loadInspectorWidth(viewport)` / `saveInspectorWidth(width, viewport)` — localStorage I/O under `pr_dashboard_inspector_width_v1`
+  - `attachResize(drawerEl, handleEl)` — binds `pointerdown` on the handle, captures the pointer, updates the drawer's inline `width` on `pointermove`, persists on `pointerup`, and returns a detach function
+- Bounds: minimum width `420px`; maximum width `min(80vw, viewport - 360px)` so the underlying page keeps at least 360px of usable content. If the viewport is too small for both bounds (under ~780px), `attachResize()` no-ops and the responsive breakpoint width applies — drag handle stays in the DOM but is hidden via CSS at that breakpoint.
+- Bucket storage by viewport: a width saved on a 3440px monitor must not carry over to a 1366px laptop. `bucketForViewport()` returns one of `'lg' | 'xl' | '2xl'` matching the Tailwind breakpoints. On open: load the bucket's saved width, clamp to current viewport, apply.
+- New file: `test/inspector-resize.test.js` — unit tests for `clampWidth`, `bucketForViewport`, and load/save round-trip with a stub localStorage. No DOM in unit tests.
+- File: [src/main.js](src/main.js) — calls `attachResize(drawer, handle)` in `openInspector()` and the returned detach function in the inspector-close path.
 - File: [src/styles.css](src/styles.css) — add `.inspector-resize-handle` styles with a subtle hover state and an `:active` state showing the resize cursor across the whole body during drag.
 - On window resize: if a persisted width is now out of bounds for the current viewport, clamp on first inspector open rather than overwriting storage.
 
@@ -70,7 +78,8 @@ After restyling, group Comments + Updated Date + State under a single collapsibl
 - [src/main.js](src/main.js) — inspector layout, animation constant, Advanced Context grid, Find Contributions hero/filters
 - [src/styles.css](src/styles.css) — sticky action strip surface, resize handle, optional new filter-disclosure / filter-select classes
 - [index.html](index.html:172) — inspector drawer classes + resize handle markup
-- New (optional): [src/inspectorResize.js](src/inspectorResize.js) — drag handle behavior and width persistence
+- New: [src/inspectorResize.js](src/inspectorResize.js) — drag handle behavior, bucketed width persistence, pure clamp/bucket helpers
+- New: [test/inspector-resize.test.js](test/inspector-resize.test.js) — unit coverage for the pure helpers
 
 ## Verification
 
