@@ -1,5 +1,22 @@
 # PR Dashboard State
 
+## 2026-05-24 Inspector Advanced-First Score Evidence
+
+- Reordered `openInspector()` again so the inspector now leads from Action center and alerts into Advanced context, comment enrichment, Contribution Brief, Issue Description, a single `Why this score?` evidence card, and Action Plan.
+- Removed the standalone visible `Score diagnostics` heading/card shape from the inspector template. The merged evidence card now uses `Why this score?` as the header with the confidence badge, existing score/rating/stage subtext, confidence reasons, mini-scores, signed score rows, and pass chips.
+- Updated source-order tests to slice `openInspector()` from `src/main.js`, assert marker/placeholder order against the template source, and assert the merged evidence source contains the existing confidence, mini-score, score-row, and pass-chip placeholders without the old `Score diagnostics` heading.
+- Verification on 2026-05-24: `node --test test/ui-copy.test.js` failed first against the old order and heading, then passed 27/27 after the template change. `npm test` passed 232/232 and `npm run build` passed. Deterministic Chromium smoke under Vite preview opened inspectors from Find Contributions and Board with mocked public GitHub responses to verify rendered section order, confidence evidence, mini-score evidence, signed score rows, no `Score diagnostics` heading, no console/page errors, and no horizontal overflow. Screenshot verification captured nonblank drawer images at `%TEMP%\pr-dashboard-inspector-screenshots\find-inspector-drawer-advanced-first.png` and `%TEMP%\pr-dashboard-inspector-screenshots\board-inspector-drawer-advanced-first.png`.
+- Additional compact Board verification on 2026-05-24 seeded six active `Considering` cards in browser localStorage only, forced Compact mode, and captured nonblank desktop/mobile screenshots at `%TEMP%\pr-dashboard-inspector-screenshots\compact-board-seeded-desktop.png` and `%TEMP%\pr-dashboard-inspector-screenshots\compact-board-seeded-mobile.png`; a separate cleared-board mobile screenshot at `%TEMP%\pr-dashboard-inspector-screenshots\compact-board-empty-onboarding-mobile.png` verified the onboarding/empty compact board state stayed inside the viewport with no horizontal overflow.
+- Remaining risk: rendered smoke used mocked public GitHub responses and localStorage-only seeded board data in Chromium rather than live GitHub/PAT data. The change is template-only and does not alter score calculation, enrichment timing, storage, routing, board, token, API, or Match Score contracts.
+
+## 2026-05-24 Inspector Readability Reorder
+
+- Reordered `openInspector()` content so Action center and local alerts lead into Contribution Brief, Issue Description, comment enrichment, Advanced context, merged score evidence, and Action Plan.
+- Merged the previous Score diagnostics and Why this score? inspector blocks into one score evidence card while preserving the score summary, confidence reasons, mini-scores, signed score rows, pass chips, and existing Match Score/enrichment contracts.
+- Added stable inspector source markers and a source-order regression test that checks the template order using placeholders and verifies the merged evidence source still exposes confidence, mini-scores, `Why this score?`, score rows, and pass chips.
+- Verification on 2026-05-24: `node --test test/ui-copy.test.js` failed first against the old inspector order, then passed 27/27 after the template change. `npm test` passed 232/232, `npm run build` passed, and a deterministic Chromium smoke under Vite preview opened inspectors from Find Contributions and Board with mocked public GitHub responses to verify rendered section order, confidence evidence, mini-score evidence, signed score rows, no console/page errors, and no horizontal overflow.
+- Remaining risk: rendered smoke used mocked public GitHub responses in Chromium rather than live GitHub/PAT data. The change is template-only and does not alter score calculation, enrichment timing, storage, routing, board, token, API, or Match Score contracts.
+
 ## 2026-05-24 UX Salvage From TEST-UX
 
 - Salvaged the narrow `TEST-UX` improvements onto `dev` without merging the branch wholesale. Added the Activity route/nav item, kept Profile focused on identity/local contribution preferences, moved Proof Log, Review reminders, and learned feedback into Activity, and left export/import/reset controls in Settings.

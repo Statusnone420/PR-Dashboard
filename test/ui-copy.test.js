@@ -57,6 +57,17 @@ function sliceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
+function assertSourceOrder(source, first, second) {
+  const firstIndex = source.indexOf(first);
+  const secondIndex = source.indexOf(second);
+  assert.notEqual(firstIndex, -1, `Missing source marker: ${first}`);
+  assert.notEqual(secondIndex, -1, `Missing source marker: ${second}`);
+  assert.ok(
+    firstIndex < secondIndex,
+    `Expected ${first} before ${second}`
+  );
+}
+
 test('primary navigation labels contribution finding, not generic issue search', () => {
   const { indexHtml, mainJs } = readCopySources();
 
@@ -152,7 +163,7 @@ test('match score v3 UI exposes compact confidence and inspector diagnostics', (
   assert.match(resultCards, /% Match/);
   assert.match(resultCards, /Why:/);
   assert.match(resultCards, /Confidence:/);
-  assert.match(inspector, /Score diagnostics/);
+  assert.doesNotMatch(inspector, /Score diagnostics/);
   assert.match(inspector, /Confidence/);
   assert.match(inspector, /Mini-scores/);
   assert.match(inspector, /Opportunity Fit/);
@@ -162,6 +173,38 @@ test('match score v3 UI exposes compact confidence and inspector diagnostics', (
   assert.match(inspector, /Setup Ease/);
   assert.match(inspector, /Personal Fit/);
   assert.match(inspector, /Why this score\?/);
+});
+
+test('inspector source order keeps decision brief before evidence and action plan', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+  const evidence = sliceBetween(
+    inspector,
+    '<!-- inspector-section:score-evidence -->',
+    '<!-- inspector-section:action-plan -->'
+  );
+
+  assertSourceOrder(inspector, '<!-- inspector-section:action-center -->', '<!-- inspector-section:alerts -->');
+  assertSourceOrder(inspector, '<!-- inspector-section:alerts -->', '<!-- inspector-section:advanced-context -->');
+  assertSourceOrder(inspector, '<!-- inspector-section:advanced-context -->', '${advancedEnrichmentHTML}');
+  assertSourceOrder(inspector, '${advancedEnrichmentHTML}', '<!-- inspector-section:comment-enrichment -->');
+  assertSourceOrder(inspector, '<!-- inspector-section:comment-enrichment -->', '${commentEnrichmentHTML}');
+  assertSourceOrder(inspector, '${commentEnrichmentHTML}', 'Contribution Brief');
+  assertSourceOrder(inspector, '<!-- inspector-section:contribution-brief -->', 'Contribution Brief');
+  assertSourceOrder(inspector, 'Contribution Brief', 'Issue Description');
+  assertSourceOrder(inspector, '<!-- inspector-section:issue-description -->', 'Issue Description');
+  assertSourceOrder(inspector, 'Issue Description', '<!-- inspector-section:score-evidence -->');
+  assertSourceOrder(inspector, '<!-- inspector-section:score-evidence -->', '<!-- inspector-section:action-plan -->');
+  assertSourceOrder(inspector, '<!-- inspector-section:score-evidence -->', 'Action Plan');
+
+  assert.match(evidence, /Why this score\?/);
+  assert.match(evidence, /Confidence/);
+  assert.match(evidence, /Mini-scores/);
+  assert.match(evidence, /\$\{confidenceReasonsHTML\}/);
+  assert.match(evidence, /\$\{miniScoresHTML\}/);
+  assert.match(evidence, /\$\{fitScoreReasonsHTML\}/);
+  assert.match(evidence, /\$\{passChipsHTML\}/);
+  assert.doesNotMatch(evidence, /Score diagnostics/);
 });
 
 test('profile preferences UI does not auto-apply search filters', () => {
