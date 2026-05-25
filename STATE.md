@@ -1,5 +1,13 @@
 # PR Dashboard State
 
+## 2026-05-25 Platform Badge Accessibility Pass
+
+- Addressed PR review thread `discussion_r3299791102`.
+- Platform evidence chips now expose their compact icon-only labels through an explicit `role="img"` plus existing `aria-label` text such as `Linux supported`.
+- Material Symbols glyph spans in `src/main.js` and `index.html` are now hidden from assistive technology so screen readers do not announce decorative icon names like `dashboard`, `speed`, or `close`. The inspector close button now has an explicit `Close inspector` accessible name before its decorative glyph is hidden.
+- Verification on 2026-05-25: `node --test test/ui-copy.test.js` failed first against missing badge role, missing icon hiding, and missing inspector close label, then passed 33/33 after the fix. `npm test` passed 282/282, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: this is the scoped non-text/icon accessibility hardening pass from `IMPECCABLE_AUDIT.md`; broader audit findings such as touch target sizing, tooltip dismissal behavior, palette/theming, glassmorphism cleanup, and motion cleanup remain separate future passes.
+
 ## 2026-05-25 Web Platform Detection Tightening
 
 - Addressed PR review thread `discussion_r3299034539`.

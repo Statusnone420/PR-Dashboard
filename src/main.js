@@ -174,15 +174,15 @@ function renderPlatformEvidenceIcon(iconKey) {
     return `<img class="platform-evidence-icon" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
   }
   if (iconKey === 'web') {
-    return '<span class="material-symbols-outlined text-[13px]">public</span>';
+    return '<span class="material-symbols-outlined text-[13px]" aria-hidden="true">public</span>';
   }
-  return '<span class="material-symbols-outlined text-[13px]">code</span>';
+  return '<span class="material-symbols-outlined text-[13px]" aria-hidden="true">code</span>';
 }
 
 function renderPlatformEvidenceBadge(evidence) {
   if (!evidence?.supportedPlatforms?.length) return '';
   const chips = (evidence.supportedPlatforms || []).map(platform => `
-    <span class="platform-evidence-chip rounded border border-outline-variant bg-surface-dim text-on-surface-variant" aria-label="${escapeHTML(getPlatformSupportedLabel(platform))}">
+    <span class="platform-evidence-chip rounded border border-outline-variant bg-surface-dim text-on-surface-variant" role="img" aria-label="${escapeHTML(getPlatformSupportedLabel(platform))}">
       ${renderPlatformEvidenceIcon(platform)}
     </span>
   `).join('');
@@ -557,7 +557,7 @@ function renderAdvancedContextRow({ kind, state, loadedLabel, loadingLabel, unav
     return `
       <div class="advanced-context-card rounded border border-error/25 bg-error-container/10 p-3">
         <div class="mb-1 flex items-center gap-2">
-          <span class="material-symbols-outlined text-error text-[16px]">error</span>
+          <span class="material-symbols-outlined text-error text-[16px]" aria-hidden="true">error</span>
           <span class="text-xs font-semibold text-error">${escapeHTML(unavailableLabel)}</span>
         </div>
         <p class="text-[11px] text-on-surface-variant">Score keeps the available context.</p>
@@ -1132,7 +1132,7 @@ function renderLocalAlertsPopover() {
   popover.innerHTML = `
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-sm font-semibold text-on-surface">Review reminders</h2>
-      <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn" aria-label="Close review reminders" data-tooltip="Close review reminders" data-tooltip-position="left"><span class="material-symbols-outlined text-[16px]">close</span></button>
+      <button class="action-button h-7 w-7 p-0 text-xs" id="local-alerts-close-btn" aria-label="Close review reminders" data-tooltip="Close review reminders" data-tooltip-position="left"><span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span></button>
     </div>
     <p class="mb-3 text-xs text-on-surface-variant">Review reminders are generated from your local board state and manual refreshes.</p>
     <div class="space-y-2">${alertsHTML}</div>
@@ -1535,7 +1535,7 @@ function renderDashboard(container) {
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
-              <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
+              <span class="material-symbols-outlined text-primary text-[20px] filled-icon" aria-hidden="true">bolt</span>
               <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
             </div>
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Continue Review: ${resumeTitle}</h2>
@@ -1543,7 +1543,7 @@ function renderDashboard(container) {
           </div>
           <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-resume-btn" data-id="${resumeId}">
             Resume Review
-            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
           </button>
         </div>
       </div>
@@ -1554,7 +1554,7 @@ function renderDashboard(container) {
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
-              <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
+              <span class="material-symbols-outlined text-primary text-[20px] filled-icon" aria-hidden="true">bolt</span>
               <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
             </div>
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Configure GitHub token</h2>
@@ -1562,7 +1562,7 @@ function renderDashboard(container) {
           </div>
           <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-action-btn">
             Go to Settings
-            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
           </button>
         </div>
       </div>
@@ -1573,7 +1573,7 @@ function renderDashboard(container) {
         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div class="flex items-center gap-2 mb-2">
-              <span class="material-symbols-outlined text-primary text-[20px] filled-icon">bolt</span>
+              <span class="material-symbols-outlined text-primary text-[20px] filled-icon" aria-hidden="true">bolt</span>
               <span class="text-primary font-semibold text-sm tracking-wide uppercase">Next Recommended Action</span>
             </div>
             <h2 class="text-2xl font-headline font-bold text-on-surface tracking-tight mb-2">Find Contributions</h2>
@@ -1581,7 +1581,7 @@ function renderDashboard(container) {
           </div>
           <button class="interactive-button interactive-button-primary shrink-0 px-6 py-3" id="hero-find-btn">
             Find Contributions
-            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
           </button>
         </div>
       </div>
@@ -1593,7 +1593,7 @@ function renderDashboard(container) {
   if (dashboardSavedCards.length === 0) {
     savedIssuesHTML = `
       <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
-        <span class="material-symbols-outlined text-on-surface-variant text-3xl">bookmarks</span>
+        <span class="material-symbols-outlined text-on-surface-variant text-3xl" aria-hidden="true">bookmarks</span>
         <h4 class="text-on-surface font-medium">No saved candidates</h4>
         <p class="text-xs text-on-surface-variant max-w-xs">Save candidates from Find Contributions to see them on your Dashboard.</p>
         <button class="interactive-button interactive-button-primary mt-2 px-4 py-1.5 text-xs" id="dash-go-find-btn">Find Contributions</button>
@@ -1608,7 +1608,7 @@ function renderDashboard(container) {
       const labelsSlice = (issue.labels || []).slice(0, 2);
       const labelsHTML = labelsSlice.map(l => {
         const name = String(typeof l === 'object' ? l.name : l || '');
-        return `<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">sell</span> ${escapeHTML(name)}</span>`;
+        return `<span class="text-xs text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">sell</span> ${escapeHTML(name)}</span>`;
       }).join(' ');
       const issueId = safeInteger(issue.id);
       const repoName = escapeHTML(issue.repository?.full_name || issue.repository?.name || 'github');
@@ -1631,7 +1631,7 @@ function renderDashboard(container) {
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
           <div class="mt-3 flex items-center gap-3">
             ${labelsHTML}
-            <span class="text-xs text-on-surface-variant flex items-center gap-1 ml-auto"><span class="material-symbols-outlined text-[14px]">schedule</span> ${issueDate}</span>
+            <span class="text-xs text-on-surface-variant flex items-center gap-1 ml-auto"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">schedule</span> ${issueDate}</span>
           </div>
         </div>
       `;
@@ -1640,7 +1640,7 @@ function renderDashboard(container) {
 
   const localReviewHTML = `
     <div class="p-6 rounded-lg bg-surface-container-lowest border border-outline-variant text-center flex flex-col items-center justify-center gap-2 py-10">
-      <span class="material-symbols-outlined text-on-surface-variant text-3xl">commit</span>
+      <span class="material-symbols-outlined text-on-surface-variant text-3xl" aria-hidden="true">commit</span>
       <h4 class="text-on-surface font-medium">No active board work</h4>
       <p class="text-xs text-on-surface-variant max-w-xs">Saved candidates appear on the Board after you save them from Find Contributions.</p>
     </div>
@@ -1655,7 +1655,7 @@ function renderDashboard(container) {
     </div>
   `).join('') : `
     <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
-      <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
+      <span class="material-symbols-outlined text-3xl text-on-surface-variant" aria-hidden="true">workspace_premium</span>
       <h4 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h4>
       <p class="mt-1 text-xs text-on-surface-variant">Move a board card to Merged to preserve completed work.</p>
     </div>
@@ -1676,7 +1676,7 @@ function renderDashboard(container) {
                 <span class="text-sm font-medium text-on-surface-variant">Saved candidates</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Contribution candidates</p>
               </div>
-              <span class="material-symbols-outlined text-primary">bookmarks</span>
+              <span class="material-symbols-outlined text-primary" aria-hidden="true">bookmarks</span>
             </div>
             <span class="metric-card-value">${savedCandidateCount}</span>
           </div>
@@ -1687,7 +1687,7 @@ function renderDashboard(container) {
                 <span class="text-sm font-medium text-on-surface-variant">Active board work</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Considering through PR open</p>
               </div>
-              <span class="material-symbols-outlined text-tertiary filled-icon">radio_button_checked</span>
+              <span class="material-symbols-outlined text-tertiary filled-icon" aria-hidden="true">radio_button_checked</span>
             </div>
             <div class="flex items-end gap-2">
               <span class="metric-card-value">${activeReviewCount}</span>
@@ -1702,7 +1702,7 @@ function renderDashboard(container) {
                 <span class="text-sm font-medium text-on-surface-variant">Resolved / Passed</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Done, passed, or closed</p>
               </div>
-              <span class="material-symbols-outlined text-tertiary">merge</span>
+              <span class="material-symbols-outlined text-tertiary" aria-hidden="true">merge</span>
             </div>
             <div class="flex items-end gap-2">
               <span class="metric-card-value">${resolvedOrPassedCount}</span>
@@ -1717,7 +1717,7 @@ function renderDashboard(container) {
                 <span class="text-sm font-medium text-on-surface-variant">Hidden Results</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Filtered from future searches</p>
               </div>
-              <span class="material-symbols-outlined text-primary">visibility_off</span>
+              <span class="material-symbols-outlined text-primary" aria-hidden="true">visibility_off</span>
             </div>
             <span class="metric-card-value">${hiddenTotalCount}</span>
             <p class="text-xs text-on-surface-variant">${hiddenRepoHelper}</p>
@@ -1729,7 +1729,7 @@ function renderDashboard(container) {
                 <span class="text-sm font-medium text-on-surface-variant">Board flow</span>
                 <p class="mt-1 text-xs text-on-surface-variant">Distribution across lanes</p>
               </div>
-              <span class="material-symbols-outlined text-primary">stacked_bar_chart</span>
+              <span class="material-symbols-outlined text-primary" aria-hidden="true">stacked_bar_chart</span>
             </div>
             ${renderBoardFlow(reviewFlow)}
           </div>
@@ -1741,7 +1741,7 @@ function renderDashboard(container) {
           <div class="bento-item bento-large interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
-                <span class="material-symbols-outlined text-on-surface-variant">bookmarks</span>
+                <span class="material-symbols-outlined text-on-surface-variant" aria-hidden="true">bookmarks</span>
                 Saved candidates
               </h3>
               <button class="interactive-button interactive-button-secondary px-3 py-1.5 text-xs" id="dash-view-board-btn">View Kanban Board</button>
@@ -1755,7 +1755,7 @@ function renderDashboard(container) {
           <div class="bento-item interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
-                <span class="material-symbols-outlined text-on-surface-variant">commit</span>
+                <span class="material-symbols-outlined text-on-surface-variant" aria-hidden="true">commit</span>
                 Active board work
               </h3>
             </div>
@@ -1771,7 +1771,7 @@ function renderDashboard(container) {
           <div class="bento-item interactive-card p-6 flex flex-col gap-6">
             <div class="flex items-center justify-between">
               <h3 class="text-lg font-headline font-bold text-on-surface tracking-tight flex items-center gap-2">
-                <span class="material-symbols-outlined text-tertiary">workspace_premium</span>
+                <span class="material-symbols-outlined text-tertiary" aria-hidden="true">workspace_premium</span>
                 Proof Log
               </h3>
               <span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">${proofEntries.length}</span>
@@ -1961,7 +1961,7 @@ function renderNoResults(queryPreview, filters) {
   return `
     <div class="p-8 rounded-lg bg-surface-container border border-outline-variant flex flex-col gap-5">
       <div class="flex items-start gap-4">
-        <span class="material-symbols-outlined text-on-surface-variant text-4xl">search_off</span>
+        <span class="material-symbols-outlined text-on-surface-variant text-4xl" aria-hidden="true">search_off</span>
         <div>
           <h3 class="text-on-surface font-medium text-lg mb-1">No matching GitHub issues found</h3>
           <p class="text-sm text-on-surface-variant">PR Dashboard searches GitHub issues only. It does not search users, profiles, or every repository.</p>
@@ -2113,7 +2113,7 @@ function renderFindIssues(container) {
     resultsHTML = `
       <div class="flex flex-col gap-6">
         <div class="bg-error-container/15 border border-error/30 rounded-lg p-5 flex items-start gap-4">
-          <span class="material-symbols-outlined text-error mt-0.5">warning</span>
+          <span class="material-symbols-outlined text-error mt-0.5" aria-hidden="true">warning</span>
           <div>
             <h3 class="text-sm font-semibold text-error mb-1">Search Connection Failure</h3>
             <p class="text-sm text-on-error-container leading-relaxed">${escapeHTML(error)}</p>
@@ -2138,7 +2138,7 @@ function renderFindIssues(container) {
     resultsHTML = `
       <div class="mb-6 flex flex-col items-center justify-center text-center gap-4 border border-outline-variant bg-surface-container-lowest rounded-xl p-6">
         <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-          <span class="material-symbols-outlined text-3xl filled-icon">terminal</span>
+          <span class="material-symbols-outlined text-3xl filled-icon" aria-hidden="true">terminal</span>
         </div>
         <div>
           <h2 class="text-2xl font-headline font-bold text-on-surface mb-2">Find your next contribution</h2>
@@ -2148,7 +2148,7 @@ function renderFindIssues(container) {
         </div>
         
         <div class="w-full callout p-4 rounded-lg flex items-start gap-3 bg-surface-container text-left border-outline-variant">
-          <span class="material-symbols-outlined text-primary mt-0.5">info</span>
+          <span class="material-symbols-outlined text-primary mt-0.5" aria-hidden="true">info</span>
           <div class="text-xs text-on-surface-variant leading-relaxed">
             <strong>GitHub API rate limits</strong>: Public searches without a GitHub token are rate-limited to 10 requests per minute by GitHub.
             ${token ? '<span class="text-tertiary">A GitHub token is active.</span>' : 'You can paste an optional fine-grained token in <strong>Settings</strong> to increase these limits.'}
@@ -2181,7 +2181,7 @@ function renderFindIssues(container) {
           <div class="flex flex-col gap-3 sm:flex-row">
             <div class="relative flex-1 group">
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors">search</span>
+                <span class="material-symbols-outlined text-primary text-xl group-focus-within:text-tertiary transition-colors" aria-hidden="true">search</span>
               </div>
               <input class="block w-full pl-12 pr-4 py-3.5 bg-surface-container border border-outline-variant rounded-xl text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all" id="search-keyword-input" placeholder="${isLookupMode ? 'Paste an issue URL, owner/repo#123, or search literally...' : 'Search issues, labels, or repositories...'}" type="text" value="${escapeHTML(store.searchQuery)}"/>
             </div>
@@ -2241,16 +2241,16 @@ function renderFindIssues(container) {
             <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Quick filters</h3>
             <div class="flex flex-wrap gap-2">
               <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="quick-wins">
-                <span class="material-symbols-outlined text-[16px]">bolt</span> Starter Picks
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">bolt</span> Starter Picks
               </button>
               <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="deep-dives">
-                <span class="material-symbols-outlined text-[16px]">psychology</span> Deep Dives
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">psychology</span> Deep Dives
               </button>
               <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
-                <span class="material-symbols-outlined text-[16px]">description</span> Docs
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">description</span> Docs
               </button>
               <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
-                <span class="material-symbols-outlined text-[16px]">volume_down</span> Low Noise
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">volume_down</span> Low Noise
               </button>
             </div>
           </div>
@@ -2552,7 +2552,7 @@ function renderIssueCardsList(issuesList, options = {}) {
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
-        <span class="material-symbols-outlined text-[15px]">warning</span>
+        <span class="material-symbols-outlined text-[15px]" aria-hidden="true">warning</span>
         Not a contribution candidate
       </div>
     ` : '';
@@ -2576,7 +2576,7 @@ function renderIssueCardsList(issuesList, options = {}) {
       <article class="issue-card interactive-card group rounded-xl p-5 cursor-pointer flex flex-col gap-3 ${isFeatured ? 'xl:col-span-2' : ''}" data-id="${issueId}">
         <div class="flex items-start justify-between gap-4">
           <div class="flex min-w-0 items-center gap-2">
-            <span class="material-symbols-outlined text-tertiary text-sm">radio_button_checked</span>
+            <span class="material-symbols-outlined text-tertiary text-sm" aria-hidden="true">radio_button_checked</span>
             <span class="truncate text-xs font-mono text-on-surface-variant">${repoName} #${issueNumber}</span>
           </div>
           <span class="shrink-0 text-xs text-on-surface-variant">Updated ${updatedText}</span>
@@ -2603,11 +2603,11 @@ function renderIssueCardsList(issuesList, options = {}) {
         
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/40 pt-4">
           <div class="flex items-center gap-4 text-xs text-on-surface-variant">
-            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">star</span>${starsText}</span>
-            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">fork_right</span>${forksText}</span>
-            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">chat_bubble</span>${issueComments}</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]" aria-hidden="true">star</span>${starsText}</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]" aria-hidden="true">fork_right</span>${forksText}</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[15px]" aria-hidden="true">chat_bubble</span>${issueComments}</span>
             <span class="flex items-center gap-1 ${fitObj.isAssigned ? 'text-primary' : 'text-tertiary'}">
-              <span class="material-symbols-outlined text-[15px]">${fitObj.isAssigned ? 'person' : 'person_off'}</span>
+              <span class="material-symbols-outlined text-[15px]" aria-hidden="true">${fitObj.isAssigned ? 'person' : 'person_off'}</span>
               ${fitObj.isAssigned ? 'Assigned' : 'Unassigned'}
             </span>
           </div>
@@ -2616,16 +2616,16 @@ function renderIssueCardsList(issuesList, options = {}) {
             Inspect
             </button>
             <button class="action-button px-3 py-1.5 text-xs save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">${saved ? 'close' : 'bookmark'}</span>
+              <span class="material-symbols-outlined text-[14px]" aria-hidden="true">${saved ? 'close' : 'bookmark'}</span>
               ${saved ? 'Remove' : 'Save'}
             </button>
             <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">visibility_off</span>
+              <span class="material-symbols-outlined text-[14px]" aria-hidden="true">visibility_off</span>
               Hide
             </button>
             ${issueUrl ? `<a class="action-button interactive-button-secondary px-3 py-1.5 text-xs" href="${escapeHTML(issueUrl)}" target="_blank" rel="noopener noreferrer">
               GitHub
-              <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+              <span class="material-symbols-outlined text-[12px]" aria-hidden="true">open_in_new</span>
             </a>` : '<span class="px-3 py-1.5 text-on-surface-variant border border-outline-variant rounded text-xs">GitHub link unavailable</span>'}
           </div>
         </div>
@@ -2695,13 +2695,13 @@ function bindIssueCardListEvents() {
         }
         if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
           btn.setAttribute('data-confirm-risk', 'true');
-          btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">warning</span> Save anyway?`;
+          btn.innerHTML = `<span class="material-symbols-outlined text-[14px]" aria-hidden="true">warning</span> Save anyway?`;
           btn.classList.add('bg-error-container/10', 'text-error', 'border-error/30');
           return;
         }
         store.saveIssueToBoard(issue);
         // Toast / alert indicator
-        btn.innerHTML = `<span class="material-symbols-outlined text-[14px]">check</span> Saved`;
+        btn.innerHTML = `<span class="material-symbols-outlined text-[14px]" aria-hidden="true">check</span> Saved`;
         btn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/20');
         btn.classList.remove('bg-transparent', 'text-on-surface-variant', 'border-outline-variant');
       }
@@ -2756,7 +2756,7 @@ function confirmRefreshBatch({ message, requestCount, token }) {
       <div class="w-full max-w-md rounded-lg border border-outline-variant bg-surface p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="refresh-confirm-title">
         <div class="flex items-start gap-3">
           <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
-            <span class="material-symbols-outlined text-[18px]">sync</span>
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">sync</span>
           </div>
           <div class="min-w-0">
             <h2 class="text-base font-headline font-bold text-on-surface" id="refresh-confirm-title">Refresh ${requestCount} saved cards?</h2>
@@ -2767,7 +2767,7 @@ function confirmRefreshBatch({ message, requestCount, token }) {
         <div class="mt-5 flex flex-wrap justify-end gap-2">
           <button class="interactive-button interactive-button-secondary px-4 py-2" id="refresh-confirm-cancel">Cancel</button>
           <button class="interactive-button interactive-button-primary px-4 py-2" id="refresh-confirm-submit">
-            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh cards
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">sync</span> Refresh cards
           </button>
         </div>
       </div>
@@ -2935,7 +2935,7 @@ function renderBoard(container) {
         prOpenHTML = `
           <div class="bg-surface-container-lowest border border-outline-variant rounded p-2 mb-3 flex items-center justify-between">
             <span class="text-[10px] text-on-surface-variant">Manual GitHub follow-up</span>
-            <span class="material-symbols-outlined text-tertiary text-[14px] filled-icon">open_in_new</span>
+            <span class="material-symbols-outlined text-tertiary text-[14px] filled-icon" aria-hidden="true">open_in_new</span>
           </div>
         `;
       }
@@ -2946,7 +2946,7 @@ function renderBoard(container) {
         mergedTextHTML = `
           <div class="flex justify-between items-center text-[10px] text-on-surface-variant mt-2">
             <span>Marked complete locally</span>
-            <span class="material-symbols-outlined text-tertiary text-[14px]">merge</span>
+            <span class="material-symbols-outlined text-tertiary text-[14px]" aria-hidden="true">merge</span>
           </div>
         `;
       }
@@ -2956,7 +2956,7 @@ function renderBoard(container) {
       if (col === 'Passed') {
         passedTextHTML = `
           <div class="flex justify-between items-center text-[10px] text-on-surface-variant mt-2">
-            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[10px]">close</span> Closed / Inactive</span>
+            <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[10px]" aria-hidden="true">close</span> Closed / Inactive</span>
           </div>
         `;
       }
@@ -2968,11 +2968,11 @@ function renderBoard(container) {
       return `
         <!-- Card -->
         <div class="kanban-card interactive-card rounded-lg p-3 cursor-pointer group mb-3 relative board-card-item" data-id="${cardId}">
-          <button class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-on-surface-variant transition-colors hover:border-error/30 hover:text-error delete-card-btn" data-id="${cardId}" aria-label="Delete card" data-tooltip="Delete card" data-tooltip-position="left"><span class="material-symbols-outlined text-[14px]">close</span></button>
+          <button class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-on-surface-variant transition-colors hover:border-error/30 hover:text-error delete-card-btn" data-id="${cardId}" aria-label="Delete card" data-tooltip="Delete card" data-tooltip-position="left"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">close</span></button>
           
           <div class="flex justify-between items-start mb-2 pr-4">
             <span class="board-card-repo text-[11px] font-medium text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
-              <span class="material-symbols-outlined text-[12px] filled-icon">bookmark</span>
+              <span class="material-symbols-outlined text-[12px] filled-icon" aria-hidden="true">bookmark</span>
               ${repoName}
             </span>
             <span class="board-card-number shrink-0 whitespace-nowrap text-xs text-on-surface-variant group-hover:text-primary transition-colors">#${cardNumber}</span>
@@ -2994,10 +2994,10 @@ function renderBoard(container) {
             
             <div class="flex items-center gap-1">
               <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-left-btn" data-id="${cardId}" aria-label="Move card left" data-tooltip="Move card left" data-tooltip-position="top" ${leftArrowDisabled}>
-                <span class="material-symbols-outlined text-[14px]">arrow_left</span>
+                <span class="material-symbols-outlined text-[14px]" aria-hidden="true">arrow_left</span>
               </button>
               <button class="action-button h-6 w-6 rounded bg-surface-container-lowest border-outline-variant p-0 text-xs hover:border-primary move-right-btn" data-id="${cardId}" aria-label="Move card right" data-tooltip="Move card right" data-tooltip-position="top" ${rightArrowDisabled}>
-                <span class="material-symbols-outlined text-[14px]">arrow_right</span>
+                <span class="material-symbols-outlined text-[14px]" aria-hidden="true">arrow_right</span>
               </button>
             </div>
           </div>
@@ -3078,11 +3078,11 @@ function renderBoard(container) {
     `;
   }).join('') : `
     <div class="board-compact-empty">
-      <span class="material-symbols-outlined text-4xl text-primary">view_kanban</span>
+      <span class="material-symbols-outlined text-4xl text-primary" aria-hidden="true">view_kanban</span>
       <h3>Save a candidate to start tracking it.</h3>
       <p>Find Contributions is where new board cards begin.</p>
       <button class="interactive-button interactive-button-primary px-4 py-2" id="board-go-find-btn" type="button">
-        <span class="material-symbols-outlined text-[16px]">search</span>
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">search</span>
         Find Contributions
       </button>
     </div>
@@ -3157,13 +3157,13 @@ function renderBoard(container) {
             ${staleRefreshHelper ? `<div>${escapeHTML(staleRefreshHelper)}</div>` : ''}
           </div>
           <button class="interactive-button interactive-button-primary py-1.5 px-3" id="board-refresh-stale-btn" ${staleRefreshRequestCount === 0 ? 'disabled' : ''}>
-            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh stale cards (${staleRefreshRequestCount} requests)
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">sync</span> Refresh stale cards (${staleRefreshRequestCount} requests)
           </button>
           <button class="interactive-button interactive-button-secondary py-1.5 px-3" id="board-refresh-all-btn" ${activeRefreshRequestCount === 0 ? 'disabled' : ''}>
-            <span class="material-symbols-outlined text-[16px]">sync</span> Refresh all active cards (${activeRefreshRequestCount} requests)
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">sync</span> Refresh all active cards (${activeRefreshRequestCount} requests)
           </button>
           <button class="interactive-button interactive-button-danger py-1.5 px-3" id="board-clear-btn" ${totalCards === 0 ? 'disabled' : ''}>
-            <span class="material-symbols-outlined text-[16px]">delete</span> Clear Board
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">delete</span> Clear Board
           </button>
         </div>
       </div>
@@ -3395,7 +3395,7 @@ function renderFeedback(container) {
             </div>
             <a class="interactive-button interactive-button-primary px-4 py-2" href="${feedbackUrl}" target="_blank" rel="noopener noreferrer">
               Open GitHub issue
-              <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+              <span class="material-symbols-outlined text-[16px]" aria-hidden="true">open_in_new</span>
             </a>
           </div>
 
@@ -3477,7 +3477,7 @@ function renderProofLogRows(entries) {
   if (!entries.length) {
     return `
       <div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-6 text-center">
-        <span class="material-symbols-outlined text-3xl text-on-surface-variant">workspace_premium</span>
+        <span class="material-symbols-outlined text-3xl text-on-surface-variant" aria-hidden="true">workspace_premium</span>
         <h3 class="mt-2 text-sm font-medium text-on-surface">No Proof Log entries yet</h3>
         <p class="mt-1 text-xs text-on-surface-variant">Move a board card to Merged to preserve completed work.</p>
       </div>
@@ -3605,7 +3605,7 @@ function renderActivity(container) {
       <div class="mx-auto max-w-5xl space-y-8">
         <header class="interactive-card rounded-xl p-6">
           <div class="flex items-start gap-4">
-            <span class="material-symbols-outlined text-primary text-3xl">timeline</span>
+            <span class="material-symbols-outlined text-primary text-3xl" aria-hidden="true">timeline</span>
             <div>
               <h1 class="text-3xl font-headline font-bold tracking-tight text-on-background">Activity</h1>
               <p class="mt-1 text-sm text-on-surface-variant">Proof Log, Review reminders, and Personal scoring signals from local workflow actions.</p>
@@ -3755,7 +3755,7 @@ function renderHiddenResultsManager() {
         <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 class="text-lg font-semibold flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">visibility_off</span>
+              <span class="material-symbols-outlined text-primary" aria-hidden="true">visibility_off</span>
               Hidden Results
             </h2>
             <p class="mt-1 text-sm text-on-surface-variant">Review issues and repositories you hid from search results.</p>
@@ -3821,7 +3821,7 @@ function renderSettings(container) {
         
         <!-- Local Storage Warning Indicator (Only shown when Remember checked) -->
         <div id="settings-storage-warning" class="interactive-card bg-error-container/10 border-error/30 rounded-lg p-5 flex items-start gap-4" style="display: ${remember ? 'flex' : 'none'};">
-          <span class="material-symbols-outlined text-error mt-0.5">warning</span>
+          <span class="material-symbols-outlined text-error mt-0.5" aria-hidden="true">warning</span>
           <div>
             <h3 class="text-sm font-semibold text-error mb-1">Local Browser Security Warning</h3>
             <p class="text-sm text-on-error-container leading-relaxed">
@@ -3832,7 +3832,7 @@ function renderSettings(container) {
         
         <!-- Default callout explaining limits -->
         <div class="interactive-card border-tertiary/30 rounded-lg p-5 flex items-start gap-4">
-          <span class="material-symbols-outlined text-tertiary mt-0.5">lock</span>
+          <span class="material-symbols-outlined text-tertiary mt-0.5" aria-hidden="true">lock</span>
           <div>
             <h3 class="text-sm font-semibold text-tertiary mb-1">Local Session Storage by Default</h3>
             <p class="text-sm text-on-secondary-container leading-relaxed">
@@ -3845,7 +3845,7 @@ function renderSettings(container) {
         <div class="interactive-card rounded-xl overflow-hidden">
           <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
             <h2 class="text-lg font-semibold flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">key</span>
+              <span class="material-symbols-outlined text-primary" aria-hidden="true">key</span>
               GitHub token
             </h2>
           </div>
@@ -3857,13 +3857,13 @@ function renderSettings(container) {
               <div class="relative group">
                 <input class="secure-token-input w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3.5 text-on-background font-mono text-sm focus:outline-none placeholder:text-outline" id="settings-pat-input" placeholder="Paste token for this session" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-token-visible="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" />
                 <button class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary" id="toggle-pat-visibility" aria-label="Show token" data-tooltip="Show token" data-tooltip-position="left" style="background:none; border:none;">
-                  <span class="material-symbols-outlined" id="visibility-icon">visibility</span>
+                  <span class="material-symbols-outlined" id="visibility-icon" aria-hidden="true">visibility</span>
                 </button>
               </div>
               
               <div class="flex justify-between items-center text-xs text-on-surface-variant">
                 <span>Supports fine-grained or classic tokens. No private repository scopes required.</span>
-                <a class="text-primary hover:underline flex items-center gap-1" href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">Generate on GitHub <span class="material-symbols-outlined text-[14px]">open_in_new</span></a>
+                <a class="text-primary hover:underline flex items-center gap-1" href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">Generate on GitHub <span class="material-symbols-outlined text-[14px]" aria-hidden="true">open_in_new</span></a>
               </div>
             </div>
             
@@ -3873,7 +3873,7 @@ function renderSettings(container) {
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div class="interactive-row flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
                   <div class="w-5 h-5 rounded bg-tertiary/10 border border-tertiary/30 flex items-center justify-center text-tertiary">
-                    <span class="material-symbols-outlined text-[14px] filled-icon">check</span>
+                    <span class="material-symbols-outlined text-[14px] filled-icon" aria-hidden="true">check</span>
                   </div>
                   <div>
                     <div class="font-mono text-sm text-on-surface mb-0.5">public_repo (optional)</div>
@@ -3882,7 +3882,7 @@ function renderSettings(container) {
                 </div>
                 <div class="interactive-row flex items-start gap-3 p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
                   <div class="w-5 h-5 rounded bg-tertiary/10 border border-tertiary/30 flex items-center justify-center text-tertiary">
-                    <span class="material-symbols-outlined text-[14px] filled-icon">check</span>
+                    <span class="material-symbols-outlined text-[14px] filled-icon" aria-hidden="true">check</span>
                   </div>
                   <div>
                     <div class="font-mono text-sm text-on-surface mb-0.5">no private scopes needed</div>
@@ -3922,7 +3922,7 @@ function renderSettings(container) {
         <div class="interactive-card rounded-xl overflow-hidden">
           <div class="p-6 border-b border-outline-variant bg-surface-dim/50">
             <h2 class="text-lg font-semibold flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">sync_alt</span>
+              <span class="material-symbols-outlined text-primary" aria-hidden="true">sync_alt</span>
               Export and Import Local Data
             </h2>
           </div>
@@ -4229,7 +4229,7 @@ function openInspector() {
   ` : '';
   const riskyLookupHTML = !closed && riskyContribution ? `
     <div class="rounded-lg border border-error/25 bg-error-container/10 p-4 flex items-start gap-3">
-      <span class="material-symbols-outlined text-error mt-0.5">warning</span>
+      <span class="material-symbols-outlined text-error mt-0.5" aria-hidden="true">warning</span>
       <div>
         <h3 class="text-sm font-semibold text-error mb-1">Not a contribution candidate</h3>
         <p class="text-sm text-on-surface-variant">This can still be saved for tracking, but the score flags it as a likely pass.</p>
@@ -4268,7 +4268,7 @@ function openInspector() {
   const confidenceTone = getConfidenceTone(fitObj.confidence.level);
   const confidenceReasonsHTML = (fitObj.confidence.reasons || []).map(reason => `
     <li class="flex items-start gap-2 text-xs text-on-surface-variant">
-      <span class="material-symbols-outlined text-primary text-[13px] mt-0.5">info</span>
+      <span class="material-symbols-outlined text-primary text-[13px] mt-0.5" aria-hidden="true">info</span>
       <span>${escapeHTML(reason)}</span>
     </li>
   `).join('');
@@ -4300,13 +4300,13 @@ function openInspector() {
     : 'border-primary/20 bg-primary/10 text-primary';
   const contributionBriefWhyHTML = contributionBrief.why.map(reason => `
     <li class="flex items-start gap-2 text-sm text-on-surface-variant">
-      <span class="material-symbols-outlined text-tertiary text-[14px] mt-0.5">check_circle</span>
+      <span class="material-symbols-outlined text-tertiary text-[14px] mt-0.5" aria-hidden="true">check_circle</span>
       <span>${escapeHTML(reason)}</span>
     </li>
   `).join('');
   const contributionBriefRisksHTML = contributionBrief.risks.map(risk => `
     <li class="flex items-start gap-2 text-sm text-on-surface-variant">
-      <span class="material-symbols-outlined text-error text-[14px] mt-0.5">error</span>
+      <span class="material-symbols-outlined text-error text-[14px] mt-0.5" aria-hidden="true">error</span>
       <span>${escapeHTML(risk)}</span>
     </li>
   `).join('');
@@ -4345,22 +4345,22 @@ function openInspector() {
         <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${safeIssueTitle}</h2>
         <div class="flex items-center gap-4 mt-4 text-xs text-on-surface-variant">
           <div class="flex items-center gap-1.5">
-            <span class="material-symbols-outlined text-[18px]">account_circle</span>
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">account_circle</span>
             <span>Opened by <strong class="text-on-background">${safeIssueUser}</strong></span>
           </div>
           <div class="flex items-center gap-1.5">
-            <span class="material-symbols-outlined text-[18px]">schedule</span>
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">schedule</span>
             <span>Updated ${safeIssueDate}</span>
           </div>
           <div class="flex items-center gap-1.5 ${closed ? 'text-error' : 'text-tertiary'}">
-            <span class="material-symbols-outlined text-[18px] filled-icon">${closed ? 'cancel' : 'check_circle'}</span>
+            <span class="material-symbols-outlined text-[18px] filled-icon" aria-hidden="true">${closed ? 'cancel' : 'check_circle'}</span>
             <span>${safeIssueState}</span>
           </div>
         </div>
       </div>
       
-      <button class="action-button interactive-button-secondary h-8 w-8 p-0" id="inspector-close-btn">
-        <span class="material-symbols-outlined">close</span>
+      <button class="action-button interactive-button-secondary h-8 w-8 p-0" id="inspector-close-btn" aria-label="Close inspector">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
       </button>
     </div>
 
@@ -4369,29 +4369,29 @@ function openInspector() {
       <span class="text-xs text-on-surface-variant">Action center</span>
       <div class="flex flex-wrap gap-2">
         <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn">
-          <span class="material-symbols-outlined text-[16px]">${saved ? 'close' : 'bookmark'}</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">${saved ? 'close' : 'bookmark'}</span>
           ${saved ? 'Remove from board' : 'Save issue'}
         </button>
         <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
-          <span class="material-symbols-outlined text-[16px]">visibility_off</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">visibility_off</span>
           Hide issue
         </button>
         <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-repo-btn">
-          <span class="material-symbols-outlined text-[16px]">folder_off</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">folder_off</span>
           Hide repo
         </button>
         ${hiddenLocally ? `<button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-unhide-btn">
-          <span class="material-symbols-outlined text-[16px]">visibility</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">visibility</span>
           Unhide
         </button>` : ''}
         <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-refresh-card-btn" ${saved ? '' : 'disabled'}>
-          <span class="material-symbols-outlined text-[16px]">sync</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">sync</span>
           Refresh this card
         </button>
 
         ${safeIssueUrl ? `<a class="action-button interactive-button-primary min-w-fit px-4 py-2 text-xs" href="${escapeHTML(safeIssueUrl)}" target="_blank" rel="noopener noreferrer">
           Open on GitHub
-          <span class="material-symbols-outlined text-[16px]">open_in_new</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">open_in_new</span>
         </a>` : '<span class="px-4 py-2 rounded text-xs font-medium border border-outline-variant text-on-surface-variant">GitHub link unavailable</span>'}
       </div>
       ${refreshStatusHTML}
@@ -4415,7 +4415,7 @@ function openInspector() {
       <!-- inspector-section:contribution-brief -->
       <section class="bg-surface-container rounded-lg border border-outline-variant p-4">
         <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-primary text-[18px]">assistant_direction</span>
+          <span class="material-symbols-outlined text-primary text-[18px]" aria-hidden="true">assistant_direction</span>
           Contribution Brief
         </h4>
         <div class="mb-4 flex flex-wrap gap-2">
@@ -4446,7 +4446,7 @@ function openInspector() {
       <!-- inspector-section:issue-description -->
       <section class="bg-surface-container rounded-lg border border-outline-variant p-5">
         <h3 class="text-base font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-primary">description</span>
+          <span class="material-symbols-outlined text-primary" aria-hidden="true">description</span>
           Issue Description
         </h3>
         <div class="prose prose-invert text-xs text-on-surface-variant font-body leading-relaxed whitespace-pre-wrap select-text">${safeIssueBody}</div>
@@ -4457,7 +4457,7 @@ function openInspector() {
         <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h4 class="text-xs font-headline font-semibold text-on-background mb-1 flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary text-[18px]">radar</span>
+              <span class="material-symbols-outlined text-primary text-[18px]" aria-hidden="true">radar</span>
               Why this score?
             </h4>
             <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${stageLabel} stage</p>
@@ -4485,7 +4485,7 @@ function openInspector() {
       <!-- inspector-section:action-plan -->
       <section class="bg-surface-container rounded-lg border border-outline-variant p-4">
         <h4 class="text-xs font-headline font-semibold text-on-background mb-3 flex items-center gap-2">
-          <span class="material-symbols-outlined text-primary text-[18px]">rule</span>
+          <span class="material-symbols-outlined text-primary text-[18px]" aria-hidden="true">rule</span>
           Action Plan
         </h4>
         <div class="space-y-2.5">
@@ -4538,12 +4538,12 @@ function openInspector() {
       }
       if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
         saveBtn.setAttribute('data-confirm-risk', 'true');
-        saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">warning</span> Save anyway?`;
+        saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]" aria-hidden="true">warning</span> Save anyway?`;
         saveBtn.classList.add('bg-error-container/10', 'text-error', 'border-error/30');
         return;
       }
       store.saveIssueToBoard(issue);
-      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">close</span> Remove from board`;
+      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span> Remove from board`;
       saveBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');
       saveBtn.classList.remove('bg-error-container/10', 'text-error', 'border-error/30');
       saveBtn.removeAttribute('data-confirm-risk');

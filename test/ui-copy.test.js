@@ -68,6 +68,14 @@ function assertSourceOrder(source, first, second) {
   );
 }
 
+function getMaterialSymbolSpanTags(source) {
+  return [...source.matchAll(/<span[^>]*class="[^"]*material-symbols-outlined[^"]*"[^>]*>/g)]
+    .map(match => ({
+      line: source.slice(0, match.index).split(/\r?\n/).length,
+      tag: match[0]
+    }));
+}
+
 test('primary navigation labels contribution finding, not generic issue search', () => {
   const { indexHtml, mainJs } = readCopySources();
 
@@ -475,6 +483,7 @@ test('lookup and search keep hidden results out of result cards', () => {
 test('platform badges are icon-only on result cards and independent of active filters', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const iconRenderer = sliceBetween(mainJs, 'function renderPlatformEvidenceIcon', 'function renderPlatformEvidenceBadge');
   const badgeRenderer = sliceBetween(mainJs, 'function renderPlatformEvidenceBadge', 'function getIssueLabelNames');
 
   assert.match(mainJs, /getPlatformBadgeEvidence/);
@@ -483,11 +492,29 @@ test('platform badges are icon-only on result cards and independent of active fi
   assert.match(badgeRenderer, /if \(!evidence\?\.supportedPlatforms\?\.length\) return ''/);
   assert.match(badgeRenderer, /platform-evidence-badges/);
   assert.match(badgeRenderer, /\.map\(platform => `\s*<span class="platform-evidence-chip/);
+  assert.match(badgeRenderer, /role="img"/);
   assert.match(badgeRenderer, /aria-label="\$\{escapeHTML\(getPlatformSupportedLabel\(platform\)\)\}"/);
+  assert.match(iconRenderer, /class="material-symbols-outlined text-\[13px\]" aria-hidden="true"/);
   assert.doesNotMatch(badgeRenderer, /data-tooltip/);
   assert.doesNotMatch(badgeRenderer, /<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>/);
   assert.doesNotMatch(badgeRenderer, /renderPlatformEvidenceIcons/);
   assert.doesNotMatch(badgeRenderer, /px-2 py-0\.5/);
+});
+
+test('decorative material symbol icons are hidden from assistive tech', () => {
+  const { indexHtml, mainJs } = readCopySources();
+  const materialIconTags = [
+    ...getMaterialSymbolSpanTags(indexHtml).map(item => ({ ...item, file: 'index.html' })),
+    ...getMaterialSymbolSpanTags(mainJs).map(item => ({ ...item, file: 'src/main.js' }))
+  ];
+  const missingAriaHidden = materialIconTags
+    .filter(item => !/\baria-hidden="true"/.test(item.tag))
+    .map(item => `${item.file}:${item.line} ${item.tag}`);
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.ok(materialIconTags.length > 0);
+  assert.deepEqual(missingAriaHidden, []);
+  assert.match(inspector, /id="inspector-close-btn"[^>]*aria-label="Close inspector"/);
 });
 
 test('mobile find contributions shows results before long filter controls', () => {
