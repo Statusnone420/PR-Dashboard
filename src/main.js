@@ -1,7 +1,7 @@
 import { store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
-import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
+import { applyFilterPatch, applyPresetSearch, getRelaxedFilters, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
@@ -729,7 +729,9 @@ function schedulePlatformFilterSetupRerender() {
   }, 120);
 }
 
-function queuePlatformFilterSetupInspection(items, filters = store.filters) {
+function queuePlatformFilterSetupInspection(items, filters = store.filters, options = {}) {
+  if (!shouldApplyTargetPlatformResultFilter(filters, options.mode || store.lastSearchMode || 'find')) return;
+
   const visibleItems = filterHiddenIssues(items || []);
   const candidates = getPlatformSetupScanCandidates(visibleItems, filters, {
     limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
@@ -771,7 +773,12 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters) {
   });
 }
 
-function filterVisibleIssueResults(items, filters = store.filters) {
+function filterVisibleIssueResults(items, filters = store.filters, options = {}) {
+  const mode = options.mode || store.lastSearchMode || store.finderMode || 'find';
+  if (!shouldApplyTargetPlatformResultFilter(filters, mode)) {
+    return filterHiddenIssues(items);
+  }
+
   const targetPlatforms = normalizeTargetPlatforms(filters?.targetPlatforms);
   return filterHiddenIssues(items).filter(issue => {
     const setupSummary = getPlatformFilterSetupSummary(issue);
@@ -1868,9 +1875,10 @@ function renderFindIssues(container) {
   const error = store.searchError;
   const filters = store.draftFilters;
   const appliedFilters = store.filters;
-  const visibleResults = Array.isArray(results) ? filterVisibleIssueResults(results, appliedFilters) : results;
+  const resultMode = store.lastSearchMode || store.finderMode || 'find';
+  const visibleResults = Array.isArray(results) ? filterVisibleIssueResults(results, appliedFilters, { mode: resultMode }) : results;
   if (!loading && Array.isArray(results)) {
-    queuePlatformFilterSetupInspection(results, appliedFilters);
+    queuePlatformFilterSetupInspection(results, appliedFilters, { mode: resultMode });
   }
   const mode = store.finderMode;
   const exactLookup = mode === 'lookup'
@@ -2335,7 +2343,7 @@ function renderFindIssues(container) {
  */
 function renderIssueCardsList(issuesList) {
   // Sort list if local sorting is needed
-  let sorted = filterVisibleIssueResults(issuesList, store.filters);
+  let sorted = filterVisibleIssueResults(issuesList, store.filters, { mode: store.lastSearchMode || 'find' });
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {

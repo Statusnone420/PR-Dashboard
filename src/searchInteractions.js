@@ -8,6 +8,10 @@ export function applyFilterPatch(appStore, patch) {
   appStore.setFilters(patch);
 }
 
+export function shouldApplyTargetPlatformResultFilter(filters = {}, mode = 'find') {
+  return mode !== 'lookup' || Boolean(filters?.useFiltersInLookup);
+}
+
 export function getPresetFilterPatch(preset) {
   if (preset === 'quick-wins') {
     return {

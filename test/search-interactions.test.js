@@ -81,3 +81,11 @@ test('broaden search clears contribution filters instead of swapping labels', as
     targetPlatforms: TARGET_PLATFORM_KEYS
   });
 });
+
+test('target platform result filtering respects lookup filter opt-in', async () => {
+  const { shouldApplyTargetPlatformResultFilter } = await import('../src/searchInteractions.js');
+
+  assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: false }, 'lookup'), false);
+  assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: true }, 'lookup'), true);
+  assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: false }, 'find'), true);
+});

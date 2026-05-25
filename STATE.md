@@ -472,3 +472,12 @@
 - Browser smoke on the authenticated local app at `http://127.0.0.1:5180/find-issues#find-issues`: Linux and Android unchecked, Apply Filters stayed clickable, 27 result cards remained stable over the wait window, Inspect opened the desktop drawer, and the screenshot was saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-auth-os-filter-fixed.png`.
 - Verification on 2026-05-24: `npm test -- test/platform-setup-scan.test.js test/ui-copy.test.js` passed 252/252, and `npm run build` passed.
 - Remaining risk: live GitHub rate-limit headers can still change while setup/inspector enrichment runs, but the authenticated platform filter no longer reschedules the same uncached setup scans indefinitely.
+
+## 2026-05-24 Lookup Platform Filter Opt-In Hotfix
+
+- Addressed PR review thread `discussion_r3295800467`: exact Lookup results were still being passed through Target platforms result filtering even when `Use filters in Lookup` was disabled.
+- Added an explicit `shouldApplyTargetPlatformResultFilter()` contract: Find mode always applies Target platforms, while Lookup applies them only when lookup filters are opted in.
+- Render-time result filtering and background platform setup scans now use the last search mode, so exact Lookup remains broad/literal unless the user enables filters. Hidden issue/repo suppression remains active in Lookup.
+- Browser smoke in an isolated Chromium context seeded a cached Linux-only setup summary for `microsoft/vscode#1`, selected Windows only, and verified the exact Lookup card stayed visible with `Use filters in Lookup` off, then hid only after the lookup filter checkbox was enabled. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-lookup-platform-opt-out.png`.
+- Verification on 2026-05-24: `npm test` passed 253/253, `npm run build` passed, and the targeted lookup platform smoke passed.
+- Remaining risk: exact Lookup still scores the issue with normal contribution heuristics; this fix only restores the display/filtering contract.
