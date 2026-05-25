@@ -1,5 +1,13 @@
 # PR Dashboard State
 
+## 2026-05-25 Web Platform Detection Tightening
+
+- Addressed PR review thread `discussion_r3299034539`.
+- Tightened repo setup Web support detection so incidental setup-doc mentions of React, Vite, HTML, or CSS no longer become authoritative Web platform support. Web support now requires explicit setup context such as `web app`, `frontend app`, `browser-based`, or running/opening in the browser.
+- Added repo setup regressions proving incidental frontend technology mentions do not filter/down-score Windows-targeted candidates, while explicit browser app support still produces `Web setup supported`.
+- Verification on 2026-05-25: `node --test test/repo-setup.test.js` failed first on the incidental frontend mention regression, then passed 9/9 after the fix; `node --test test/repo-setup.test.js test/platform-filters.test.js test/match-score.test.js` passed 44/44; `npm.cmd test` passed 269/269; `npm.cmd run build` passed; `npm.cmd run test:layout` passed 16/16; `git diff --check` passed.
+- Remaining risk: platform support parsing remains heuristic by design; ambiguous setup docs without explicit platform statements stay neutral rather than authoritative.
+
 ## 2026-05-25 Passed Hidden Provenance + Dashboard Saved Candidate Fix
 
 - Addressed PR review thread `discussion_r3298947148`.

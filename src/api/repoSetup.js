@@ -109,7 +109,14 @@ function detectPlatformCompatibility(text) {
     macos: [/\bmacos\b/, /\bmac os\b/, /\bos x\b/, /\bdarwin\b/],
     linux: [/\blinux\b/, /\bubuntu\b/, /\bdebian\b/, /\bfedora\b/],
     windows: [/\bwindows\b/, /\bwin32\b/, /\bpowershell\b/],
-    web: [/\bweb app\b/, /\bbrowser\b/, /\bfrontend\b/, /\breact\b/, /\bvite\b/, /\bhtml\b/, /\bcss\b/]
+    web: [
+      /\bweb (?:app|application|client|frontend|front-end|ui)\b/,
+      /\bfrontend (?:app|application|client|ui)\b/,
+      /\bfront-end (?:app|application|client|ui)\b/,
+      /\bclient-side (?:app|application|ui)\b/,
+      /\bbrowser[- ]based\b/,
+      /\b(?:runs?|opens?|loads?|served) (?:in|on) (?:the )?browser\b/
+    ]
   };
   const unsupportedPatterns = {
     ios: [/\bios (?:is )?not supported\b/, /\bdoes not support ios\b/, /\bno ios support\b/],
