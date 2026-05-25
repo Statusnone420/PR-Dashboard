@@ -2019,6 +2019,12 @@ function shouldOpenMobileFilterDetails(filters = {}, filtersChanged = false) {
   return Boolean(filtersChanged) || hasActiveMobileFilterDetails(filters);
 }
 
+function isDesktopFilterLayout() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 1024px)').matches;
+}
+
 function shouldOpenMoreFilters(filters = {}) {
   if (hasActiveMoreFilters(filters)) return true;
   try {
@@ -2127,8 +2133,8 @@ function renderFindIssues(container) {
   const lookupModeClass = isLookupMode
     ? 'bg-primary text-on-primary border-primary'
     : 'bg-surface-container text-on-surface-variant border-outline-variant hover:text-on-surface';
-  const mobileFiltersOpen = shouldOpenMobileFilterDetails(filters, filtersChanged);
-  const mobileFiltersOpenAttr = mobileFiltersOpen ? ' open' : '';
+  const filterDetailsOpen = isDesktopFilterLayout() || shouldOpenMobileFilterDetails(filters, filtersChanged);
+  const mobileFiltersOpenAttr = filterDetailsOpen ? ' open' : '';
   const moreFiltersOpen = shouldOpenMoreFilters(filters);
   const moreFiltersOpenAttr = moreFiltersOpen ? ' open' : '';
 

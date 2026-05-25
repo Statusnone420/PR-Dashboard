@@ -9,6 +9,7 @@
 - CSS tooltips now wrap long text, suppress on Escape for focused tooltip hosts, and do not render visual pseudo-tooltips on coarse pointer/touch devices.
 - Find Contributions now keeps Apply Filters and Quick filters visible on mobile while collapsing the detailed filter stack by default unless filters differ from defaults or draft filters are changed.
 - Verification on 2026-05-25: new focused tests failed first against missing mobile API limits, missing touch-target contracts, missing mobile filter disclosure, missing tooltip suppression/wrapping, and missing inspector slider semantics, then passed after implementation. Final verification passed `node --test test/ui-copy.test.js test/css-contract.test.js test/inspector-resize.test.js`, `npm test`, `npm run build`, `npm run test:layout`, and `git diff --check`.
+- Follow-up regression fix on 2026-05-25: the detailed Find Contributions filter controls were unintentionally hidden on desktop because the mobile-only wrapper used a closed native `<details>` element. Desktop now renders that disclosure open while mobile still defaults collapsed, and `test/board-layout-a1.spec.cjs` has a desktop guard for visible Language, Labels, and Stars controls.
 - Remaining risk: audit score has not been recalculated; visual identity/theming, first-run dashboard zero states, motion cleanup, and glassmorphism cleanup remain separate audit follow-ups.
 
 ## 2026-05-25 Explicit Ubuntu Platform Support

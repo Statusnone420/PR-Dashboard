@@ -280,6 +280,31 @@ test.describe('A1 board layout', () => {
     await expect(page.locator('#api-limits-popover')).toBeHidden();
   });
 
+  test('desktop find filters keep detailed controls visible', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${baseURL}/#find-issues`);
+
+    const sidebar = page.locator('#find-issues-sidebar');
+    await expect(sidebar.getByRole('heading', { name: 'Language' })).toBeVisible();
+    await expect(sidebar.getByRole('heading', { name: 'Labels' })).toBeVisible();
+    await expect(sidebar.getByRole('heading', { name: 'Stars' })).toBeVisible();
+    await expect(sidebar.locator('.lang-filter-checkbox').first()).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const disclosure = document.getElementById('mobile-filter-disclosure');
+      const summary = disclosure.querySelector('.mobile-filter-summary');
+      const body = disclosure.querySelector('.mobile-filter-body');
+      return {
+        bodyDisplay: getComputedStyle(body).display,
+        bodyHeight: body.getBoundingClientRect().height,
+        summaryDisplay: getComputedStyle(summary).display
+      };
+    });
+    expect(metrics.bodyDisplay).not.toBe('none');
+    expect(metrics.bodyHeight).toBeGreaterThan(0);
+    expect(metrics.summaryDisplay).toBe('none');
+  });
+
   test('mobile audit controls expose API limits, touch targets, collapsed filters, and tooltip dismissal', async ({ page }) => {
     await page.route('https://api.github.com/rate_limit', async route => {
       await route.fulfill({
