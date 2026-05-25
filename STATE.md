@@ -1,5 +1,12 @@
 # PR Dashboard State
 
+## 2026-05-25 macOS Platform Badge Contrast
+
+- Fixed the compact macOS platform evidence badge so the black Apple glyph remains legible on the dark chip surface. The badge image now carries a platform data attribute, and only `data-platform='macos'` gets the contrast filter.
+- Added UI/CSS contract coverage so platform image badges keep platform identity available to CSS and the macOS contrast treatment does not regress.
+- Verification on 2026-05-25: targeted `node --test test/ui-copy.test.js test/css-contract.test.js` failed first for the missing platform data attribute and missing macOS contrast rule, then passed after the fix.
+- Remaining risk: this is a contrast/readability fix for the existing asset, not a broader platform icon redesign.
+
 ## 2026-05-25 A11y Responsive Audit Follow-Up
 
 - Addressed the next A11y/Responsive items from `IMPECCABLE_AUDIT.md` after the PR #15 Material Symbols `aria-hidden` fix.

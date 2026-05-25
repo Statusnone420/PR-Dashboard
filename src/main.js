@@ -172,7 +172,7 @@ function getPlatformSupportedLabel(platform) {
 function renderPlatformEvidenceIcon(iconKey) {
   const path = PLATFORM_ICON_PATHS[iconKey];
   if (path) {
-    return `<img class="platform-evidence-icon" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
+    return `<img class="platform-evidence-icon" data-platform="${escapeHTML(iconKey)}" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
   }
   if (iconKey === 'web') {
     return '<span class="material-symbols-outlined text-[13px]" aria-hidden="true">public</span>';

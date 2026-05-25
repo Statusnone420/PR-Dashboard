@@ -534,6 +534,7 @@ test('platform badges are icon-only on result cards and independent of active fi
   assert.match(badgeRenderer, /\.map\(platform => `\s*<span class="platform-evidence-chip/);
   assert.match(badgeRenderer, /role="img"/);
   assert.match(badgeRenderer, /aria-label="\$\{escapeHTML\(getPlatformSupportedLabel\(platform\)\)\}"/);
+  assert.match(iconRenderer, /data-platform="\$\{escapeHTML\(iconKey\)\}"/);
   assert.match(iconRenderer, /class="material-symbols-outlined text-\[13px\]" aria-hidden="true"/);
   assert.doesNotMatch(badgeRenderer, /data-tooltip/);
   assert.doesNotMatch(badgeRenderer, /<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>/);

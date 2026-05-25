@@ -132,6 +132,7 @@ test('platform evidence badges stay compact and square', async () => {
   const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
   const badgeGroup = css.match(/\.platform-evidence-badges\s*{(?<body>[^}]*)}/)?.groups?.body || '';
   const badgeChip = css.match(/\.platform-evidence-chip\s*{(?<body>[^}]*)}/)?.groups?.body || '';
+  const macosIcon = css.match(/\.platform-evidence-icon\[data-platform='macos'\]\s*{(?<body>[^}]*)}/)?.groups?.body || '';
 
   assert.match(css, /\.platform-evidence-badges\b/);
   assert.match(badgeGroup, /display:\s*inline-flex/);
@@ -141,4 +142,5 @@ test('platform evidence badges stay compact and square', async () => {
   assert.match(badgeChip, /min-width:\s*1\.375rem/);
   assert.match(badgeChip, /min-height:\s*1\.375rem/);
   assert.match(badgeChip, /padding:\s*0/);
+  assert.match(macosIcon, /filter:\s*invert\(1\)/);
 });
