@@ -584,3 +584,10 @@
 - Added a queue-continuation guard that checks the scan run id before each candidate dequeue and suppresses final queue rerenders from stale runs.
 - Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js` failed first against the missing stale-run guard, then passed 6/6 after the fix. `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` passed 38/38, `npm test` passed 280/280, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
 - Remaining risk: in-flight setup requests that already started before a new search can still finish and populate repo-level session summaries, which is intentional cache reuse; the fix stops stale queues from starting additional requests.
+
+## 2026-05-25 Stale Platform Scan Rerender Fix
+
+- Validated follow-up PR review feedback that in-flight stale setup scans could still schedule finder rerenders after a newer search became active.
+- Added an active-run-aware rerender predicate and reused it for both individual scan completion and queue completion rerenders.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js` failed first against the missing stale-rerender guard, then passed 7/7 after the fix. `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` passed 39/39, `npm test` passed 281/281, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: stale in-flight requests may still update shared repo setup session summaries when they finish, which remains intentional cache reuse; they no longer schedule UI rerenders for newer searches.

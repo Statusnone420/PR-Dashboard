@@ -25,6 +25,12 @@ export function shouldContinuePlatformSetupScanQueue(options = {}) {
     && nextIndex < totalCandidates;
 }
 
+export function shouldSchedulePlatformSetupScanRerender(options = {}) {
+  return options.scanRunId === options.activeRunId
+    && options.currentScreen === 'find-issues'
+    && Boolean(options.stillInCurrentResults);
+}
+
 export function getPlatformSetupScanCandidates(items = [], filters = {}, options = {}) {
   if (!shouldScanPlatformSetup(filters)) return [];
 

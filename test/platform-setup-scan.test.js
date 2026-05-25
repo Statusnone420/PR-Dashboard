@@ -150,3 +150,33 @@ test('platform setup scan queues stop before dequeuing stale search candidates',
     totalCandidates: 3
   }), false);
 });
+
+test('platform setup scan rerenders are limited to active search runs', async () => {
+  const setupScan = await import('../src/platformSetupScan.js');
+
+  assert.equal(typeof setupScan.shouldSchedulePlatformSetupScanRerender, 'function');
+  assert.equal(setupScan.shouldSchedulePlatformSetupScanRerender({
+    scanRunId: 1,
+    activeRunId: 2,
+    currentScreen: 'find-issues',
+    stillInCurrentResults: true
+  }), false);
+  assert.equal(setupScan.shouldSchedulePlatformSetupScanRerender({
+    scanRunId: 2,
+    activeRunId: 2,
+    currentScreen: 'find-issues',
+    stillInCurrentResults: true
+  }), true);
+  assert.equal(setupScan.shouldSchedulePlatformSetupScanRerender({
+    scanRunId: 2,
+    activeRunId: 2,
+    currentScreen: 'board',
+    stillInCurrentResults: true
+  }), false);
+  assert.equal(setupScan.shouldSchedulePlatformSetupScanRerender({
+    scanRunId: 2,
+    activeRunId: 2,
+    currentScreen: 'find-issues',
+    stillInCurrentResults: false
+  }), false);
+});

@@ -44,7 +44,8 @@ import {
   reservePlatformSetupScanBudget,
   resetPlatformSetupScanBudget,
   setPlatformSetupSessionSummary,
-  shouldContinuePlatformSetupScanQueue
+  shouldContinuePlatformSetupScanQueue,
+  shouldSchedulePlatformSetupScanRerender
 } from './platformSetupScan.js';
 import {
   getActiveBoardRefreshRequestCount,
@@ -837,7 +838,12 @@ async function scanPlatformFilterSetupIssue(issue, key, scanRunId) {
     platformFilterSetupScans.delete(key);
     const stillInCurrentResults = (store.searchResults || [])
       .some(item => getPlatformFilterSetupRepoScanKey(item) === key);
-    if (store.currentScreen === 'find-issues' && stillInCurrentResults) {
+    if (shouldSchedulePlatformSetupScanRerender({
+      scanRunId,
+      activeRunId: platformFilterSetupSearchRunId,
+      currentScreen: store.currentScreen,
+      stillInCurrentResults
+    })) {
       schedulePlatformFilterSetupRerender();
     }
   }
@@ -873,7 +879,12 @@ function runPlatformFilterSetupScanQueue(candidates, scanRunId) {
   });
 
   Promise.allSettled(workers).then(() => {
-    if (store.currentScreen === 'find-issues' && scanRunId === platformFilterSetupSearchRunId) {
+    if (shouldSchedulePlatformSetupScanRerender({
+      scanRunId,
+      activeRunId: platformFilterSetupSearchRunId,
+      currentScreen: store.currentScreen,
+      stillInCurrentResults: true
+    })) {
       schedulePlatformFilterSetupRerender();
     }
   });
