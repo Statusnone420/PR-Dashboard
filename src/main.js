@@ -64,6 +64,8 @@ let inspectorResizeDetach = () => {};
 let inspectorTitleResizeObserver = null;
 const platformFilterSetupScans = new Map();
 const platformFilterSetupScanFailures = new Set();
+const platformFilterSetupScanResults = new Map();
+let platformFilterSetupRerenderTimer = null;
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -702,11 +704,29 @@ function findSavedBoardCard(issue) {
 
 function getSearchItemsForActions() {
   const items = store.searchResults || [];
-  return filterVisibleIssueResults(items, store.filters);
+  return filterHiddenIssues(items);
 }
 
 function getPlatformFilterSetupScanKey(issue) {
   return getCanonicalIssueKey(issue) || String(issue?.id || issue?.html_url || '');
+}
+
+function getPlatformFilterSetupSummary(issue) {
+  const cached = getCachedRepoSetupEnrichment(issue, localStorage);
+  if (cached?.summary) return cached.summary;
+
+  const key = getPlatformFilterSetupScanKey(issue);
+  return key ? platformFilterSetupScanResults.get(key) || null : null;
+}
+
+function schedulePlatformFilterSetupRerender() {
+  if (platformFilterSetupRerenderTimer) return;
+  platformFilterSetupRerenderTimer = setTimeout(() => {
+    platformFilterSetupRerenderTimer = null;
+    if (store.currentScreen === 'find-issues') {
+      renderActiveScreen();
+    }
+  }, 120);
 }
 
 function queuePlatformFilterSetupInspection(items, filters = store.filters) {
@@ -714,7 +734,7 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters) {
   const candidates = getPlatformSetupScanCandidates(visibleItems, filters, {
     limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
     getKey: getPlatformFilterSetupScanKey,
-    hasCachedSetup: issue => Boolean(getCachedRepoSetupEnrichment(issue, localStorage)),
+    hasCachedSetup: issue => Boolean(getPlatformFilterSetupSummary(issue)),
     isAlreadyScanning: issue => {
       const key = getPlatformFilterSetupScanKey(issue);
       return Boolean(key && (platformFilterSetupScans.has(key) || platformFilterSetupScanFailures.has(key)));
@@ -730,6 +750,9 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters) {
       storage: localStorage
     })
       .then(result => {
+        if (result?.summary) {
+          platformFilterSetupScanResults.set(key, result.summary);
+        }
         updateInspectorRateLimit(result.rateLimit);
       })
       .catch(() => {
@@ -740,7 +763,7 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters) {
         const stillInCurrentResults = (store.searchResults || [])
           .some(item => getPlatformFilterSetupScanKey(item) === key);
         if (store.currentScreen === 'find-issues' && stillInCurrentResults) {
-          renderActiveScreen();
+          schedulePlatformFilterSetupRerender();
         }
       });
 
@@ -751,8 +774,8 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters) {
 function filterVisibleIssueResults(items, filters = store.filters) {
   const targetPlatforms = normalizeTargetPlatforms(filters?.targetPlatforms);
   return filterHiddenIssues(items).filter(issue => {
-    const setupEntry = getCachedRepoSetupEnrichment(issue, localStorage);
-    return issueMatchesTargetPlatforms(setupEntry?.summary, targetPlatforms);
+    const setupSummary = getPlatformFilterSetupSummary(issue);
+    return issueMatchesTargetPlatforms(setupSummary, targetPlatforms);
   });
 }
 

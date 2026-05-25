@@ -431,10 +431,14 @@ test('interactive chrome uses app tooltips instead of native title attributes', 
 test('lookup and search keep hidden results out of result cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const actionItems = sliceBetween(mainJs, 'function getSearchItemsForActions', 'function getPlatformFilterSetupScanKey');
 
-  assert.match(mainJs, /return filterVisibleIssueResults\(items, store\.filters\)/);
+  assert.match(actionItems, /return filterHiddenIssues\(items\)/);
+  assert.doesNotMatch(actionItems, /filterVisibleIssueResults/);
   assert.match(mainJs, /const visibleResults = Array\.isArray\(results\) \? filterVisibleIssueResults\(results, appliedFilters\) : results/);
   assert.match(mainJs, /filterHiddenIssues\(items\)\.filter/);
+  assert.match(mainJs, /platformFilterSetupScanResults/);
+  assert.match(mainJs, /schedulePlatformFilterSetupRerender/);
   assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
   assert.doesNotMatch(mainJs, /const applyHiddenFilter = store\.lastSearchMode !== 'lookup'/);
   assert.doesNotMatch(mainJs, /hiddenCountText|hiddenResultsCount/);

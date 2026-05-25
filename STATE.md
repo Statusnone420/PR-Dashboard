@@ -463,3 +463,12 @@
 - Browser smoke on `http://127.0.0.1:5173/#find-issues`: looked up `facebook/react#1`, hid it, repeated the exact Lookup, and verified `Showing 0 issues` with no result card, `Hidden locally`, `Unhide`, or hidden-count hint.
 - Verification on 2026-05-24: `node --test test/ui-copy.test.js test/hidden-items.test.js`, `npm test`, `npm run build`, and `git diff --check` passed.
 - Remaining risk: GitHub Search can still return low-quality automation-created issues, but the matcher flags them as likely pass/low match; this change only enforces hidden suppression.
+
+## 2026-05-24 Authenticated Platform Filter Loop Hotfix
+
+- Cause: restrictive Target platforms filters launched background setup scans. When a GitHub token was active and issue repository visibility was unknown, the privacy guard correctly skipped persistent cache writes, but the finder then treated the same results as unscanned on every render. That created repeated setup fetches and desktop re-renders after Apply Filters.
+- Fixed the loop by keeping normalized repo setup summaries in session memory when persistent cache writes are skipped, and by debouncing scan-triggered finder re-renders.
+- Search card actions now resolve from the hidden-filtered result set instead of recomputing platform visibility at click time, so a visible card cannot become a dead click if setup compatibility cache changes between render and user action.
+- Browser smoke on the authenticated local app at `http://127.0.0.1:5180/find-issues#find-issues`: Linux and Android unchecked, Apply Filters stayed clickable, 27 result cards remained stable over the wait window, Inspect opened the desktop drawer, and the screenshot was saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-auth-os-filter-fixed.png`.
+- Verification on 2026-05-24: `npm test -- test/platform-setup-scan.test.js test/ui-copy.test.js` passed 252/252, and `npm run build` passed.
+- Remaining risk: live GitHub rate-limit headers can still change while setup/inspector enrichment runs, but the authenticated platform filter no longer reschedules the same uncached setup scans indefinitely.
