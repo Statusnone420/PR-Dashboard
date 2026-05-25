@@ -1,7 +1,3 @@
-Starting the audit. Kicking off the static scan in parallel.
-
-Server's up on :3000. Let me drive the app in a browser and capture screenshots.
-
 # PR Dashboard — Full UX/UI Audit
 
 ## Anti-Patterns Verdict
