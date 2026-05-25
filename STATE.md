@@ -505,3 +505,11 @@
 - Added store regressions for both board move paths and kept remove-from-board behavior unchanged.
 - Verification on 2026-05-25: `npm test` passed 259/259, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a board browser smoke moved a hidden Passed card back to Merged and verified its exact hidden issue key was removed. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-passed-unhide-smoke.png`.
 - Remaining risk: hidden issue storage does not record provenance, so moving a card out of `Passed` removes the exact issue hide regardless of whether that same key was also manually hidden before it entered `Passed`.
+
+## 2026-05-25 Passed Remove Hidden-State Fix
+
+- Addressed PR review thread `discussion_r3298657974`.
+- Removing a card from the board now captures the source lane before deletion and reuses the `Passed` hidden-state sync, so removing a `Passed` card also unhides that exact issue. Removing cards from other lanes still does not hide or pass the issue.
+- Added a store regression for save -> move to `Passed` -> remove from board -> exact issue visible again.
+- Verification on 2026-05-25: `node --test test/store-persistence.test.js` failed first against the old remove path, then passed 20/20 after the fix. `npm test` passed 260/260, `npm run build` passed, `npm run test:layout` passed 16/16, and a browser smoke removed a seeded `Passed` card through the inspector `Remove from board` button and verified the exact hidden key was cleared. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-remove-passed-unhide-smoke.png`.
+- Remaining risk: hidden issue storage still has no provenance, so removing a card from `Passed` removes the exact issue hide even if that key had also been hidden manually before it entered `Passed`.

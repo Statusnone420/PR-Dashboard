@@ -323,6 +323,30 @@ test('removing a board card does not hide or pass the issue', async () => {
   assert.doesNotMatch(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Passed/);
 });
 
+test('removing a Passed board card unhides the exact issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 3579,
+    number: 3579,
+    title: 'Remove passed candidate',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/3579'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(3579, 'Passed');
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+
+  appStore.removeBoardCard(3579);
+
+  assert.equal(Object.values(appStore.boardCards).flat().length, 0);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
+});
+
 test('save, repeated save, Working move, and hide actions record feedback once', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');

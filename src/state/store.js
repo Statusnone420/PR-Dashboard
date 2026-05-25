@@ -461,9 +461,17 @@ export class AppStore {
 
   removeBoardCard(cardId) {
     const cols = Object.keys(this.boardCards);
+    let removedCard = null;
+    let sourceCol = null;
     for (const col of cols) {
+      const index = this.boardCards[col].findIndex(c => c.id === cardId);
+      if (index !== -1 && !removedCard) {
+        removedCard = this.boardCards[col][index];
+        sourceCol = col;
+      }
       this.boardCards[col] = this.boardCards[col].filter(c => c.id !== cardId);
     }
+    this.syncPassedHiddenState(removedCard, sourceCol, null);
     this.saveBoardToStorage();
     this.notify();
   }
