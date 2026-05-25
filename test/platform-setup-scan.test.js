@@ -59,3 +59,29 @@ test('platform setup scan candidates honor session summaries when token-used cac
 
   assert.deepEqual(candidates.map(issue => issue.number), [1]);
 });
+
+test('platform setup session summaries expire before suppressing future scans', async () => {
+  const {
+    getPlatformSetupSessionSummary,
+    setPlatformSetupSessionSummary
+  } = await import('../src/platformSetupScan.js');
+  const summaries = new Map();
+  const summary = {
+    inspected: true,
+    platformSupport: { linux: true },
+    reasons: ['Linux setup supported']
+  };
+
+  setPlatformSetupSessionSummary(summaries, 'demo/platform#1', summary, {
+    now: Date.parse('2026-05-25T00:00:00.000Z'),
+    ttlMs: 1000
+  });
+
+  assert.deepEqual(getPlatformSetupSessionSummary(summaries, 'demo/platform#1', {
+    now: Date.parse('2026-05-25T00:00:00.999Z')
+  }), summary);
+  assert.equal(getPlatformSetupSessionSummary(summaries, 'demo/platform#1', {
+    now: Date.parse('2026-05-25T00:00:01.001Z')
+  }), null);
+  assert.equal(summaries.has('demo/platform#1'), false);
+});

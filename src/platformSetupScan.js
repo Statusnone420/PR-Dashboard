@@ -1,4 +1,5 @@
 import { hasAllTargetPlatformsSelected } from './platformFilters.js';
+import { ISSUE_ENRICHMENT_TTL_MS, nowMs } from './api/enrichmentCache.js';
 
 export const DEFAULT_PLATFORM_SETUP_SCAN_LIMIT = 8;
 
@@ -29,4 +30,32 @@ export function getPlatformSetupScanCandidates(items = [], filters = {}, options
   }
 
   return candidates;
+}
+
+export function setPlatformSetupSessionSummary(results, key, summary, options = {}) {
+  if (!results || typeof results.set !== 'function') return null;
+  const normalizedKey = String(key || '');
+  if (!normalizedKey || !summary) return null;
+  const ttlMs = Number.isFinite(Number(options.ttlMs))
+    ? Math.max(0, Number(options.ttlMs))
+    : ISSUE_ENRICHMENT_TTL_MS;
+  const entry = {
+    summary,
+    expiresAt: nowMs(options) + ttlMs
+  };
+  results.set(normalizedKey, entry);
+  return entry;
+}
+
+export function getPlatformSetupSessionSummary(results, key, options = {}) {
+  if (!results || typeof results.get !== 'function') return null;
+  const normalizedKey = String(key || '');
+  if (!normalizedKey) return null;
+  const entry = results.get(normalizedKey);
+  const expiresAt = Number(entry?.expiresAt);
+  if (!entry?.summary || !Number.isFinite(expiresAt) || expiresAt <= nowMs(options)) {
+    results.delete(normalizedKey);
+    return null;
+  }
+  return entry.summary;
 }

@@ -1,7 +1,7 @@
 import { store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
-import { applyFilterPatch, applyPresetSearch, getRelaxedFilters, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
+import { applyFilterPatch, applyPresetSearch, getRelaxedFilters, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
@@ -33,7 +33,12 @@ import {
   issueMatchesTargetPlatforms,
   normalizeTargetPlatforms
 } from './platformFilters.js';
-import { DEFAULT_PLATFORM_SETUP_SCAN_LIMIT, getPlatformSetupScanCandidates } from './platformSetupScan.js';
+import {
+  DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
+  getPlatformSetupScanCandidates,
+  getPlatformSetupSessionSummary,
+  setPlatformSetupSessionSummary
+} from './platformSetupScan.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -93,12 +98,19 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Calculates issue match score from 0-100.
  */
+function getCurrentScoreMode() {
+  return store.currentScreen === 'find-issues'
+    ? store.lastSearchMode || store.finderMode || 'find'
+    : 'find';
+}
+
 function calculateFitScore(issue, options = {}) {
+  const mode = options.mode || getCurrentScoreMode();
   const result = calculateMatchScore(issue, {
     profile: store.contributionPreferences,
     feedback: store.matchFeedback,
     enrichment: options.enrichment,
-    targetPlatforms: options.targetPlatforms || store.filters.targetPlatforms
+    targetPlatforms: options.targetPlatforms || getScoreTargetPlatformsForMode(store.filters, mode)
   });
   return {
     ...result,
@@ -718,7 +730,7 @@ function getPlatformFilterSetupSummary(issue, cachedSetupResolver = null) {
   if (cached?.summary) return cached.summary;
 
   const key = getPlatformFilterSetupScanKey(issue);
-  return key ? platformFilterSetupScanResults.get(key) || null : null;
+  return key ? getPlatformSetupSessionSummary(platformFilterSetupScanResults, key) : null;
 }
 
 function createPlatformFilterSetupSummaryResolver() {
@@ -768,7 +780,7 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters, opti
     })
       .then(result => {
         if (result?.summary) {
-          platformFilterSetupScanResults.set(key, result.summary);
+          setPlatformSetupSessionSummary(platformFilterSetupScanResults, key, result.summary);
         }
         updateInspectorRateLimit(result.rateLimit);
       })
@@ -2362,14 +2374,15 @@ function renderFindIssues(container) {
  */
 function renderIssueCardsList(issuesList, options = {}) {
   // Sort list if local sorting is needed
+  const scoreMode = options.mode || store.lastSearchMode || 'find';
   let sorted = filterVisibleIssueResults(issuesList, store.filters, {
-    mode: options.mode || store.lastSearchMode || 'find',
+    mode: scoreMode,
     setupSummaryResolver: options.setupSummaryResolver
   });
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
-    const fitObj = calculateFitScore(issue);
+    const fitObj = calculateFitScore(issue, { mode: scoreMode });
     return { ...issue, fitScore: fitObj.score, fitRating: fitObj };
   });
 

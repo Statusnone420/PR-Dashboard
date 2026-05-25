@@ -1,4 +1,4 @@
-import { TARGET_PLATFORM_KEYS } from './platformFilters.js';
+import { TARGET_PLATFORM_KEYS, normalizeTargetPlatforms } from './platformFilters.js';
 
 export function applyFilterPatch(appStore, patch) {
   if (typeof appStore.setDraftFilters === 'function') {
@@ -10,6 +10,12 @@ export function applyFilterPatch(appStore, patch) {
 
 export function shouldApplyTargetPlatformResultFilter(filters = {}, mode = 'find') {
   return mode !== 'lookup' || Boolean(filters?.useFiltersInLookup);
+}
+
+export function getScoreTargetPlatformsForMode(filters = {}, mode = 'find') {
+  return shouldApplyTargetPlatformResultFilter(filters, mode)
+    ? normalizeTargetPlatforms(filters?.targetPlatforms)
+    : [...TARGET_PLATFORM_KEYS];
 }
 
 export function getPresetFilterPatch(preset) {

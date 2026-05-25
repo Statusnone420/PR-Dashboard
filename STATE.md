@@ -489,3 +489,11 @@
 - Tightened platform mismatch wording so support-only evidence for an unselected platform falls back to selected-platform copy instead of contradictory text like `Target platform mismatch: Linux setup supported` when Windows is selected.
 - Verification on 2026-05-25: `npm test` passed 255/255, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a desktop browser smoke for `/#find-issues` passed without runtime errors or horizontal overflow. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-p2-review-smoke.png`.
 - Remaining risk: the browser smoke did not make live GitHub API calls; the cache and mismatch behavior are covered by deterministic unit tests.
+
+## 2026-05-25 Lookup Scoring And Session TTL Review Fix
+
+- Addressed PR review threads `discussion_r3295883527` and `discussion_r3295883529`.
+- Exact Lookup scoring now follows the same `Use filters in Lookup` contract as result visibility: when lookup filters are off, platform scoring receives all target platforms so cached setup evidence cannot create a platform mismatch warning for a literal lookup.
+- In-memory platform setup scan summaries now store an expiry and are deleted after the enrichment TTL, allowing long-lived tabs to rescan instead of treating stale session summaries as permanent cache hits.
+- Verification on 2026-05-25: `npm test` passed 257/257, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a deterministic exact Lookup browser smoke verified a Windows-only filter plus cached Linux-only setup did not show platform mismatch or `Not a contribution candidate` while `Use filters in Lookup` was off. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-lookup-score-opt-out.png`.
+- Remaining risk: the browser smoke used mocked GitHub API responses to keep the scoring regression deterministic; live GitHub data can still affect non-platform score signals.

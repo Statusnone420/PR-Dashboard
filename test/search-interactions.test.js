@@ -89,3 +89,21 @@ test('target platform result filtering respects lookup filter opt-in', async () 
   assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: true }, 'lookup'), true);
   assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: false }, 'find'), true);
 });
+
+test('target platform scoring respects lookup filter opt-in', async () => {
+  const { getScoreTargetPlatformsForMode } = await import('../src/searchInteractions.js');
+  const { TARGET_PLATFORM_KEYS } = await import('../src/platformFilters.js');
+
+  assert.deepEqual(getScoreTargetPlatformsForMode({
+    targetPlatforms: ['windows'],
+    useFiltersInLookup: false
+  }, 'lookup'), TARGET_PLATFORM_KEYS);
+  assert.deepEqual(getScoreTargetPlatformsForMode({
+    targetPlatforms: ['windows'],
+    useFiltersInLookup: true
+  }, 'lookup'), ['windows']);
+  assert.deepEqual(getScoreTargetPlatformsForMode({
+    targetPlatforms: ['windows'],
+    useFiltersInLookup: false
+  }, 'find'), ['windows']);
+});
