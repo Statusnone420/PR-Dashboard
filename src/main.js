@@ -43,7 +43,8 @@ import {
   recordPlatformSetupScanFailure,
   reservePlatformSetupScanBudget,
   resetPlatformSetupScanBudget,
-  setPlatformSetupSessionSummary
+  setPlatformSetupSessionSummary,
+  shouldContinuePlatformSetupScanQueue
 } from './platformSetupScan.js';
 import {
   getActiveBoardRefreshRequestCount,
@@ -851,7 +852,13 @@ function runPlatformFilterSetupScanQueue(candidates, scanRunId) {
   const workers = Array.from({
     length: Math.min(DEFAULT_PLATFORM_SETUP_SCAN_CONCURRENCY, candidates.length)
   }, async () => {
-    while (!stopForRateLimit && nextIndex < candidates.length) {
+    while (shouldContinuePlatformSetupScanQueue({
+      scanRunId,
+      activeRunId: platformFilterSetupSearchRunId,
+      stopForRateLimit,
+      nextIndex,
+      totalCandidates: candidates.length
+    })) {
       const issue = candidates[nextIndex];
       nextIndex += 1;
       const key = getPlatformFilterSetupRepoScanKey(issue);
@@ -866,7 +873,7 @@ function runPlatformFilterSetupScanQueue(candidates, scanRunId) {
   });
 
   Promise.allSettled(workers).then(() => {
-    if (store.currentScreen === 'find-issues') {
+    if (store.currentScreen === 'find-issues' && scanRunId === platformFilterSetupSearchRunId) {
       schedulePlatformFilterSetupRerender();
     }
   });

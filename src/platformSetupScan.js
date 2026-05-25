@@ -15,6 +15,16 @@ export function shouldScanPlatformSetup() {
   return true;
 }
 
+export function shouldContinuePlatformSetupScanQueue(options = {}) {
+  const nextIndex = Number(options.nextIndex);
+  const totalCandidates = Number(options.totalCandidates);
+  return options.scanRunId === options.activeRunId
+    && !options.stopForRateLimit
+    && Number.isFinite(nextIndex)
+    && Number.isFinite(totalCandidates)
+    && nextIndex < totalCandidates;
+}
+
 export function getPlatformSetupScanCandidates(items = [], filters = {}, options = {}) {
   if (!shouldScanPlatformSetup(filters)) return [];
 

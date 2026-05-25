@@ -577,3 +577,10 @@
 - OS/Web badges now use compact square 22px icon chips inside a tight icon group, keeping one separate chip per confirmed platform with no visible text or tooltip copy.
 - Verification on 2026-05-25: `node --test test/ui-copy.test.js test/css-contract.test.js` failed first against the old mobile order and badge sizing, then passed 40/40 after the fix. `npm test` passed 279/279, `npm run build` passed, and `npm run test:layout` passed 16/16. Mocked browser smoke verified Android/Linux unchecked still hides unchecked-only results, desktop layout remains filters-left/results-right, mobile shows the first result card before filters with no horizontal overflow, and platform chips measure 22x22. Screenshots saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-results-first-mobile-viewport.png`, `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-results-first-mobile-full.png`, and `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-results-first-badges-desktop.png`.
 - Remaining risk: the smoke test used mocked GitHub API responses to keep the layout and platform evidence deterministic.
+
+## 2026-05-25 Stale Platform Scan Queue Fix
+
+- Validated PR review feedback that old background platform setup scan queues could continue dequeuing candidates after a newer search advanced `platformFilterSetupSearchRunId`.
+- Added a queue-continuation guard that checks the scan run id before each candidate dequeue and suppresses final queue rerenders from stale runs.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js` failed first against the missing stale-run guard, then passed 6/6 after the fix. `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` passed 38/38, `npm test` passed 280/280, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: in-flight setup requests that already started before a new search can still finish and populate repo-level session summaries, which is intentional cache reuse; the fix stops stale queues from starting additional requests.

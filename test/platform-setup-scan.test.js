@@ -123,3 +123,30 @@ test('platform setup scan failures are scoped to the active search run', async (
   assert.equal(recordPlatformSetupScanFailure(failures, 'demo/platform#1', 2, 2), true);
   assert.equal(failures.has('demo/platform#1'), true);
 });
+
+test('platform setup scan queues stop before dequeuing stale search candidates', async () => {
+  const setupScan = await import('../src/platformSetupScan.js');
+
+  assert.equal(typeof setupScan.shouldContinuePlatformSetupScanQueue, 'function');
+  assert.equal(setupScan.shouldContinuePlatformSetupScanQueue({
+    scanRunId: 1,
+    activeRunId: 2,
+    stopForRateLimit: false,
+    nextIndex: 0,
+    totalCandidates: 3
+  }), false);
+  assert.equal(setupScan.shouldContinuePlatformSetupScanQueue({
+    scanRunId: 2,
+    activeRunId: 2,
+    stopForRateLimit: false,
+    nextIndex: 0,
+    totalCandidates: 3
+  }), true);
+  assert.equal(setupScan.shouldContinuePlatformSetupScanQueue({
+    scanRunId: 2,
+    activeRunId: 2,
+    stopForRateLimit: true,
+    nextIndex: 0,
+    totalCandidates: 3
+  }), false);
+});
