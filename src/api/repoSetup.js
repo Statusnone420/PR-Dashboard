@@ -107,7 +107,14 @@ function detectPlatformCompatibility(text) {
     ios: [/\bios\b/, /\biphone\b/, /\bipad\b/],
     android: [/\bandroid\b/],
     macos: [/\bmacos\b/, /\bmac os\b/, /\bos x\b/, /\bdarwin\b/],
-    linux: [/\blinux\b/, /\bdebian\b/, /\bfedora\b/],
+    linux: [
+      /\blinux\b/,
+      /\bdebian\b/,
+      /\bfedora\b/,
+      /\b(?:supported platforms?|supported os|supported operating systems?)(?:\s+(?:include|are))?\s*[:=-]?\s*[^.\n;]{0,80}\bubuntu\b(?!-latest)/,
+      /\b(?:supports?|compatible with|works on)\s+[^.\n;]{0,80}\bubuntu\b(?!-latest)/,
+      /\bubuntu\b(?!-latest) (?:is )?supported\b/
+    ],
     windows: [/\bwindows\b/, /\bwin32\b/, /\bpowershell\b/],
     web: [
       /\bweb (?:app|application|client|frontend|front-end|ui)\b/,

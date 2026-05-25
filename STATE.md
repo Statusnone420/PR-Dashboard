@@ -1,5 +1,13 @@
 # PR Dashboard State
 
+## 2026-05-25 Explicit Ubuntu Platform Support
+
+- Addressed PR review thread `discussion_r3299846134`.
+- Repo setup platform detection now treats explicit Ubuntu support statements such as `Supported platforms: Ubuntu and macOS` as Linux-compatible without restoring broad plain-`ubuntu` matching.
+- Added a regression covering explicit Ubuntu support plus macOS support and Windows unsupported evidence. Existing incidental `ubuntu-latest` CI wording remains neutral so generic CI platform names do not turn into Linux badge/filter evidence.
+- Verification on 2026-05-25: `node --test test/repo-setup.test.js` failed first on the explicit Ubuntu support case, then passed 10/10 after the fix. `node --test test/repo-setup.test.js test/platform-filters.test.js test/match-score.test.js` passed 51/51, `npm test` passed 283/283, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: platform compatibility parsing is still heuristic; broad badge API-cost optimization remains a separate pass.
+
 ## 2026-05-25 Platform Badge Accessibility Pass
 
 - Addressed PR review thread `discussion_r3299791102`.
