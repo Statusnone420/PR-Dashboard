@@ -68,6 +68,14 @@ function assertSourceOrder(source, first, second) {
   );
 }
 
+function getMaterialSymbolSpanTags(source) {
+  return [...source.matchAll(/<span[^>]*class="[^"]*material-symbols-outlined[^"]*"[^>]*>/g)]
+    .map(match => ({
+      line: source.slice(0, match.index).split(/\r?\n/).length,
+      tag: match[0]
+    }));
+}
+
 test('primary navigation labels contribution finding, not generic issue search', () => {
   const { indexHtml, mainJs } = readCopySources();
 
@@ -378,11 +386,15 @@ test('profile is separated from activity and settings responsibilities', () => {
 test('find contributions keeps exact scores while reducing card chip noise', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
   const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
   const moreFilters = sliceBetween(finder, '<details class="filter-disclosure"', '</details>');
 
   assert.match(resultCards, /% Match/);
   assert.match(resultCards, /Confidence:/);
+  assert.match(resultCards, /renderPlatformEvidenceBadge/);
+  assert.match(inspector, /renderPlatformEvidenceBadge/);
+  assert.match(mainJs, /platform-evidence-chip/);
   assert.match(resultCards, /\+\$\{safeInteger\(hiddenLabelCount\)\} labels/);
   assert.match(resultCards, /Why:/);
   assert.doesNotMatch(resultCards, /\.slice\(0,\s*3\)\.map/);
@@ -392,6 +404,9 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
   assert.match(mainJs, /pr_dashboard_find_filters_expanded_v1/);
   assert.match(finder, /More filters/);
   assert.match(finder, /filter-select/);
+  assert.match(finder, /50\+/);
+  assert.match(finder, /100\+/);
+  assert.match(finder, /500\+/);
   assert.match(finder, /<h1 class="text-2xl[^"]*">Find your next contribution<\/h1>/);
   assert.doesNotMatch(finder, /<h1 class="text-3xl[^"]*">Find your next contribution<\/h1>/);
   assert.doesNotMatch(finder, /GitHub query preview<\/div>\s*<code/);
@@ -446,7 +461,9 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.match(mainJs, /schedulePlatformFilterSetupRerender/);
   assert.match(mainJs, /reservePlatformSetupScanBudget/);
   assert.match(mainJs, /resetPlatformFilterSetupScanBudget/);
-  assert.match(mainJs, /const scanRunId = platformFilterSetupSearchRunId/);
+  assert.match(mainJs, /runPlatformFilterSetupScanQueue\(budgetedCandidates, platformFilterSetupSearchRunId\)/);
+  assert.match(mainJs, /DEFAULT_PLATFORM_SETUP_SCAN_CONCURRENCY/);
+  assert.match(mainJs, /platformFilterSetupScanRepoResults/);
   assert.match(mainJs, /recordPlatformSetupScanFailure/);
   assert.doesNotMatch(mainJs, /platformFilterSetupScanFailures\.add\(key\)/);
   assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
@@ -461,6 +478,57 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.doesNotMatch(mainJs, /proof-log-add-btn/);
   assert.doesNotMatch(mainJs, /inspector-proof-log-btn/);
   assert.doesNotMatch(mainJs, /source:\s*['"]manual_lookup['"]/);
+});
+
+test('platform badges are icon-only on result cards and independent of active filters', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const iconRenderer = sliceBetween(mainJs, 'function renderPlatformEvidenceIcon', 'function renderPlatformEvidenceBadge');
+  const badgeRenderer = sliceBetween(mainJs, 'function renderPlatformEvidenceBadge', 'function getIssueLabelNames');
+
+  assert.match(mainJs, /getPlatformBadgeEvidence/);
+  assert.match(cardsRenderer, /getPlatformBadgeEvidence\(issue, setupSummary\)/);
+  assert.match(cardsRenderer, /renderPlatformEvidenceBadge\(issue\.platformEvidence\)/);
+  assert.match(badgeRenderer, /if \(!evidence\?\.supportedPlatforms\?\.length\) return ''/);
+  assert.match(badgeRenderer, /platform-evidence-badges/);
+  assert.match(badgeRenderer, /\.map\(platform => `\s*<span class="platform-evidence-chip/);
+  assert.match(badgeRenderer, /role="img"/);
+  assert.match(badgeRenderer, /aria-label="\$\{escapeHTML\(getPlatformSupportedLabel\(platform\)\)\}"/);
+  assert.match(iconRenderer, /class="material-symbols-outlined text-\[13px\]" aria-hidden="true"/);
+  assert.doesNotMatch(badgeRenderer, /data-tooltip/);
+  assert.doesNotMatch(badgeRenderer, /<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>/);
+  assert.doesNotMatch(badgeRenderer, /renderPlatformEvidenceIcons/);
+  assert.doesNotMatch(badgeRenderer, /px-2 py-0\.5/);
+});
+
+test('decorative material symbol icons are hidden from assistive tech', () => {
+  const { indexHtml, mainJs } = readCopySources();
+  const materialIconTags = [
+    ...getMaterialSymbolSpanTags(indexHtml).map(item => ({ ...item, file: 'index.html' })),
+    ...getMaterialSymbolSpanTags(mainJs).map(item => ({ ...item, file: 'src/main.js' }))
+  ];
+  const missingAriaHidden = materialIconTags
+    .filter(item => !/\baria-hidden="true"/.test(item.tag))
+    .map(item => `${item.file}:${item.line} ${item.tag}`);
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.ok(materialIconTags.length > 0);
+  assert.deepEqual(missingAriaHidden, []);
+  assert.match(inspector, /id="inspector-close-btn"[^>]*aria-label="Close inspector"/);
+});
+
+test('mobile find contributions shows results before long filter controls', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const workspaceIndex = mainJs.indexOf('<!-- Main Workspace: Filters + Results -->');
+  const resultsIndex = mainJs.indexOf('id="find-results-panel"', workspaceIndex);
+  const sidebarIndex = mainJs.indexOf('id="find-issues-sidebar"', workspaceIndex);
+
+  assert.ok(workspaceIndex > -1);
+  assert.ok(resultsIndex > -1);
+  assert.ok(sidebarIndex > -1);
+  assert.ok(resultsIndex < sidebarIndex);
+  assert.match(mainJs, /id="find-results-panel"[^>]*class="[^"]*\border-1\b[^"]*\blg:order-2\b/);
+  assert.match(mainJs, /id="find-issues-sidebar"[^>]*class="[^"]*\border-2\b[^"]*\blg:order-1\b/);
 });
 
 test('profile avatar markup is safe and falls back to initials', () => {

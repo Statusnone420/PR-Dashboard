@@ -1,5 +1,21 @@
 # PR Dashboard State
 
+## 2026-05-25 Explicit Ubuntu Platform Support
+
+- Addressed PR review thread `discussion_r3299846134`.
+- Repo setup platform detection now treats explicit Ubuntu support statements such as `Supported platforms: Ubuntu and macOS` as Linux-compatible without restoring broad plain-`ubuntu` matching.
+- Added regressions covering explicit Ubuntu support plus macOS support and Windows unsupported evidence, and negated Ubuntu support such as `does not support Ubuntu`. Existing incidental `ubuntu-latest` CI wording remains neutral so generic CI platform names do not turn into Linux badge/filter evidence.
+- Verification on 2026-05-25: `node --test test/repo-setup.test.js` failed first on the explicit Ubuntu support case, later failed first on the negated Ubuntu support guard, then passed 11/11 after the fixes. `node --test test/repo-setup.test.js test/platform-filters.test.js test/match-score.test.js` passed 52/52, `npm test` passed 284/284, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: platform compatibility parsing is still heuristic; broad badge API-cost optimization remains a separate pass.
+
+## 2026-05-25 Platform Badge Accessibility Pass
+
+- Addressed PR review thread `discussion_r3299791102`.
+- Platform evidence chips now expose their compact icon-only labels through an explicit `role="img"` plus existing `aria-label` text such as `Linux supported`.
+- Material Symbols glyph spans in `src/main.js` and `index.html` are now hidden from assistive technology so screen readers do not announce decorative icon names like `dashboard`, `speed`, or `close`. The inspector close button now has an explicit `Close inspector` accessible name before its decorative glyph is hidden.
+- Verification on 2026-05-25: `node --test test/ui-copy.test.js` failed first against missing badge role, missing icon hiding, and missing inspector close label, then passed 33/33 after the fix. `npm test` passed 282/282, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: this is the scoped non-text/icon accessibility hardening pass from `IMPECCABLE_AUDIT.md`; broader audit findings such as touch target sizing, tooltip dismissal behavior, palette/theming, glassmorphism cleanup, and motion cleanup remain separate future passes.
+
 ## 2026-05-25 Web Platform Detection Tightening
 
 - Addressed PR review thread `discussion_r3299034539`.
@@ -546,3 +562,48 @@
 - Added regression coverage for current-run versus stale-run failure recording and a finder source contract that prevents direct global failure writes from the async catch path.
 - Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` failed first against the old direct failure write, then passed 35/35 after the fix. `npm test` passed 262/262, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed. Browser smoke started a second restrictive platform search while the first setup scan was still in flight, then failed the stale request; the active search rescanned successfully and hid the Linux-only candidate. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-stale-failure-smoke.png`.
 - Remaining risk: stale successful setup scans can still populate factual session summaries for the same issue key, which is intentional because repo setup evidence is not search-filter-specific.
+
+## 2026-05-25 Platform Evidence Filter Plan Implementation
+
+- Replaced strict support-only target-platform matching with derived platform evidence: `confirmed`, `platform-neutral`, `mismatch`, and `pending`. Find Contributions now hides only explicit mismatches such as Linux-only/no-Windows evidence when Windows is selected and Linux is not.
+- Result and inspector scoring now receive setup evidence, add a small selected-platform confirmation boost, and keep platform-neutral/pending results visible without penalty.
+- Finder cards and inspector headers now render compact platform evidence badges. OS logo PNGs for iOS, Android, macOS, Linux, and Windows are bundled from `ngeenx/operating-system-logos` with local attribution; Web and neutral/pending badges use existing non-brand Material Symbols.
+- Stars remain a local hydrated-repo metadata filter and now support `Any`, `50+`, `100+`, `500+`, `1k+`, `5k+`, and `10k+`.
+- Verification on 2026-05-25: targeted platform/star/UI tests failed first against the old behavior, then passed. `npm test` passed 273/273, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed. Browser smoke with mocked GitHub API data verified Linux-only filtering showed a Linux-confirmed card plus a Platform-neutral card, hid the Windows-only mismatch, rendered two platform evidence badges, had no console warnings/errors, and stayed within mobile viewport width. Screenshots saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-badges-desktop.png` and `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-badges-mobile-results.png`.
+- Remaining risk: platform badges depend on the existing progressive setup scan budget, so some result cards can show `Platform pending` until setup evidence arrives.
+
+## 2026-05-25 OS Badge Discovery Fix
+
+- Separated badge display from platform filtering. Result cards now render icon-only OS/Web badges for confirmed support and never show visible `Platform pending`, `Platform-neutral`, or `confirmed` badge text; readable labels remain in aria/tooltips.
+- Default Find Contributions searches now queue bounded background setup discovery for the top 30 unique result repos, even when every target platform checkbox is selected. Scans run with concurrency 4, reuse session summaries by repo, and stop the queue when GitHub rate-limit errors appear.
+- Added explicit repo-topic first-pass badge evidence for only direct platform topics (`ios`, `android`, `macos`, `mac-os`, `linux`, `windows`, `web`). Generic stack or CI terms like Python, Streamlit, requirements, frontend, and `ubuntu-latest` do not imply OS/Web support.
+- Verification on 2026-05-25: targeted platform/setup/UI/match tests failed first against the old behavior, then passed 85/85. `npm test` passed 276/276, `npm run build` passed, `npm run test:layout` passed 16/16, and mocked browser smoke verified 3 cards, 2 icon-only platform badge groups, 3 icons, no visible platform status words, no console warnings/errors, and no mobile horizontal overflow. Screenshots saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-os-badges-desktop.png` and `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-os-badges-mobile-results.png`.
+- Remaining risk: cards outside the top 30 uncached repos may stay badge-free until they are inspected or appear in a later search; live GitHub core quota can still stop discovery early, but the queue now stops gracefully instead of looping.
+
+## 2026-05-25 Confirmed Platform Filter And Badge Fix
+
+- Tightened restrictive Target platforms filtering so confirmed support only for unchecked platforms is now a mismatch. Linux-only or Android-only results are hidden when those platforms are unchecked, while Windows + Linux remains visible if Windows is checked. Unknown, pending, and platform-neutral results remain visible.
+- Platform badges now render as one quiet icon-only chip per confirmed platform. Badge chips no longer use grouped multi-icon containers, visible text labels, native titles, or app tooltip attributes; each keeps only an `aria-label` like `Linux supported`.
+- Verification on 2026-05-25: focused platform/match/UI tests failed first against the old behavior, then passed 72/72. Related setup/search tests passed 20/20. `npm test` passed 277/277, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed. Mocked browser smoke with Android and Linux unchecked verified Linux-only and Android-only results were hidden, Windows + Linux and neutral results stayed visible, badges were separate icon boxes with no tooltip/title/text, and desktop/mobile had no horizontal overflow. Screenshots saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-filter-badges-fixed-desktop.png` and `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-filter-badges-fixed-mobile.png`.
+- Remaining risk: multi-platform cards still show factual icons for unchecked platforms after they pass through a checked platform, by design; live GitHub evidence quality still depends on discovered setup docs and exact repo topics.
+
+## 2026-05-25 Mobile Finder Results-First Polish
+
+- Find Contributions now renders the results panel before the long filter controls on mobile, while preserving the desktop filters-left/results-right layout through responsive order classes.
+- OS/Web badges now use compact square 22px icon chips inside a tight icon group, keeping one separate chip per confirmed platform with no visible text or tooltip copy.
+- Verification on 2026-05-25: `node --test test/ui-copy.test.js test/css-contract.test.js` failed first against the old mobile order and badge sizing, then passed 40/40 after the fix. `npm test` passed 279/279, `npm run build` passed, and `npm run test:layout` passed 16/16. Mocked browser smoke verified Android/Linux unchecked still hides unchecked-only results, desktop layout remains filters-left/results-right, mobile shows the first result card before filters with no horizontal overflow, and platform chips measure 22x22. Screenshots saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-results-first-mobile-viewport.png`, `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-results-first-mobile-full.png`, and `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-results-first-badges-desktop.png`.
+- Remaining risk: the smoke test used mocked GitHub API responses to keep the layout and platform evidence deterministic.
+
+## 2026-05-25 Stale Platform Scan Queue Fix
+
+- Validated PR review feedback that old background platform setup scan queues could continue dequeuing candidates after a newer search advanced `platformFilterSetupSearchRunId`.
+- Added a queue-continuation guard that checks the scan run id before each candidate dequeue and suppresses final queue rerenders from stale runs.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js` failed first against the missing stale-run guard, then passed 6/6 after the fix. `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` passed 38/38, `npm test` passed 280/280, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: in-flight setup requests that already started before a new search can still finish and populate repo-level session summaries, which is intentional cache reuse; the fix stops stale queues from starting additional requests.
+
+## 2026-05-25 Stale Platform Scan Rerender Fix
+
+- Validated follow-up PR review feedback that in-flight stale setup scans could still schedule finder rerenders after a newer search became active.
+- Added an active-run-aware rerender predicate and reused it for both individual scan completion and queue completion rerenders.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js` failed first against the missing stale-rerender guard, then passed 7/7 after the fix. `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` passed 39/39, `npm test` passed 281/281, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed.
+- Remaining risk: stale in-flight requests may still update shared repo setup session summaries when they finish, which remains intentional cache reuse; they no longer schedule UI rerenders for newer searches.

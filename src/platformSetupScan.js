@@ -1,8 +1,8 @@
-import { hasAllTargetPlatformsSelected } from './platformFilters.js';
 import { ISSUE_ENRICHMENT_TTL_MS, nowMs } from './api/enrichmentCache.js';
 
-export const DEFAULT_PLATFORM_SETUP_SCAN_LIMIT = 8;
+export const DEFAULT_PLATFORM_SETUP_SCAN_LIMIT = 30;
 export const DEFAULT_PLATFORM_SETUP_SCAN_BUDGET = DEFAULT_PLATFORM_SETUP_SCAN_LIMIT;
+export const DEFAULT_PLATFORM_SETUP_SCAN_CONCURRENCY = 4;
 
 function normalizeScanLimit(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -11,8 +11,24 @@ function normalizeScanLimit(value, fallback) {
     : fallback;
 }
 
-export function shouldScanPlatformSetup(filters = {}) {
-  return !hasAllTargetPlatformsSelected(filters.targetPlatforms);
+export function shouldScanPlatformSetup() {
+  return true;
+}
+
+export function shouldContinuePlatformSetupScanQueue(options = {}) {
+  const nextIndex = Number(options.nextIndex);
+  const totalCandidates = Number(options.totalCandidates);
+  return options.scanRunId === options.activeRunId
+    && !options.stopForRateLimit
+    && Number.isFinite(nextIndex)
+    && Number.isFinite(totalCandidates)
+    && nextIndex < totalCandidates;
+}
+
+export function shouldSchedulePlatformSetupScanRerender(options = {}) {
+  return options.scanRunId === options.activeRunId
+    && options.currentScreen === 'find-issues'
+    && Boolean(options.stillInCurrentResults);
 }
 
 export function getPlatformSetupScanCandidates(items = [], filters = {}, options = {}) {

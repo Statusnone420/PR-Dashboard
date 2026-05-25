@@ -202,6 +202,9 @@ export async function hydrateIssueRepositories(issues, options = {}) {
 }
 
 function starsThreshold(stars) {
+  if (stars === '50+') return 50;
+  if (stars === '100+') return 100;
+  if (stars === '500+') return 500;
   if (stars === '1k+') return 1000;
   if (stars === '5k+') return 5000;
   if (stars === '10k+') return 10000;

@@ -361,6 +361,32 @@
     color: var(--on-surface);
   }
 
+  .platform-evidence-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .platform-evidence-chip {
+    display: inline-flex;
+    width: 1.375rem;
+    height: 1.375rem;
+    min-width: 1.375rem;
+    min-height: 1.375rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    vertical-align: middle;
+  }
+
+  .platform-evidence-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex: 0 0 auto;
+    object-fit: contain;
+  }
+
   .filter-select {
     width: 100%;
     border: 1px solid var(--outline-variant);

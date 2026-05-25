@@ -336,12 +336,69 @@ test('repo setup enrichment detects compact platform compatibility without cachi
   assert.doesNotMatch(storage.getItem(SCORE_ENRICHMENT_CACHE_KEY), /This project supports|Use Ubuntu|WSL for local setup/i);
 });
 
+test('repo setup platform compatibility treats explicit Ubuntu support as Linux support', async () => {
+  const { fetchRepoSetupEnrichment } = await import('../src/api/repoSetup.js');
+  const readme = Buffer.from([
+    '# Setup',
+    'Supported platforms: Ubuntu and macOS.',
+    'Windows is not supported.'
+  ].join('\n')).toString('base64');
+
+  const result = await fetchRepoSetupEnrichment(issue(), {
+    storage: createLocalStorage(),
+    fetchImpl: async (url) => {
+      if (url.endsWith('/contents')) {
+        return new Response(JSON.stringify([
+          { type: 'file', name: 'README.md', path: 'README.md' }
+        ]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.endsWith('/contents/README.md')) {
+        return new Response(JSON.stringify(contentsResponse('README.md', { content: readme, size: readme.length })), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected setup request: ${url}`);
+    }
+  });
+
+  assert.equal(result.summary.platformSupport.linux, true);
+  assert.equal(result.summary.platformSupport.macos, true);
+  assert.equal(result.summary.platformUnsupported.windows, true);
+  assert.match(result.summary.reasons.join(' '), /Linux setup supported/);
+});
+
+test('repo setup platform compatibility ignores negated Ubuntu support', async () => {
+  const { fetchRepoSetupEnrichment } = await import('../src/api/repoSetup.js');
+  const readme = Buffer.from([
+    '# Setup',
+    'Supported platforms: macOS.',
+    'This project does not support Ubuntu.'
+  ].join('\n')).toString('base64');
+
+  const result = await fetchRepoSetupEnrichment(issue(), {
+    storage: createLocalStorage(),
+    fetchImpl: async (url) => {
+      if (url.endsWith('/contents')) {
+        return new Response(JSON.stringify([
+          { type: 'file', name: 'README.md', path: 'README.md' }
+        ]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.endsWith('/contents/README.md')) {
+        return new Response(JSON.stringify(contentsResponse('README.md', { content: readme, size: readme.length })), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected setup request: ${url}`);
+    }
+  });
+
+  assert.equal(result.summary.platformSupport.linux, false);
+  assert.equal(result.summary.platformSupport.macos, true);
+  assert.doesNotMatch(result.summary.reasons.join(' '), /Linux setup supported/);
+});
+
 test('repo setup web detection ignores incidental frontend technology mentions', async () => {
   const { fetchRepoSetupEnrichment } = await import('../src/api/repoSetup.js');
   const { issueMatchesTargetPlatforms } = await import('../src/platformFilters.js');
   const readme = Buffer.from([
     '# Contributing',
-    'The docs include React examples, Vite command output, and HTML/CSS snippets.',
+    'The docs include React examples, Vite command output, HTML/CSS snippets, Streamlit examples, requirements.txt, and ubuntu-latest CI output.',
     'Run the test suite before opening a PR.'
   ].join('\n')).toString('base64');
 
@@ -361,6 +418,7 @@ test('repo setup web detection ignores incidental frontend technology mentions',
   });
 
   assert.equal(result.summary.platformSupport.web, false);
+  assert.equal(result.summary.platformSupport.linux, false);
   assert.equal(issueMatchesTargetPlatforms(result.summary, ['windows']), true);
 });
 

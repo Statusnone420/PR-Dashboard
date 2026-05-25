@@ -1,6 +1,6 @@
 import { isClosedIssue } from './boardModel.js';
 import { getFeedbackScoreAdjustment } from './matchFeedback.js';
-import { getPlatformMismatchReason, issueMatchesTargetPlatforms } from './platformFilters.js';
+import { getPlatformEvidence, getPlatformMismatchReason, issueMatchesTargetPlatforms } from './platformFilters.js';
 
 const BEGINNER_LABELS = ['good first issue', 'help wanted', 'beginner', 'starter'];
 const STRONG_FIT_LABELS = [
@@ -321,7 +321,7 @@ function buildConfidence(issue, signals, stage, enrichment = {}, targetPlatforms
     if (setupSummary.setupUnclear) {
       currentWeaknesses.push('setup');
     }
-    if (!issueMatchesTargetPlatforms(setupSummary, targetPlatforms)) {
+    if (!issueMatchesTargetPlatforms(setupSummary, targetPlatforms, { issue })) {
       reasons.push('Target platform mismatch');
       currentWeaknesses.push('setup');
     }
@@ -501,8 +501,8 @@ function buildMiniScores(issue, signals, personalFit, enrichment = {}, targetPla
         ? createMiniScore('Medium risk', 'Medium', ['Needs comment review'])
         : createMiniScore('Low risk', 'High', [commentSummary?.maintainerEncouragement ? 'Maintainer appears open to PRs' : 'Unassigned or quiet thread']);
   const setupEase = setupSummary?.inspected
-    ? !issueMatchesTargetPlatforms(setupSummary, targetPlatforms)
-      ? createMiniScore('Blocked', 'Low', [getPlatformMismatchReason(setupSummary, targetPlatforms)])
+    ? !issueMatchesTargetPlatforms(setupSummary, targetPlatforms, { issue })
+      ? createMiniScore('Blocked', 'Low', [getPlatformMismatchReason(setupSummary, targetPlatforms, { issue })])
       : setupSummary.setupUnclear
       ? createMiniScore('Unclear', 'Low', ['Setup files look unclear'])
       : setupSummary.setupDocsPresent || setupSummary.workflowPresent || setupSummary.configHintsPresent
@@ -711,14 +711,18 @@ export function calculateMatchScore(issue, options = {}) {
     }
   }
   const setupSummary = enrichment?.setup;
-  const platformMismatch = setupSummary?.inspected && !issueMatchesTargetPlatforms(setupSummary, targetPlatforms);
+  const platformEvidence = getPlatformEvidence(setupSummary, targetPlatforms, { issue });
+  const platformMismatch = platformEvidence.status === 'mismatch';
   if (setupSummary?.inspected) {
     if (platformMismatch) {
-      add(-45, `Target platform mismatch: ${getPlatformMismatchReason(setupSummary, targetPlatforms)}`, 'Platform mismatch');
+      add(-45, `Target platform mismatch: ${getPlatformMismatchReason(setupSummary, targetPlatforms, { issue })}`, 'Platform mismatch');
     } else if (setupSummary.setupUnclear) {
       add(-6, 'Repo setup files look unclear', 'Repo setup risk');
     } else if (setupSummary.setupDocsPresent || setupSummary.workflowPresent || setupSummary.configHintsPresent) {
       add(4, 'Repo setup files look discoverable');
+    }
+    if (platformEvidence.filterActive && platformEvidence.status === 'confirmed') {
+      add(3, 'Selected platform confirmed');
     }
   }
   const historySummary = enrichment?.history;
