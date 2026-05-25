@@ -378,11 +378,15 @@ test('profile is separated from activity and settings responsibilities', () => {
 test('find contributions keeps exact scores while reducing card chip noise', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
   const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
   const moreFilters = sliceBetween(finder, '<details class="filter-disclosure"', '</details>');
 
   assert.match(resultCards, /% Match/);
   assert.match(resultCards, /Confidence:/);
+  assert.match(resultCards, /renderPlatformEvidenceBadge/);
+  assert.match(inspector, /renderPlatformEvidenceBadge/);
+  assert.match(mainJs, /platform-evidence-chip/);
   assert.match(resultCards, /\+\$\{safeInteger\(hiddenLabelCount\)\} labels/);
   assert.match(resultCards, /Why:/);
   assert.doesNotMatch(resultCards, /\.slice\(0,\s*3\)\.map/);
@@ -392,6 +396,9 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
   assert.match(mainJs, /pr_dashboard_find_filters_expanded_v1/);
   assert.match(finder, /More filters/);
   assert.match(finder, /filter-select/);
+  assert.match(finder, /50\+/);
+  assert.match(finder, /100\+/);
+  assert.match(finder, /500\+/);
   assert.match(finder, /<h1 class="text-2xl[^"]*">Find your next contribution<\/h1>/);
   assert.doesNotMatch(finder, /<h1 class="text-3xl[^"]*">Find your next contribution<\/h1>/);
   assert.doesNotMatch(finder, /GitHub query preview<\/div>\s*<code/);

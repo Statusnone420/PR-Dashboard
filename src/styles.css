@@ -361,6 +361,17 @@
     color: var(--on-surface);
   }
 
+  .platform-evidence-chip {
+    gap: 0.375rem;
+  }
+
+  .platform-evidence-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex: 0 0 auto;
+    object-fit: contain;
+  }
+
   .filter-select {
     width: 100%;
     border: 1px solid var(--outline-variant);

@@ -113,3 +113,20 @@ test('filterIssuesByStars applies star thresholds after hydration', async () => 
 
   assert.deepEqual(filterIssuesByStars(issues, '1k+').map(item => item.id), [2, 3]);
 });
+
+test('repo star filters support finer local thresholds', async () => {
+  const { repoMeetsStarsFilter } = await import('../src/api/repoMetadata.js');
+  const issueWithStars = (stars) => ({ repository: { stargazers_count: stars } });
+
+  assert.equal(repoMeetsStarsFilter(issueWithStars(0), 'Any'), true);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(49), '50+'), false);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(50), '50+'), true);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(99), '100+'), false);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(100), '100+'), true);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(499), '500+'), false);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(500), '500+'), true);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(999), '1k+'), false);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(1000), '1k+'), true);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(5000), '5k+'), true);
+  assert.equal(repoMeetsStarsFilter(issueWithStars(10000), '10k+'), true);
+});

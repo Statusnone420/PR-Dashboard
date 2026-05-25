@@ -693,7 +693,59 @@ test('support-only platform mismatch uses selected-platform wording', async () =
   const rowText = result.rows.map(row => row.label).join(' ');
   const setupText = result.miniScores.setupEase.reasons.join(' ');
 
-  assert.match(rowText, /Target platform mismatch/);
-  assert.doesNotMatch(rowText, /Target platform mismatch: Linux setup supported/);
-  assert.match(`${rowText} ${setupText}`, /Windows/);
+  assert.equal(result.isContributionCandidate, true);
+  assert.doesNotMatch(rowText, /Target platform mismatch/);
+  assert.doesNotMatch(setupText, /Blocked/);
+});
+
+test('confirmed selected platform support gets a small score boost', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const baseIssue = issue({
+    title: 'Fix parser option',
+    body: 'Expected behavior: parser should respect the option when present.',
+    labels: [{ name: 'bug' }],
+    comments: 1,
+    assignee: null,
+    assignees: [],
+    updated_at: new Date().toISOString(),
+    repository: strongRepo({ stargazers_count: 1, open_issues_count: 3 })
+  });
+  const neutral = calculateMatchScore(baseIssue, {
+    targetPlatforms: ['linux'],
+    enrichment: {
+      setup: {
+        inspected: true,
+        setupDocsPresent: true,
+        contributingPresent: false,
+        workflowPresent: false,
+        configHintsPresent: false,
+        testHintsPresent: false,
+        setupUnclear: false,
+        platformSupport: {},
+        platformUnsupported: {},
+        reasons: ['Setup docs found']
+      }
+    }
+  });
+  const confirmed = calculateMatchScore(baseIssue, {
+    targetPlatforms: ['linux'],
+    enrichment: {
+      setup: {
+        inspected: true,
+        setupDocsPresent: true,
+        contributingPresent: false,
+        workflowPresent: false,
+        configHintsPresent: false,
+        testHintsPresent: false,
+        setupUnclear: false,
+        platformSupport: { linux: true },
+        platformUnsupported: {},
+        reasons: ['Linux setup supported']
+      }
+    }
+  });
+
+  assert.equal(confirmed.score, neutral.score + 3);
+  assert.match(confirmed.rows.map(row => row.label).join(' '), /Selected platform confirmed/);
+  assert.doesNotMatch(neutral.rows.map(row => row.label).join(' '), /Selected platform confirmed/);
 });

@@ -28,6 +28,7 @@ import { getBoardMode } from './boardMode.js';
 import { attachResize } from './inspectorResize.js';
 import {
   TARGET_PLATFORM_OPTIONS,
+  getPlatformEvidence,
   getNextTargetPlatforms,
   hasAllTargetPlatformsSelected,
   issueMatchesTargetPlatforms,
@@ -148,6 +149,48 @@ function getConfidenceTone(level) {
   if (level === 'High') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
   if (level === 'Medium') return 'border-primary/20 bg-primary/10 text-primary';
   return 'border-error/25 bg-error-container/10 text-error';
+}
+
+const PLATFORM_ICON_PATHS = {
+  ios: '/platform-icons/ios.png',
+  android: '/platform-icons/android.png',
+  macos: '/platform-icons/macos.png',
+  linux: '/platform-icons/linux.png',
+  windows: '/platform-icons/windows.png'
+};
+
+function getPlatformEvidenceTone(status) {
+  if (status === 'confirmed') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
+  if (status === 'mismatch') return 'border-error/25 bg-error-container/10 text-error';
+  if (status === 'pending') return 'border-primary/20 bg-primary/10 text-primary';
+  return 'border-outline-variant bg-surface-dim text-on-surface-variant';
+}
+
+function renderPlatformEvidenceIcon(evidence) {
+  const iconKey = evidence.matchedPlatforms?.[0] || evidence.supportedPlatforms?.[0] || '';
+  const path = PLATFORM_ICON_PATHS[iconKey];
+  if (path) {
+    return `<img class="platform-evidence-icon" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
+  }
+  if (iconKey === 'web') {
+    return '<span class="material-symbols-outlined text-[13px]">public</span>';
+  }
+  if (evidence.status === 'pending') {
+    return '<span class="material-symbols-outlined text-[13px]">hourglass_empty</span>';
+  }
+  return '<span class="material-symbols-outlined text-[13px]">code</span>';
+}
+
+function renderPlatformEvidenceBadge(evidence) {
+  if (!evidence || (!evidence.filterActive && evidence.status === 'pending')) return '';
+  if (!evidence.filterActive && evidence.status === 'platform-neutral' && !evidence.supportedPlatforms?.length) return '';
+  const tone = getPlatformEvidenceTone(evidence.status);
+  return `
+    <span class="platform-evidence-chip interactive-chip rounded border ${tone} px-2 py-0.5 text-xs" aria-label="${escapeHTML(evidence.label)}" data-tooltip="${escapeHTML(evidence.reasons?.[0] || evidence.label)}" data-tooltip-position="top">
+      ${renderPlatformEvidenceIcon(evidence)}
+      <span>${escapeHTML(evidence.label)}</span>
+    </span>
+  `;
 }
 
 function getIssueLabelNames(labels = []) {
@@ -1979,7 +2022,7 @@ function renderFindIssues(container) {
   }).join('');
 
   // Stars radio buttons HTML
-  const starOptions = ['Any', '1k+', '5k+', '10k+'];
+  const starOptions = ['Any', '50+', '100+', '500+', '1k+', '5k+', '10k+'];
   const starsRadioHTML = starOptions.map(starOpt => {
     const checked = filters.stars === starOpt ? 'checked' : '';
     const safeStarOpt = escapeHTML(starOpt);
@@ -2403,6 +2446,7 @@ function renderFindIssues(container) {
 function renderIssueCardsList(issuesList, options = {}) {
   // Sort list if local sorting is needed
   const scoreMode = options.mode || store.lastSearchMode || 'find';
+  const scoreTargetPlatforms = getScoreTargetPlatformsForMode(store.filters, scoreMode);
   let sorted = filterVisibleIssueResults(issuesList, store.filters, {
     mode: scoreMode,
     setupSummaryResolver: options.setupSummaryResolver
@@ -2410,8 +2454,16 @@ function renderIssueCardsList(issuesList, options = {}) {
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
-    const fitObj = calculateFitScore(issue, { mode: scoreMode });
-    return { ...issue, fitScore: fitObj.score, fitRating: fitObj };
+    const setupSummary = typeof options.setupSummaryResolver === 'function'
+      ? options.setupSummaryResolver(issue)
+      : null;
+    const fitObj = calculateFitScore(issue, {
+      mode: scoreMode,
+      targetPlatforms: scoreTargetPlatforms,
+      enrichment: setupSummary ? { setup: setupSummary } : undefined
+    });
+    const platformEvidence = getPlatformEvidence(setupSummary, scoreTargetPlatforms);
+    return { ...issue, fitScore: fitObj.score, fitRating: fitObj, platformEvidence };
   });
 
   // Local sorting for Fit Score (others sorted by API request parameters, but fit is local)
@@ -2444,6 +2496,7 @@ function renderIssueCardsList(issuesList, options = {}) {
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
     const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
+    const platformEvidenceHTML = renderPlatformEvidenceBadge(issue.platformEvidence);
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
@@ -2490,6 +2543,7 @@ function renderIssueCardsList(issuesList, options = {}) {
         <div class="mt-auto flex flex-wrap items-center gap-2">
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
           <span class="interactive-chip rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          ${platformEvidenceHTML}
           ${primaryLabelHTML}
           ${labelOverflowHTML}
           ${repoUnavailableHTML}
@@ -4086,9 +4140,13 @@ function openInspector() {
     setup: repoSetupEnrichmentState,
     history: repoHistoryEnrichmentState
   });
+  const inspectorScoreMode = getCurrentScoreMode();
+  const inspectorTargetPlatforms = getScoreTargetPlatformsForMode(store.filters, inspectorScoreMode);
   const fitObj = calculateFitScore(issue, {
-    enrichment: inspectorEnrichment
+    enrichment: inspectorEnrichment,
+    targetPlatforms: inspectorTargetPlatforms
   });
+  const platformEvidenceHTML = renderPlatformEvidenceBadge(getPlatformEvidence(repoSetupEnrichmentState, inspectorTargetPlatforms));
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const contributionBrief = buildContributionBrief(issue, fitObj);
@@ -4228,6 +4286,7 @@ function openInspector() {
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${rating.rating}</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border border-outline-variant bg-surface-container-high text-on-surface-variant">${stageLabel}</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${confidenceTone}">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
+          ${platformEvidenceHTML}
           <span class="text-xs text-on-surface-variant font-mono">${repoName} #${safeIssueNumber}</span>
         </div>
         <h2 class="text-2xl font-headline font-bold text-on-background tracking-tighter leading-tight">${safeIssueTitle}</h2>
