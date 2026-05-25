@@ -1,5 +1,11 @@
 # PR Dashboard State
 
+## 2026-05-24 Impeccable Context Setup
+
+- Added root `PRODUCT.md` and `DESIGN.md` so future `$impeccable` work has explicit product strategy and current visual-system context.
+- Added `.impeccable/design.json` sidecar with representative component snippets, including the accessible icon-button pattern intended for future header/settings-style controls.
+- Verification: impeccable loader returned `hasProduct: true` and `hasDesign: true`, `.impeccable/design.json` parsed as JSON, and `git diff --check` passed. Remaining risk: context documents capture the current UI only; palette/category-reflex improvements remain separate future work.
+
 ## 2026-05-24 UX Polish Pass
 
 - Implemented the scoped polish pass only: inspector Action Center is pinned under the title chrome, title height is set synchronously and watched with `ResizeObserver`, Advanced Context holds for `1200ms`, its cards use an auto-fit grid, and Find Contributions has a smaller hero plus persisted `More filters`.

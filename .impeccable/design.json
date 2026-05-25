@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-24T20:51:14.6346925-04:00",
+  "title": "Design System: PR Dashboard",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Workbench Violet",
+        "canonical": "#a78bfa",
+        "tonalRamp": ["#1e1238", "#3b1d73", "#5b2fb0", "#7c3aed", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe"]
+      },
+      "tertiary": {
+        "role": "tertiary",
+        "displayName": "Completion Emerald",
+        "canonical": "#34d399",
+        "tonalRamp": ["#052e1a", "#064e3b", "#065f46", "#047857", "#10b981", "#34d399", "#86efac", "#bbf7d0"]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Workbench Black",
+        "canonical": "#09090b",
+        "tonalRamp": ["#09090b", "#0c0c0f", "#0f0f12", "#121215", "#18181b", "#1e1e22", "#27272a", "#3f3f46"]
+      },
+      "on-surface": {
+        "role": "neutral",
+        "displayName": "Primary Text",
+        "canonical": "#fafafa",
+        "tonalRamp": ["#52525b", "#71717a", "#a1a1aa", "#d4d4d8", "#e4e4e7", "#f4f4f5", "#fafafa", "#fafafa"]
+      },
+      "error": {
+        "role": "error",
+        "displayName": "Caution Red",
+        "canonical": "#ef4444",
+        "tonalRamp": ["#3b1111", "#5f1717", "#7f1d1d", "#991b1b", "#dc2626", "#ef4444", "#f87171", "#fca5a5"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Route heroes and high-level empty or onboarding moments."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles, drawer titles, and major panel headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Product copy, issue summaries, helper text, and explanatory content."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Issue references, score deltas, API buckets, and repository metadata."
+      }
+    },
+    "shadows": [
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 2px rgba(167, 139, 250, 0.28)",
+        "purpose": "Visible keyboard focus and focused field state."
+      },
+      {
+        "name": "popover",
+        "value": "0 20px 50px rgba(0, 0, 0, 0.45)",
+        "purpose": "Elevated API limits and compact overlays."
+      },
+      {
+        "name": "inspector-edge",
+        "value": "-10px 0 30px -15px rgba(0, 0, 0, 0.8)",
+        "purpose": "Right-side inspector drawer boundary."
+      },
+      {
+        "name": "tooltip",
+        "value": "0 12px 28px rgba(0, 0, 0, 0.38)",
+        "purpose": "Small tooltip overlays."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-fast",
+        "value": "150ms ease-out",
+        "purpose": "Tooltips and compact state feedback."
+      },
+      {
+        "name": "state-standard",
+        "value": "200ms ease-in-out",
+        "purpose": "Current button, chip, row, and card transitions."
+      },
+      {
+        "name": "drawer",
+        "value": "300ms ease-in-out",
+        "purpose": "Current inspector drawer entrance and exit."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main local action such as search, save, or continue a workflow.",
+      "html": "<button class=\"ds-button-primary\" type=\"button\">Save candidate</button>",
+      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 8px; background: var(--primary, #a78bfa); color: var(--on-primary, #0a0012); padding: 8px 12px; font-family: Geist, system-ui, sans-serif; font-size: 14px; font-weight: 600; transition: background-color 200ms ease-in-out, border-color 200ms ease-in-out, transform 200ms ease-in-out; } .ds-button-primary:hover { border-color: rgba(167, 139, 250, 0.75); background: var(--primary-container, #7c3aed); transform: translateY(-1px); } .ds-button-primary:focus-visible { outline: 2px solid var(--primary, #a78bfa); outline-offset: 2px; } .ds-button-primary:active { transform: scale(0.98); } .ds-button-primary:disabled { cursor: not-allowed; opacity: 0.45; transform: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral action for refresh, inspect, cancel, and settings controls.",
+      "html": "<button class=\"ds-button-secondary\" type=\"button\">Refresh card</button>",
+      "css": ".ds-button-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; border: 1px solid var(--outline-variant, #27272a); border-radius: 8px; background: var(--surface-container, #121215); color: var(--on-surface-variant, #a1a1aa); padding: 8px 12px; font-family: Geist, system-ui, sans-serif; font-size: 14px; font-weight: 600; transition: background-color 200ms ease-in-out, border-color 200ms ease-in-out, color 200ms ease-in-out, transform 200ms ease-in-out; } .ds-button-secondary:hover { border-color: var(--outline, #52525b); background: var(--surface-container-high, #18181b); color: var(--on-surface, #fafafa); transform: translateY(-1px); } .ds-button-secondary:focus-visible { outline: 2px solid var(--primary, #a78bfa); outline-offset: 2px; } .ds-button-secondary:active { transform: scale(0.98); }"
+    },
+    {
+      "name": "Accessible Icon Button",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "Canonical header bell/settings pattern. The button is named, and the decorative icon is hidden from assistive technology.",
+      "html": "<button class=\"ds-icon-button\" type=\"button\" aria-label=\"Review reminders\"><svg class=\"ds-icon\" aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M12 22a2.5 2.5 0 0 0 2.35-1.65h-4.7A2.5 2.5 0 0 0 12 22Zm7-6v-5a7 7 0 0 0-5-6.7V3a2 2 0 1 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Zm-2 .5H7V11a5 5 0 0 1 10 0v5.5Z\" fill=\"currentColor\"/></svg></button>",
+      "css": ".ds-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 9999px; background: transparent; color: var(--on-surface-variant, #a1a1aa); padding: 0; transition: background-color 160ms ease-out, color 160ms ease-out; } .ds-icon-button:hover { background: var(--surface-container, #121215); color: var(--primary, #a78bfa); } .ds-icon-button:focus-visible { outline: 2px solid var(--primary, #a78bfa); outline-offset: 2px; } .ds-icon { width: 20px; height: 20px; flex: 0 0 auto; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Default search or settings text field on a dark product surface.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-label\">Repository or issue</span><input class=\"ds-input\" type=\"text\" placeholder=\"owner/repo#123\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; font-family: Geist, system-ui, sans-serif; color: var(--on-surface, #fafafa); } .ds-label { color: var(--on-surface-variant, #a1a1aa); font-size: 12px; font-weight: 600; } .ds-input { min-height: 40px; border: 1px solid var(--outline-variant, #27272a); border-radius: 8px; background: var(--surface-container, #121215); color: var(--on-surface, #fafafa); padding: 10px 12px; font: inherit; font-size: 14px; } .ds-input::placeholder { color: var(--on-surface-variant, #a1a1aa); } .ds-input:focus { border-color: var(--primary, #a78bfa); box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.25); outline: none; }"
+    },
+    {
+      "name": "Evidence Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Compact score, confidence, filter, or label token.",
+      "html": "<span class=\"ds-chip\">84% Match</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border: 1px solid var(--outline-variant, #27272a); border-radius: 9999px; background: var(--surface-container, #121215); color: var(--on-surface-variant, #a1a1aa); padding: 4px 12px; font-family: Geist, system-ui, sans-serif; font-size: 13px; font-weight: 600; transition: background-color 200ms ease-in-out, border-color 200ms ease-in-out, color 200ms ease-in-out; } .ds-chip:hover { border-color: rgba(167, 139, 250, 0.5); background: var(--surface-container-high, #18181b); color: var(--on-surface, #fafafa); }"
+    },
+    {
+      "name": "Workbench Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Default card for metrics, issue summaries, settings panels, and inspector modules.",
+      "html": "<section class=\"ds-card\"><h3 class=\"ds-card-title\">Contribution Brief</h3><p class=\"ds-card-copy\">Transparent fit evidence and next action guidance stay grouped in one surface.</p></section>",
+      "css": ".ds-card { border: 1px solid var(--outline-variant, #27272a); border-radius: 8px; background: var(--surface-container, #121215); color: var(--on-surface, #fafafa); padding: 16px; font-family: Geist, system-ui, sans-serif; } .ds-card-title { margin: 0 0 8px; color: var(--on-surface, #fafafa); font-size: 16px; font-weight: 700; line-height: 1.25; } .ds-card-copy { margin: 0; color: var(--on-surface-variant, #a1a1aa); font-size: 14px; line-height: 1.5; }"
+    },
+    {
+      "name": "Navigation Tab",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Sidebar or drawer route link with icon plus visible label.",
+      "html": "<a class=\"ds-nav-tab ds-nav-tab-active\" href=\"#dashboard\"><svg class=\"ds-nav-icon\" aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z\" fill=\"currentColor\"/></svg><span>Dashboard</span></a>",
+      "css": ".ds-nav-tab { display: flex; align-items: center; gap: 12px; border-radius: 8px; color: var(--on-surface-variant, #a1a1aa); padding: 12px 16px; font-family: Geist, system-ui, sans-serif; font-size: 14px; font-weight: 600; text-decoration: none; transition: background-color 160ms ease-out, color 160ms ease-out; } .ds-nav-tab:hover { background: var(--surface-container, #121215); color: var(--on-surface, #fafafa); } .ds-nav-tab-active { background: var(--surface-container-high, #18181b); color: var(--primary, #a78bfa); } .ds-nav-tab:focus-visible { outline: 2px solid var(--primary, #a78bfa); outline-offset: 2px; } .ds-nav-icon { width: 20px; height: 20px; flex: 0 0 auto; }"
+    },
+    {
+      "name": "Tooltip",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Compact hover and focus-visible label for dense controls. It supplements accessible names and never replaces them.",
+      "html": "<button class=\"ds-tooltip-trigger\" type=\"button\" aria-label=\"Settings\"><svg class=\"ds-tooltip-icon\" aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a7.3 7.3 0 0 0-2.6-1.5L14 2h-4l-.4 2.5A7.3 7.3 0 0 0 7 6L4.6 5 2.6 8.5l2 1.5c-.1.5-.1 1-.1 1.5s0 1 .1 1.5l-2 1.5 2 3.5 2.4-1a7.3 7.3 0 0 0 2.6 1.5L10 22h4l.4-2.5A7.3 7.3 0 0 0 17 18l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z\" fill=\"currentColor\"/></svg><span class=\"ds-tooltip\" role=\"tooltip\">Settings</span></button>",
+      "css": ".ds-tooltip-trigger { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 9999px; background: transparent; color: var(--on-surface-variant, #a1a1aa); } .ds-tooltip-trigger:hover, .ds-tooltip-trigger:focus-visible { color: var(--primary, #a78bfa); outline: none; } .ds-tooltip-trigger:focus-visible { box-shadow: 0 0 0 2px var(--primary, #a78bfa); } .ds-tooltip-icon { width: 20px; height: 20px; } .ds-tooltip { position: absolute; top: calc(100% + 8px); left: 50%; transform: translate(-50%, -2px); opacity: 0; pointer-events: none; border: 1px solid var(--outline-variant, #27272a); border-radius: 6px; background: var(--surface-container-highest, #1e1e22); color: var(--on-surface, #fafafa); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38); padding: 6px 8px; font-family: Geist, system-ui, sans-serif; font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; transition: opacity 120ms ease-out, transform 120ms ease-out; } .ds-tooltip-trigger:hover .ds-tooltip, .ds-tooltip-trigger:focus-visible .ds-tooltip { opacity: 1; transform: translate(-50%, 0); }"
+    },
+    {
+      "name": "Board Lane",
+      "kind": "custom",
+      "refersTo": "board-lane",
+      "description": "Inset workflow lane for active or completed contribution cards.",
+      "html": "<section class=\"ds-board-lane\"><header class=\"ds-board-lane-header\"><h3>Considering</h3><span>2 cards</span></header><div class=\"ds-board-card\"><strong>owner/repo#123</strong><span>Confidence: High</span></div></section>",
+      "css": ".ds-board-lane { display: flex; flex-direction: column; gap: 12px; min-width: 0; border: 1px solid var(--outline-variant, #27272a); border-radius: 8px; background: rgba(9, 9, 11, 0.5); padding: 12px; font-family: Geist, system-ui, sans-serif; } .ds-board-lane-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; } .ds-board-lane-header h3 { margin: 0; color: var(--on-surface, #fafafa); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; } .ds-board-lane-header span { color: var(--on-surface-variant, #a1a1aa); font-size: 12px; } .ds-board-card { display: grid; gap: 6px; border: 1px solid var(--outline-variant, #27272a); border-radius: 8px; background: var(--surface-container, #121215); color: var(--on-surface, #fafafa); padding: 12px; overflow-wrap: anywhere; } .ds-board-card span { color: var(--on-surface-variant, #a1a1aa); font-size: 12px; }"
+    },
+    {
+      "name": "Inspector Action Strip",
+      "kind": "custom",
+      "refersTo": "inspector-action-strip",
+      "description": "Pinned action row below the inspector title that keeps primary issue actions available while reading evidence.",
+      "html": "<div class=\"ds-inspector-strip\"><span class=\"ds-strip-label\">Action center</span><div class=\"ds-strip-actions\"><button class=\"ds-button-secondary\" type=\"button\">Hide issue</button><button class=\"ds-button-primary\" type=\"button\">Open on GitHub</button></div></div>",
+      "css": ".ds-inspector-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--outline-variant, #27272a); border-left: 0; border-right: 0; background: rgba(12, 12, 15, 0.95); padding: 16px; font-family: Geist, system-ui, sans-serif; } .ds-strip-label { color: var(--on-surface-variant, #a1a1aa); font-size: 12px; } .ds-strip-actions { display: flex; flex-wrap: wrap; gap: 8px; } .ds-inspector-strip .ds-button-primary, .ds-inspector-strip .ds-button-secondary { min-height: 34px; font-size: 12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Contributor Workbench",
+    "overview": "PR Dashboard is a dense product UI for contributors making practical decisions under uncertainty. It should feel like a focused workbench: dark, quiet, information-rich, and explicit about evidence. The interface earns trust by showing fit signals, risks, local workflow state, and privacy boundaries without turning the experience into a tutorial.\n\nThe current visual system is a high-contrast dark product surface built from near-black layers, thin borders, Geist typography, violet primary actions, emerald success states, and red errors. This file documents that current system so future agents stay aligned while making changes. It is not a redesign pass.\n\nThe system must not become a GitHub visual replica, and it must not look like a generic Shadcn/Vercel observability tool. The current Zinc-on-Violet dark-mode dev aesthetic is a known trap. Future refinement should preserve the workflow clarity while giving PR Dashboard a more specific contributor-decision identity.",
+    "keyCharacteristics": [
+      "Dense product surfaces for scanning, comparison, and repeated action.",
+      "Flat-by-default layering with borders and tonal surfaces instead of decorative depth.",
+      "Restrained semantic color: violet for action and selection, emerald for positive state, red for error or pass risk.",
+      "Copy that is precise, candid, and useful.",
+      "Local-first trust patterns that keep token and storage boundaries visible."
+    ],
+    "rules": [
+      {
+        "name": "The Evidence Color Rule",
+        "body": "Color must explain state, action, or evidence. Do not use violet, emerald, or red as decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Trap Naming Rule",
+        "body": "Do not let \"dark dev tool\" become the design rationale. The Zinc-on-Violet palette is the current implementation, not the product identity.",
+        "section": "colors"
+      },
+      {
+        "name": "The Product Type Rule",
+        "body": "Do not introduce display fonts into controls, labels, cards, or data-heavy surfaces. Product legibility wins over typographic novelty.",
+        "section": "typography"
+      },
+      {
+        "name": "The Candid Copy Rule",
+        "body": "Favor concrete product language such as \"Local Session Storage by Default\", \"no private scopes needed\", and \"Save candidates from Find Contributions to see them on your Dashboard.\" Avoid hype, magic, and vague motivation.",
+        "section": "typography"
+      },
+      {
+        "name": "The Border-First Rule",
+        "body": "Use tonal layers and 1px borders for most hierarchy. Shadows are for overlays, focus, and true spatial overlap.",
+        "section": "elevation"
+      },
+      {
+        "name": "The No Fake Glass Rule",
+        "body": "Backdrop blur and glass-like treatment must be rare and purposeful. Do not use glassmorphism as a default card or panel style.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do document and preserve local-first trust boundaries. Token, export/import, Proof Log, and browser storage copy must stay concrete.",
+      "Do make score, confidence, risk, and next action visible enough for users to trust or challenge the recommendation.",
+      "Do use standard product affordances for navigation, filters, forms, drawers, cards, popovers, and buttons.",
+      "Do use semantic color for evidence, action, warning, success, and error.",
+      "Do give icon-only controls accessible names and hide decorative icons from assistive technology.",
+      "Do keep dense screens scannable through consistent spacing, clear grouping, and low-noise labels."
+    ],
+    "donts": [
+      "Don't become a GitHub visual replica.",
+      "Don't look like a generic Shadcn/Vercel observability tool.",
+      "Don't treat the Zinc-on-Violet dark-mode dev aesthetic as the goal.",
+      "Don't gamify contribution work with streaks, badges, confetti, leaderboards, or point-like reward language.",
+      "Don't imply backend trust guarantees, live sync, OAuth, encrypted sync, or remote merge verification that v1 does not provide.",
+      "Don't use glassmorphism, gradient text, side-stripe borders, identical card grids, or hero-metric templates as default patterns.",
+      "Don't rely on color alone for score, confidence, risk, success, warning, or error states."
+    ]
+  }
+}
