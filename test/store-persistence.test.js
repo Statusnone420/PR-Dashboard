@@ -255,6 +255,54 @@ test('moving a card to Passed clears matching proof log entry', async () => {
   assert.match(globalThis.localStorage.getItem('pr_dashboard_hidden_v1'), /teammates\/teammates#13997/);
 });
 
+test('moving a card out of Passed with moveCardToColumn unhides the exact issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13997,
+    number: 13997,
+    title: 'Restore passed issue',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13997'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(13997, 'Passed');
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+
+  appStore.moveCardToColumn(13997, 'Working');
+
+  assert.equal(appStore.boardCards.Working[0].id, 13997);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
+});
+
+test('moving a card out of Passed with moveBoardCard unhides the exact issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13998,
+    number: 13998,
+    title: 'Restore passed issue with arrows',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13998'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(13998, 'Passed');
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+
+  appStore.moveBoardCard(13998, -1);
+
+  assert.equal(appStore.boardCards.Merged[0].id, 13998);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
+});
+
 test('removing a board card does not hide or pass the issue', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');

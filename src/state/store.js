@@ -323,6 +323,20 @@ export class AppStore {
     this.notify();
   }
 
+  syncPassedHiddenState(cardObj, sourceCol, targetCol) {
+    if (targetCol === 'Passed') {
+      hideIssueInStorage(cardObj, localStorage);
+      return;
+    }
+
+    if (sourceCol === 'Passed') {
+      const key = getCanonicalIssueKey(cardObj);
+      if (key) {
+        unhideHiddenItemFromStorage('issue', key, localStorage);
+      }
+    }
+  }
+
   // Inspector Panel Action Plan Tasks Persistence
   toggleTaskChecklist(issueId, taskText, completed) {
     let card = null;
@@ -434,8 +448,8 @@ export class AppStore {
           });
         } else if (targetCol === 'Passed') {
           this.removeIssueFromProofLog(cardObj);
-          hideIssueInStorage(cardObj, localStorage);
         }
+        this.syncPassedHiddenState(cardObj, sourceCol, targetCol);
         if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
           this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
         }
@@ -500,9 +514,11 @@ export class AppStore {
     if (!this.boardCards[targetCol]) return;
 
     let cardObj = null;
+    let sourceCol = null;
     for (const col of Object.keys(this.boardCards)) {
       const index = this.boardCards[col].findIndex(c => c.id === cardId);
       if (index !== -1) {
+        sourceCol = col;
         cardObj = this.boardCards[col].splice(index, 1)[0];
         break;
       }
@@ -523,8 +539,8 @@ export class AppStore {
         });
       } else if (targetCol === 'Passed') {
         this.removeIssueFromProofLog(cardObj);
-        hideIssueInStorage(cardObj, localStorage);
       }
+      this.syncPassedHiddenState(cardObj, sourceCol, targetCol);
       if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
         this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
       }

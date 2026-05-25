@@ -497,3 +497,11 @@
 - In-memory platform setup scan summaries now store an expiry and are deleted after the enrichment TTL, allowing long-lived tabs to rescan instead of treating stale session summaries as permanent cache hits.
 - Verification on 2026-05-25: `npm test` passed 257/257, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a deterministic exact Lookup browser smoke verified a Windows-only filter plus cached Linux-only setup did not show platform mismatch or `Not a contribution candidate` while `Use filters in Lookup` was off. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-lookup-score-opt-out.png`.
 - Remaining risk: the browser smoke used mocked GitHub API responses to keep the scoring regression deterministic; live GitHub data can still affect non-platform score signals.
+
+## 2026-05-25 Passed Reversal Hidden-State Fix
+
+- Addressed PR review thread `discussion_r3295918103`.
+- Board movement now treats `Passed` hiding as reversible workflow state: entering `Passed` still hides the exact issue, while leaving `Passed` through either `moveCardToColumn` or `moveBoardCard` unhides that exact issue so Finder can show it again.
+- Added store regressions for both board move paths and kept remove-from-board behavior unchanged.
+- Verification on 2026-05-25: `npm test` passed 259/259, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a board browser smoke moved a hidden Passed card back to Merged and verified its exact hidden issue key was removed. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-passed-unhide-smoke.png`.
+- Remaining risk: hidden issue storage does not record provenance, so moving a card out of `Passed` removes the exact issue hide regardless of whether that same key was also manually hidden before it entered `Passed`.
