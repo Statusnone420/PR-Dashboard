@@ -27,18 +27,26 @@ function createStorage(initial = {}) {
 
 function createResizeHarness({ viewport = 1024, width = '720px' } = {}) {
   const listeners = new Map();
+  const layoutWidth = Number.parseFloat(width) || 0;
   const handle = {
+    attributes: {},
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
     removeEventListener(type) {
       listeners.delete(type);
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return this.attributes[name] ?? null;
     }
   };
   const drawer = {
     style: { width },
     getBoundingClientRect() {
-      return { width: Number.parseFloat(this.style.width) || 0 };
+      return { width: Number.parseFloat(this.style.width) || layoutWidth };
     }
   };
   const classList = {
@@ -52,7 +60,7 @@ function createResizeHarness({ viewport = 1024, width = '720px' } = {}) {
     removeEventListener() {}
   };
 
-  return { drawer, handle, win };
+  return { drawer, handle, win, listeners };
 }
 
 test('bucketForViewport isolates laptop, wide, and ultrawide widths', () => {
@@ -111,5 +119,55 @@ test('attachResize clears stale inline width when current bucket has no saved wi
   const detach = attachResize(drawer, handle, { window: win, storage });
 
   assert.equal(drawer.style.width, '');
+  detach();
+});
+
+test('attachResize publishes slider value metadata for assistive tech', () => {
+  const storage = createStorage({
+    [INSPECTOR_WIDTH_STORAGE_KEY]: JSON.stringify({ xl: 720 })
+  });
+  const { drawer, handle, win } = createResizeHarness({ viewport: 1366, width: '620px' });
+
+  const detach = attachResize(drawer, handle, { window: win, storage });
+
+  assert.equal(drawer.style.width, '720px');
+  assert.equal(handle.getAttribute('aria-valuemin'), '420');
+  assert.equal(handle.getAttribute('aria-valuemax'), '1006');
+  assert.equal(handle.getAttribute('aria-valuenow'), '720');
+  assert.equal(handle.getAttribute('aria-valuetext'), '720 pixels wide');
+  detach();
+});
+
+test('keyboard inspector resize changes width and persists bucketed value', () => {
+  const storage = createStorage();
+  const { drawer, handle, win, listeners } = createResizeHarness({ viewport: 1366, width: '620px' });
+  const detach = attachResize(drawer, handle, { window: win, storage });
+  const keydown = listeners.get('keydown');
+  const eventFor = key => ({
+    key,
+    defaultPrevented: false,
+    preventDefault() {
+      this.defaultPrevented = true;
+    }
+  });
+
+  assert.equal(typeof keydown, 'function');
+
+  const increase = eventFor('ArrowRight');
+  keydown(increase);
+  assert.equal(increase.defaultPrevented, true);
+  assert.equal(drawer.style.width, '660px');
+  assert.equal(handle.getAttribute('aria-valuenow'), '660');
+  assert.equal(JSON.parse(storage.getItem(INSPECTOR_WIDTH_STORAGE_KEY)).xl, 660);
+
+  const end = eventFor('End');
+  keydown(end);
+  assert.equal(drawer.style.width, '1006px');
+  assert.equal(handle.getAttribute('aria-valuenow'), '1006');
+
+  const home = eventFor('Home');
+  keydown(home);
+  assert.equal(drawer.style.width, '420px');
+  assert.equal(handle.getAttribute('aria-valuenow'), '420');
   detach();
 });

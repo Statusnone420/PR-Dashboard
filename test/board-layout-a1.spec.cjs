@@ -280,6 +280,91 @@ test.describe('A1 board layout', () => {
     await expect(page.locator('#api-limits-popover')).toBeHidden();
   });
 
+  test('mobile audit controls expose API limits, touch targets, collapsed filters, and tooltip dismissal', async ({ page }) => {
+    await page.route('https://api.github.com/rate_limit', async route => {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          resources: {
+            core: { limit: 5000, remaining: 4990, used: 10, reset: 1770000000 },
+            search: { limit: 30, remaining: 24, used: 6, reset: 1770000300 }
+          }
+        })
+      });
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${baseURL}/#dashboard`);
+
+    await page.locator('#btn-settings').focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#btn-settings')).toHaveAttribute('data-tooltip-suppressed', 'true');
+
+    await page.locator('#mobile-menu-toggle').click();
+    await expect(page.locator('#mobile-api-limits-trigger')).toBeVisible();
+    await page.locator('#mobile-api-limits-trigger').click();
+    await expect(page.locator('#mobile-api-limits-popover')).toBeVisible();
+    await page.locator('#mobile-api-limits-check-btn').click();
+    await expect(page.locator('#mobile-api-limits-core-row')).toContainText('4,990 / 5,000');
+    await expect(page.locator('#mobile-api-limits-search-row')).toContainText('24 / 30');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#mobile-api-limits-popover')).toBeHidden();
+
+    const touchTargets = await page.evaluate(() => {
+      const ids = [
+        'mobile-menu-toggle',
+        'mobile-menu-close',
+        'btn-notifications',
+        'btn-settings',
+        'user-profile-avatar',
+        'mobile-api-limits-trigger'
+      ];
+      return ids.map(id => {
+        const rect = document.getElementById(id).getBoundingClientRect();
+        return { id, width: rect.width, height: rect.height };
+      });
+    });
+    for (const target of touchTargets) {
+      expect(target.width, `${target.id} width`).toBeGreaterThanOrEqual(44);
+      expect(target.height, `${target.id} height`).toBeGreaterThanOrEqual(44);
+    }
+
+    await page.locator('#mobile-menu-close').click();
+    await page.goto(`${baseURL}/#find-issues`);
+    await expect(page.locator('#mobile-filter-disclosure')).toBeVisible();
+
+    let metrics = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const results = document.getElementById('find-results-panel').getBoundingClientRect();
+      const filters = document.getElementById('mobile-filter-disclosure').getBoundingClientRect();
+      const body = document.querySelector('#mobile-filter-disclosure .mobile-filter-body');
+      return {
+        documentHorizontalOverflow: doc.scrollWidth > doc.clientWidth + 1,
+        filtersOpen: document.getElementById('mobile-filter-disclosure').open,
+        bodyVisible: body && getComputedStyle(body).display !== 'none',
+        resultsBeforeFilters: results.top < filters.top
+      };
+    });
+    expect(metrics.documentHorizontalOverflow).toBe(false);
+    expect(metrics.filtersOpen).toBe(false);
+    expect(metrics.bodyVisible).toBe(false);
+    expect(metrics.resultsBeforeFilters).toBe(true);
+
+    await page.locator('#mobile-filter-disclosure > summary').click();
+    metrics = await page.evaluate(() => {
+      const body = document.querySelector('#mobile-filter-disclosure .mobile-filter-body');
+      return {
+        filtersOpen: document.getElementById('mobile-filter-disclosure').open,
+        bodyVisible: body && getComputedStyle(body).display !== 'none',
+        documentHorizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+      };
+    });
+    expect(metrics.filtersOpen).toBe(true);
+    expect(metrics.bodyVisible).toBe(true);
+    expect(metrics.documentHorizontalOverflow).toBe(false);
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((board) => {
       localStorage.setItem('pr_dashboard_board_cards', JSON.stringify(board));

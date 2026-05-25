@@ -1,5 +1,10 @@
 # PR Dashboard — Full UX/UI Audit
 
+## Resolved Since Audit
+
+- **2026-05-25:** PR #15 resolved the Material Symbols `aria-hidden` finding. Current HEAD has regression coverage ensuring decorative Material Symbols spans in `index.html` and `src/main.js` stay hidden from assistive tech.
+- **2026-05-25:** The A11y/Responsive follow-up added mobile API limits, mobile 44px chrome targets, inspector resize slider semantics, tooltip wrapping/Escape suppression, coarse-pointer tooltip suppression, and a collapsed mobile Find Contributions filter stack. The audit score below is intentionally unchanged until a fresh audit is run.
+
 ## Anti-Patterns Verdict
 
 **Mostly clean, with one major category-reflex failure.**
