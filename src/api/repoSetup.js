@@ -129,7 +129,15 @@ function detectPlatformCompatibility(text) {
     ios: [/\bios (?:is )?not supported\b/, /\bdoes not support ios\b/, /\bno ios support\b/],
     android: [/\bandroid (?:is )?not supported\b/, /\bdoes not support android\b/, /\bno android support\b/],
     macos: [/\bmacos (?:is )?not supported\b/, /\bmac os (?:is )?not supported\b/, /\bdoes not support macos\b/, /\bno macos support\b/],
-    linux: [/\blinux (?:is )?not supported\b/, /\bdoes not support linux\b/, /\bno linux support\b/],
+    linux: [
+      /\blinux (?:is )?not supported\b/,
+      /\bdoes not support linux\b/,
+      /\bno linux support\b/,
+      /\bubuntu\b(?!-latest) (?:is )?not supported\b/,
+      /\bdoes not support ubuntu\b/,
+      /\bno ubuntu support\b/,
+      /\bunsupported platforms?\s*[:=-]?\s*[^.\n;]{0,80}\bubuntu\b(?!-latest)/
+    ],
     windows: [/\bwindows (?:is )?not supported\b/, /\bdoes not support windows\b/, /\bno windows support\b/, /\bwsl required\b/, /\brequires wsl\b/],
     web: [/\bweb (?:is )?not supported\b/, /\bdoes not support web\b/, /\bno web support\b/]
   };
