@@ -1,5 +1,24 @@
 # PR Dashboard State
 
+## 2026-05-25 macOS Platform Badge Contrast
+
+- Fixed the compact macOS platform evidence badge so the black Apple glyph remains legible on the dark chip surface. The badge image now carries a platform data attribute, and only `data-platform='macos'` gets the contrast filter.
+- Added UI/CSS contract coverage so platform image badges keep platform identity available to CSS and the macOS contrast treatment does not regress.
+- Verification on 2026-05-25: targeted `node --test test/ui-copy.test.js test/css-contract.test.js` failed first for the missing platform data attribute and missing macOS contrast rule, then passed after the fix.
+- Remaining risk: this is a contrast/readability fix for the existing asset, not a broader platform icon redesign.
+
+## 2026-05-25 A11y Responsive Audit Follow-Up
+
+- Addressed the next A11y/Responsive items from `IMPECCABLE_AUDIT.md` after the PR #15 Material Symbols `aria-hidden` fix.
+- Mobile navigation now exposes GitHub API limits with a mobile drawer trigger and popover that shares the desktop rate-limit rendering path and store state.
+- Mobile chrome controls now use 44px touch targets for menu open/close, Review reminders, Settings, Profile, and the mobile API-limits trigger while preserving compact desktop sizing.
+- Inspector resizing now exposes slider semantics with live width values, keyboard resizing, and the existing bucketed localStorage persistence.
+- CSS tooltips now wrap long text, suppress on Escape for focused tooltip hosts, and do not render visual pseudo-tooltips on coarse pointer/touch devices.
+- Find Contributions now keeps Apply Filters and Quick filters visible on mobile while collapsing the detailed filter stack by default unless filters differ from defaults or draft filters are changed.
+- Verification on 2026-05-25: new focused tests failed first against missing mobile API limits, missing touch-target contracts, missing mobile filter disclosure, missing tooltip suppression/wrapping, and missing inspector slider semantics, then passed after implementation. Final verification passed `node --test test/ui-copy.test.js test/css-contract.test.js test/inspector-resize.test.js`, `npm test`, `npm run build`, `npm run test:layout`, and `git diff --check`.
+- Follow-up regression fix on 2026-05-25: the detailed Find Contributions filter controls were unintentionally hidden on desktop because the mobile-only wrapper used a closed native `<details>` element. Desktop now renders that disclosure open while mobile still defaults collapsed, and `test/board-layout-a1.spec.cjs` has a desktop guard for visible Language, Labels, and Stars controls.
+- Remaining risk: audit score has not been recalculated; visual identity/theming, first-run dashboard zero states, motion cleanup, and glassmorphism cleanup remain separate audit follow-ups.
+
 ## 2026-05-25 Explicit Ubuntu Platform Support
 
 - Addressed PR review thread `discussion_r3299846134`.

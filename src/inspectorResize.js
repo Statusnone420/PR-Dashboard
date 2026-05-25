@@ -3,6 +3,7 @@ export const INSPECTOR_WIDTH_STORAGE_KEY = 'pr_dashboard_inspector_width_v1';
 const MIN_INSPECTOR_WIDTH = 420;
 const RESERVED_PAGE_WIDTH = 360;
 const RESIZE_DISABLED_BELOW = MIN_INSPECTOR_WIDTH + RESERVED_PAGE_WIDTH;
+const KEYBOARD_RESIZE_STEP = 40;
 
 function getViewportWidth(viewport) {
   if (typeof viewport === 'number') return viewport;
@@ -49,6 +50,45 @@ export function clampWidth(rawWidth, viewport) {
   return Math.round(Math.min(Math.max(value, MIN_INSPECTOR_WIDTH), maxWidth));
 }
 
+export function getInspectorWidthRange(viewport) {
+  const width = getViewportWidth(viewport);
+  if (!isResizableViewport(width)) return null;
+  const maxWidth = Math.round(Math.min(width * 0.8, width - RESERVED_PAGE_WIDTH));
+  if (maxWidth < MIN_INSPECTOR_WIDTH) return null;
+  return {
+    min: MIN_INSPECTOR_WIDTH,
+    max: maxWidth,
+    step: KEYBOARD_RESIZE_STEP
+  };
+}
+
+function getCurrentDrawerWidth(drawerEl) {
+  const inlineWidth = Number.parseFloat(drawerEl?.style?.width || '');
+  if (Number.isFinite(inlineWidth) && inlineWidth > 0) return inlineWidth;
+  const rectWidth = Number(drawerEl?.getBoundingClientRect?.().width);
+  return Number.isFinite(rectWidth) ? rectWidth : 0;
+}
+
+function updateHandleValue(handleEl, width, viewport) {
+  if (!handleEl) return;
+  const range = getInspectorWidthRange(viewport);
+  if (!range) {
+    handleEl.setAttribute?.('aria-disabled', 'true');
+    handleEl.removeAttribute?.('aria-valuemin');
+    handleEl.removeAttribute?.('aria-valuemax');
+    handleEl.removeAttribute?.('aria-valuenow');
+    handleEl.removeAttribute?.('aria-valuetext');
+    return;
+  }
+
+  const clamped = clampWidth(width, viewport) ?? range.min;
+  handleEl.removeAttribute?.('aria-disabled');
+  handleEl.setAttribute?.('aria-valuemin', String(range.min));
+  handleEl.setAttribute?.('aria-valuemax', String(range.max));
+  handleEl.setAttribute?.('aria-valuenow', String(clamped));
+  handleEl.setAttribute?.('aria-valuetext', `${clamped} pixels wide`);
+}
+
 export function loadInspectorWidth(viewport, storage = null) {
   const stored = readStoredWidths(storage);
   const value = stored[bucketForViewport(viewport)];
@@ -71,6 +111,7 @@ export function attachResize(drawerEl, handleEl, options = {}) {
   const storage = options.storage || getStorage();
   if (!drawerEl || !handleEl || !win || !isResizableViewport(win.innerWidth)) {
     if (drawerEl) drawerEl.style.width = '';
+    updateHandleValue(handleEl, 0, win?.innerWidth || 0);
     return () => {};
   }
 
@@ -91,6 +132,13 @@ export function attachResize(drawerEl, handleEl, options = {}) {
     if (clamped === null) return;
     latestWidth = clamped;
     drawerEl.style.width = `${clamped}px`;
+    updateHandleValue(handleEl, clamped, win.innerWidth);
+  }
+
+  function saveLatestWidth() {
+    if (latestWidth !== null) {
+      saveInspectorWidth(latestWidth, win.innerWidth, storage);
+    }
   }
 
   function onPointerMove(event) {
@@ -100,9 +148,7 @@ export function attachResize(drawerEl, handleEl, options = {}) {
 
   function stopResize(event) {
     if (activePointerId !== event.pointerId) return;
-    if (latestWidth !== null) {
-      saveInspectorWidth(latestWidth, win.innerWidth, storage);
-    }
+    saveLatestWidth();
     activePointerId = null;
     handleEl.releasePointerCapture?.(event.pointerId);
     handleEl.removeEventListener('pointermove', onPointerMove);
@@ -133,9 +179,7 @@ export function attachResize(drawerEl, handleEl, options = {}) {
 
   function stopMouseResize() {
     if (activePointerId !== 'mouse') return;
-    if (latestWidth !== null) {
-      saveInspectorWidth(latestWidth, win.innerWidth, storage);
-    }
+    saveLatestWidth();
     activePointerId = null;
     win.removeEventListener('mousemove', onMouseMove);
     win.removeEventListener('mouseup', stopMouseResize);
@@ -155,12 +199,37 @@ export function attachResize(drawerEl, handleEl, options = {}) {
     event.preventDefault();
   }
 
+  function onKeyDown(event) {
+    const range = getInspectorWidthRange(win.innerWidth);
+    if (!range) return;
+
+    const currentWidth = clampWidth(getCurrentDrawerWidth(drawerEl), win.innerWidth) ?? range.min;
+    let nextWidth = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+      nextWidth = currentWidth + range.step;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+      nextWidth = currentWidth - range.step;
+    } else if (event.key === 'Home') {
+      nextWidth = range.min;
+    } else if (event.key === 'End') {
+      nextWidth = range.max;
+    }
+
+    if (nextWidth === null) return;
+    event.preventDefault();
+    applyWidth(nextWidth);
+    saveLatestWidth();
+  }
+
   handleEl.addEventListener('pointerdown', onPointerDown);
   handleEl.addEventListener('mousedown', onMouseDown);
+  handleEl.addEventListener('keydown', onKeyDown);
+  updateHandleValue(handleEl, getCurrentDrawerWidth(drawerEl), win.innerWidth);
 
   return () => {
     handleEl.removeEventListener('pointerdown', onPointerDown);
     handleEl.removeEventListener('mousedown', onMouseDown);
+    handleEl.removeEventListener('keydown', onKeyDown);
     handleEl.removeEventListener('pointermove', onPointerMove);
     handleEl.removeEventListener('pointerup', stopResize);
     handleEl.removeEventListener('pointercancel', stopResize);

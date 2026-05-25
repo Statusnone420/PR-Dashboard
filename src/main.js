@@ -1,4 +1,4 @@
-import { store } from './state/store.js';
+import { createDefaultFilters, store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
 import { applyFilterPatch, applyPresetSearch, getRelaxedFilters, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupGlobalSearch();
   setupApiLimitsTracker();
+  setupTooltipDismissal();
   store.currentScreen = screenFromHash(window.location.hash);
   
   // Initial render
@@ -171,7 +172,7 @@ function getPlatformSupportedLabel(platform) {
 function renderPlatformEvidenceIcon(iconKey) {
   const path = PLATFORM_ICON_PATHS[iconKey];
   if (path) {
-    return `<img class="platform-evidence-icon" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
+    return `<img class="platform-evidence-icon" data-platform="${escapeHTML(iconKey)}" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
   }
   if (iconKey === 'web') {
     return '<span class="material-symbols-outlined text-[13px]" aria-hidden="true">public</span>';
@@ -1237,61 +1238,113 @@ function setupGlobalSearch() {
   }
 }
 
-function setupApiLimitsTracker() {
-  const wrapper = document.getElementById('api-limits-wrapper');
-  const trigger = document.getElementById('api-limits-trigger');
-  const checkBtn = document.getElementById('api-limits-check-btn');
-  if (!wrapper || !trigger) return;
-
-  const closePopover = () => {
-    const popover = document.getElementById('api-limits-popover');
-    if (!popover) return;
-    popover.classList.add('hidden');
-    trigger.setAttribute('aria-expanded', 'false');
-  };
-
-  const togglePopover = () => {
-    const popover = document.getElementById('api-limits-popover');
-    if (!popover) return;
-    const nextOpen = popover.classList.contains('hidden');
-    popover.classList.toggle('hidden', !nextOpen);
-    trigger.setAttribute('aria-expanded', String(nextOpen));
-  };
-
-  trigger.addEventListener('click', (event) => {
-    event.stopPropagation();
-    togglePopover();
-  });
-
-  checkBtn?.addEventListener('click', async (event) => {
-    event.stopPropagation();
-    store.setRateLimitStatus('loading', null);
-    try {
-      const snapshot = await fetchGitHubRateLimitStatus();
-      store.setRateLimits({
-        ...snapshot,
-        status: 'checked',
-        error: null
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'GitHub rate-limit check failed.';
-      store.setRateLimitStatus('error', message);
+function getApiLimitTrackerConfigs() {
+  return [
+    {
+      wrapperId: 'api-limits-wrapper',
+      triggerId: 'api-limits-trigger',
+      popoverId: 'api-limits-popover',
+      checkBtnId: 'api-limits-check-btn',
+      summaryId: 'api-limits-summary',
+      coreRowId: 'api-limits-core-row',
+      searchRowId: 'api-limits-search-row',
+      statusId: 'api-limits-status'
+    },
+    {
+      wrapperId: 'mobile-api-limits-wrapper',
+      triggerId: 'mobile-api-limits-trigger',
+      popoverId: 'mobile-api-limits-popover',
+      checkBtnId: 'mobile-api-limits-check-btn',
+      summaryId: 'mobile-api-limits-summary',
+      coreRowId: 'mobile-api-limits-core-row',
+      searchRowId: 'mobile-api-limits-search-row',
+      statusId: 'mobile-api-limits-status'
     }
+  ];
+}
+
+function setupApiLimitsTracker() {
+  const trackers = getApiLimitTrackerConfigs()
+    .map(config => ({
+      ...config,
+      wrapper: document.getElementById(config.wrapperId),
+      trigger: document.getElementById(config.triggerId),
+      popover: document.getElementById(config.popoverId),
+      checkBtn: document.getElementById(config.checkBtnId)
+    }))
+    .filter(tracker => tracker.wrapper && tracker.trigger && tracker.popover);
+
+  const closePopover = (tracker) => {
+    tracker.popover.classList.add('hidden');
+    tracker.trigger.setAttribute('aria-expanded', 'false');
+  };
+
+  const closeAllPopovers = () => {
+    trackers.forEach(closePopover);
+  };
+
+  const togglePopover = (tracker) => {
+    const nextOpen = tracker.popover.classList.contains('hidden');
+    closeAllPopovers();
+    tracker.popover.classList.toggle('hidden', !nextOpen);
+    tracker.trigger.setAttribute('aria-expanded', String(nextOpen));
+  };
+
+  trackers.forEach(tracker => {
+    tracker.trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      togglePopover(tracker);
+    });
+
+    tracker.checkBtn?.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      store.setRateLimitStatus('loading', null);
+      try {
+        const snapshot = await fetchGitHubRateLimitStatus();
+        store.setRateLimits({
+          ...snapshot,
+          status: 'checked',
+          error: null
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'GitHub rate-limit check failed.';
+        store.setRateLimitStatus('error', message);
+      }
+    });
   });
 
   document.addEventListener('click', (event) => {
-    const popover = document.getElementById('api-limits-popover');
-    if (!popover || popover.classList.contains('hidden')) return;
-    if (!wrapper.contains(event.target)) {
-      closePopover();
-    }
+    trackers.forEach(tracker => {
+      if (tracker.popover.classList.contains('hidden')) return;
+      if (!tracker.wrapper.contains(event.target)) {
+        closePopover(tracker);
+      }
+    });
   });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      closePopover();
+      closeAllPopovers();
     }
   });
+}
+
+function setupTooltipDismissal() {
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const target = event.target;
+    const tooltipHost = target?.closest?.('[data-tooltip]');
+    if (!tooltipHost) return;
+    tooltipHost.setAttribute('data-tooltip-suppressed', 'true');
+  });
+
+  document.addEventListener('focusin', (event) => {
+    event.target?.closest?.('[data-tooltip]')?.removeAttribute('data-tooltip-suppressed');
+  });
+
+  document.addEventListener('pointerenter', (event) => {
+    event.target?.closest?.('[data-tooltip]')?.removeAttribute('data-tooltip-suppressed');
+  }, true);
 }
 
 function hasKnownRateLimit(bucket) {
@@ -1379,33 +1432,35 @@ function renderApiLimitRow(bucket, label) {
 }
 
 function renderApiLimitsTracker(rateLimits = store.rateLimits) {
-  const summaryEl = document.getElementById('api-limits-summary');
-  const coreRow = document.getElementById('api-limits-core-row');
-  const searchRow = document.getElementById('api-limits-search-row');
-  const statusEl = document.getElementById('api-limits-status');
-  const checkBtn = document.getElementById('api-limits-check-btn');
-  if (!summaryEl || !coreRow || !searchRow || !statusEl) return;
+  getApiLimitTrackerConfigs().forEach(config => {
+    const summaryEl = document.getElementById(config.summaryId);
+    const coreRow = document.getElementById(config.coreRowId);
+    const searchRow = document.getElementById(config.searchRowId);
+    const statusEl = document.getElementById(config.statusId);
+    const checkBtn = document.getElementById(config.checkBtnId);
+    if (!summaryEl || !coreRow || !searchRow || !statusEl) return;
 
-  summaryEl.textContent = getApiLimitsSummary(rateLimits);
-  coreRow.innerHTML = renderApiLimitRow(rateLimits.core, 'REST/core');
-  searchRow.innerHTML = renderApiLimitRow(rateLimits.search, 'Search');
+    summaryEl.textContent = getApiLimitsSummary(rateLimits);
+    coreRow.innerHTML = renderApiLimitRow(rateLimits.core, 'REST/core');
+    searchRow.innerHTML = renderApiLimitRow(rateLimits.search, 'Search');
 
-  if (checkBtn) {
-    checkBtn.disabled = rateLimits.status === 'loading';
-    checkBtn.textContent = rateLimits.status === 'loading' ? 'Checking...' : 'Check limits';
-  }
+    if (checkBtn) {
+      checkBtn.disabled = rateLimits.status === 'loading';
+      checkBtn.textContent = rateLimits.status === 'loading' ? 'Checking...' : 'Check limits';
+    }
 
-  if (rateLimits.status === 'loading') {
-    statusEl.textContent = 'Checking GitHub limits...';
-    statusEl.className = 'api-limits-status text-on-surface-variant';
-  } else if (rateLimits.status === 'error') {
-    statusEl.textContent = `Unable to check limits: ${rateLimits.error || 'GitHub request failed.'}`;
-    statusEl.className = 'api-limits-status text-error';
-  } else {
-    statusEl.textContent = formatCheckedTime(rateLimits.lastCheckedAt)
-      || 'Uses latest GitHub response headers. Check limits for a full snapshot.';
-    statusEl.className = 'api-limits-status text-on-surface-variant';
-  }
+    if (rateLimits.status === 'loading') {
+      statusEl.textContent = 'Checking GitHub limits...';
+      statusEl.className = 'api-limits-status text-on-surface-variant';
+    } else if (rateLimits.status === 'error') {
+      statusEl.textContent = `Unable to check limits: ${rateLimits.error || 'GitHub request failed.'}`;
+      statusEl.className = 'api-limits-status text-error';
+    } else {
+      statusEl.textContent = formatCheckedTime(rateLimits.lastCheckedAt)
+        || 'Uses latest GitHub response headers. Check limits for a full snapshot.';
+      statusEl.className = 'api-limits-status text-on-surface-variant';
+    }
+  });
 }
 
 /**
@@ -1936,6 +1991,40 @@ function hasActiveMoreFilters(filters = {}) {
   );
 }
 
+function sameStringSet(left = [], right = []) {
+  const leftValues = [...left].sort();
+  const rightValues = [...right].sort();
+  return leftValues.length === rightValues.length
+    && leftValues.every((value, index) => value === rightValues[index]);
+}
+
+function hasActiveMobileFilterDetails(filters = {}) {
+  const defaults = createDefaultFilters();
+  return (
+    !sameStringSet(filters.languages || [], defaults.languages) ||
+    !sameStringSet(filters.labels || [], defaults.labels) ||
+    (filters.stars || defaults.stars) !== defaults.stars ||
+    (filters.comments || defaults.comments) !== defaults.comments ||
+    (filters.updatedDate || defaults.updatedDate) !== defaults.updatedDate ||
+    Boolean(filters.includeClosed) !== defaults.includeClosed ||
+    Boolean(filters.unassigned) !== defaults.unassigned ||
+    !sameStringSet(
+      normalizeTargetPlatforms(filters.targetPlatforms),
+      normalizeTargetPlatforms(defaults.targetPlatforms)
+    )
+  );
+}
+
+function shouldOpenMobileFilterDetails(filters = {}, filtersChanged = false) {
+  return Boolean(filtersChanged) || hasActiveMobileFilterDetails(filters);
+}
+
+function isDesktopFilterLayout() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 1024px)').matches;
+}
+
 function shouldOpenMoreFilters(filters = {}) {
   if (hasActiveMoreFilters(filters)) return true;
   try {
@@ -2044,6 +2133,8 @@ function renderFindIssues(container) {
   const lookupModeClass = isLookupMode
     ? 'bg-primary text-on-primary border-primary'
     : 'bg-surface-container text-on-surface-variant border-outline-variant hover:text-on-surface';
+  const filterDetailsOpen = isDesktopFilterLayout() || shouldOpenMobileFilterDetails(filters, filtersChanged);
+  const mobileFiltersOpenAttr = filterDetailsOpen ? ' open' : '';
   const moreFiltersOpen = shouldOpenMoreFilters(filters);
   const moreFiltersOpenAttr = moreFiltersOpen ? ' open' : '';
 
@@ -2255,33 +2346,39 @@ function renderFindIssues(container) {
             </div>
           </div>
           
-          <!-- Language Filter -->
-          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
-            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Language</h3>
-            <div class="flex flex-col gap-2">
-              ${languageCheckboxes}
-            </div>
-          </div>
-          
-          <!-- Labels Filter -->
-          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
-            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Labels</h3>
-            <div class="flex flex-wrap gap-2">
-              ${labelsBadges}
-            </div>
-          </div>
-          
-          <!-- Stars Filter -->
-          <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
-            <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Stars</h3>
-            <div class="flex flex-col gap-2">
-              ${starsRadioHTML}
-            </div>
-          </div>
-          
-          <details class="filter-disclosure" id="more-filters-disclosure"${moreFiltersOpenAttr}>
-            <summary>More filters</summary>
-            <div class="mt-4 flex flex-col gap-5">
+          <details class="mobile-filter-disclosure" id="mobile-filter-disclosure"${mobileFiltersOpenAttr}>
+            <summary class="mobile-filter-summary">
+              <span>Filter details</span>
+              ${filtersChanged ? '<span class="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Changed</span>' : '<span class="rounded-full border border-outline-variant px-2 py-0.5 text-[10px] text-on-surface-variant">Optional</span>'}
+            </summary>
+            <div class="mobile-filter-body">
+              <!-- Language Filter -->
+              <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Language</h3>
+                <div class="flex flex-col gap-2">
+                  ${languageCheckboxes}
+                </div>
+              </div>
+
+              <!-- Labels Filter -->
+              <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Labels</h3>
+                <div class="flex flex-wrap gap-2">
+                  ${labelsBadges}
+                </div>
+              </div>
+
+              <!-- Stars Filter -->
+              <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Stars</h3>
+                <div class="flex flex-col gap-2">
+                  ${starsRadioHTML}
+                </div>
+              </div>
+
+              <details class="filter-disclosure" id="more-filters-disclosure"${moreFiltersOpenAttr}>
+                <summary>More filters</summary>
+                <div class="mt-4 flex flex-col gap-5">
               <!-- Comments Filter -->
               <div class="flex flex-col gap-3">
                 <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Comments</h3>
@@ -2322,6 +2419,8 @@ function renderFindIssues(container) {
                   ${platformCheckboxesHTML}
                 </div>
               </div>
+            </div>
+              </details>
             </div>
           </details>
 
@@ -4330,7 +4429,7 @@ function openInspector() {
   }).join('');
 
   panel.innerHTML = `
-    <div class="inspector-resize-handle" aria-hidden="true"></div>
+    <div class="inspector-resize-handle" role="slider" tabindex="0" aria-label="Inspector width" aria-orientation="horizontal"></div>
     <!-- Inspector Title Header -->
     <div class="sticky top-0 bg-surface-dim/95 backdrop-blur-md border-b border-outline-variant p-6 z-20 flex justify-between items-start shrink-0" data-inspector-title-header>
       <div class="max-w-2xl">

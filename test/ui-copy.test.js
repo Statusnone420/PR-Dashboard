@@ -76,6 +76,11 @@ function getMaterialSymbolSpanTags(source) {
     }));
 }
 
+function getTagById(source, id) {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return source.match(new RegExp(`<[^>]+id="${escaped}"[^>]*>`))?.[0] || '';
+}
+
 test('primary navigation labels contribution finding, not generic issue search', () => {
   const { indexHtml, mainJs } = readCopySources();
 
@@ -320,7 +325,7 @@ test('inspector resize chrome is wired without changing storage or API contracts
   assert.match(mainJs, /--inspector-title-height/);
   assert.match(inspector, /data-inspector-title-header/);
   assert.match(inspector, /class="inspector-resize-handle"/);
-  assert.match(inspector, /aria-hidden="true"/);
+  assert.match(inspector, /role="slider"/);
 });
 
 test('inspector rate-limit updates accept multi-bucket enrichment snapshots', () => {
@@ -443,6 +448,41 @@ test('interactive chrome uses app tooltips instead of native title attributes', 
   assert.match(mainJs, /data-tooltip="\$\{safeColumn\}: \$\{lane\.count\}"/);
 });
 
+test('mobile chrome exposes API limits and accessible touch targets', () => {
+  const { indexHtml } = readCopySources();
+  const ids = [...indexHtml.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
+  const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+
+  assert.deepEqual(duplicateIds, []);
+  for (const id of [
+    'mobile-api-limits-wrapper',
+    'mobile-api-limits-trigger',
+    'mobile-api-limits-popover',
+    'mobile-api-limits-check-btn',
+    'mobile-api-limits-summary',
+    'mobile-api-limits-core-row',
+    'mobile-api-limits-search-row',
+    'mobile-api-limits-status'
+  ]) {
+    assert.match(indexHtml, new RegExp(`id="${id}"`));
+  }
+
+  assert.match(getTagById(indexHtml, 'mobile-menu-toggle'), /\bh-11\b/);
+  assert.match(getTagById(indexHtml, 'mobile-menu-toggle'), /\bw-11\b/);
+  assert.match(getTagById(indexHtml, 'mobile-menu-close'), /\bh-11\b/);
+  assert.match(getTagById(indexHtml, 'mobile-menu-close'), /\bw-11\b/);
+  assert.match(getTagById(indexHtml, 'btn-notifications'), /\bh-11\b/);
+  assert.match(getTagById(indexHtml, 'btn-notifications'), /\bw-11\b/);
+  assert.match(getTagById(indexHtml, 'btn-notifications'), /\bmd:h-8\b/);
+  assert.match(getTagById(indexHtml, 'btn-settings'), /\bh-11\b/);
+  assert.match(getTagById(indexHtml, 'btn-settings'), /\bw-11\b/);
+  assert.match(getTagById(indexHtml, 'btn-settings'), /\bmd:h-8\b/);
+  assert.match(getTagById(indexHtml, 'user-profile-avatar'), /\bh-11\b/);
+  assert.match(getTagById(indexHtml, 'user-profile-avatar'), /\bw-11\b/);
+  assert.match(getTagById(indexHtml, 'mobile-api-limits-trigger'), /min-h-\[44px\]/);
+  assert.match(getTagById(indexHtml, 'mobile-api-limits-trigger'), /aria-controls="mobile-api-limits-popover"/);
+});
+
 test('lookup and search keep hidden results out of result cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
@@ -494,6 +534,7 @@ test('platform badges are icon-only on result cards and independent of active fi
   assert.match(badgeRenderer, /\.map\(platform => `\s*<span class="platform-evidence-chip/);
   assert.match(badgeRenderer, /role="img"/);
   assert.match(badgeRenderer, /aria-label="\$\{escapeHTML\(getPlatformSupportedLabel\(platform\)\)\}"/);
+  assert.match(iconRenderer, /data-platform="\$\{escapeHTML\(iconKey\)\}"/);
   assert.match(iconRenderer, /class="material-symbols-outlined text-\[13px\]" aria-hidden="true"/);
   assert.doesNotMatch(badgeRenderer, /data-tooltip/);
   assert.doesNotMatch(badgeRenderer, /<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>/);
@@ -529,6 +570,24 @@ test('mobile find contributions shows results before long filter controls', () =
   assert.ok(resultsIndex < sidebarIndex);
   assert.match(mainJs, /id="find-results-panel"[^>]*class="[^"]*\border-1\b[^"]*\blg:order-2\b/);
   assert.match(mainJs, /id="find-issues-sidebar"[^>]*class="[^"]*\border-2\b[^"]*\blg:order-1\b/);
+  assert.match(mainJs, /id="mobile-filter-disclosure"/);
+  assert.match(mainJs, /class="mobile-filter-disclosure/);
+  assert.match(mainJs, /class="mobile-filter-summary/);
+  assert.match(mainJs, /class="mobile-filter-body/);
+  assert.match(mainJs, /shouldOpenMobileFilterDetails\(filters,\s*filtersChanged\)/);
+  assertSourceOrder(mainJs, 'Quick filters', 'id="mobile-filter-disclosure"');
+});
+
+test('inspector resize handle exposes slider semantics', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
+
+  assert.match(inspector, /class="inspector-resize-handle"/);
+  assert.match(inspector, /role="slider"/);
+  assert.match(inspector, /tabindex="0"/);
+  assert.match(inspector, /aria-label="Inspector width"/);
+  assert.match(inspector, /aria-orientation="horizontal"/);
+  assert.doesNotMatch(inspector, /class="inspector-resize-handle" aria-hidden="true"/);
 });
 
 test('profile avatar markup is safe and falls back to initials', () => {
