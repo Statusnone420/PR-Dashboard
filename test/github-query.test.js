@@ -166,6 +166,25 @@ test('query preview matches the q value sent to GitHub search', async () => {
   assert.equal(preview, url.searchParams.get('q'));
 });
 
+test('target platform filters stay local and do not alter GitHub search qualifiers', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('setup', {
+    languages: [],
+    labels: [],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false,
+    targetPlatforms: ['windows', 'web']
+  });
+
+  assert.match(query, /setup/);
+  assert.doesNotMatch(query, /windows|web|platform|os/i);
+});
+
 test('normalizeGitHubIssue extracts repository identity from repository_url', async () => {
   const { normalizeGitHubIssue } = await import('../src/api/github.js');
 

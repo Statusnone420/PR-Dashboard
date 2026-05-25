@@ -431,9 +431,24 @@ test('interactive chrome uses app tooltips instead of native title attributes', 
 test('lookup and search keep hidden results out of result cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const actionItems = sliceBetween(mainJs, 'function getSearchItemsForActions', 'function getPlatformFilterSetupScanKey');
 
-  assert.match(mainJs, /return filterHiddenIssues\(items\)/);
-  assert.match(mainJs, /const visibleResults = Array\.isArray\(results\) \? filterHiddenIssues\(results\) : results/);
+  assert.match(actionItems, /return filterHiddenIssues\(items\)/);
+  assert.doesNotMatch(actionItems, /filterVisibleIssueResults/);
+  assert.match(mainJs, /const resultMode = store\.lastSearchMode \|\| store\.finderMode \|\| 'find'/);
+  assert.match(mainJs, /const setupSummaryResolver = Array\.isArray\(results\) \? createPlatformFilterSetupSummaryResolver\(\) : null/);
+  assert.match(mainJs, /filterVisibleIssueResults\(results, appliedFilters, \{ mode: resultMode, setupSummaryResolver \}\)/);
+  assert.match(mainJs, /shouldApplyTargetPlatformResultFilter/);
+  assert.match(mainJs, /getScoreTargetPlatformsForMode/);
+  assert.match(mainJs, /targetPlatforms: options\.targetPlatforms \|\| getScoreTargetPlatformsForMode\(store\.filters, mode\)/);
+  assert.match(mainJs, /filterHiddenIssues\(items\)\.filter/);
+  assert.match(mainJs, /platformFilterSetupScanResults/);
+  assert.match(mainJs, /schedulePlatformFilterSetupRerender/);
+  assert.match(mainJs, /reservePlatformSetupScanBudget/);
+  assert.match(mainJs, /resetPlatformFilterSetupScanBudget/);
+  assert.match(mainJs, /const scanRunId = platformFilterSetupSearchRunId/);
+  assert.match(mainJs, /recordPlatformSetupScanFailure/);
+  assert.doesNotMatch(mainJs, /platformFilterSetupScanFailures\.add\(key\)/);
   assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
   assert.doesNotMatch(mainJs, /const applyHiddenFilter = store\.lastSearchMode !== 'lookup'/);
   assert.doesNotMatch(mainJs, /hiddenCountText|hiddenResultsCount/);
@@ -531,12 +546,24 @@ test('result cards and inspector action center do not expose proof log controls'
 
   assert.doesNotMatch(resultCards, /Proof Log|proof-log|proof-status|proofStatus/);
   assert.match(actionCenter, /Save issue/);
-  assert.match(actionCenter, /Saved to board/);
+  assert.match(actionCenter, /Remove from board/);
   assert.match(actionCenter, /Hide issue/);
   assert.match(actionCenter, /Hide repo/);
   assert.match(actionCenter, /Unhide/);
   assert.match(actionCenter, /Open on GitHub/);
   assert.doesNotMatch(actionCenter, /Proof Log|proof-status-chip|proofStatus|workspace_premium/);
+});
+
+test('finder exposes target platform filters and saved actions are reversible', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const finder = sliceBetween(mainJs, 'function renderFindIssues', 'function renderIssueCardsList');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const actionCenter = sliceBetween(mainJs, '<!-- inspector-section:action-center -->', '<!-- Scrollable Content Viewport -->');
+
+  assert.match(finder, /Target platforms/);
+  assert.match(finder, /platform-filter-checkbox/);
+  assert.match(resultCards, /Remove/);
+  assert.match(actionCenter, /Remove from board/);
 });
 
 test('refresh batch confirmation uses app modal instead of native browser confirm', () => {

@@ -20,10 +20,15 @@ export function isResolvedOrPassedEntry(entry) {
   return RESOLVED_BOARD_COLUMNS.includes(entry?.column) || isClosedIssue(entry?.card);
 }
 
+export function isSavedCandidateEntry(entry) {
+  return isActiveReviewEntry(entry);
+}
+
 export function summarizeDashboardMetrics(boardCardsByColumn = {}) {
   const boardEntries = getBoardEntriesByColumn(boardCardsByColumn);
   const boardCards = boardEntries.map(entry => entry.card);
   const totalSavedCount = boardCards.length;
+  const savedCandidateCount = boardEntries.filter(isSavedCandidateEntry).length;
   const activeReviewCount = boardEntries.filter(isActiveReviewEntry).length;
   const resolvedOrPassedCount = boardEntries.filter(isResolvedOrPassedEntry).length;
 
@@ -31,6 +36,7 @@ export function summarizeDashboardMetrics(boardCardsByColumn = {}) {
     boardEntries,
     boardCards,
     totalSavedCount,
+    savedCandidateCount,
     activeReviewCount,
     resolvedOrPassedCount,
     activeReviewProgress: safeProgressPercent(activeReviewCount, totalSavedCount),

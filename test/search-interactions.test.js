@@ -67,6 +67,7 @@ test('low-noise preset applies quiet filters and runs one explicit search', asyn
 
 test('broaden search clears contribution filters instead of swapping labels', async () => {
   const { getRelaxedFilters } = await import('../src/searchInteractions.js');
+  const { TARGET_PLATFORM_KEYS } = await import('../src/platformFilters.js');
 
   assert.deepEqual(getRelaxedFilters(), {
     languages: [],
@@ -76,6 +77,33 @@ test('broaden search clears contribution filters instead of swapping labels', as
     comments: 'Any',
     updatedDate: 'Any',
     includeClosed: false,
-    unassigned: false
+    unassigned: false,
+    targetPlatforms: TARGET_PLATFORM_KEYS
   });
+});
+
+test('target platform result filtering respects lookup filter opt-in', async () => {
+  const { shouldApplyTargetPlatformResultFilter } = await import('../src/searchInteractions.js');
+
+  assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: false }, 'lookup'), false);
+  assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: true }, 'lookup'), true);
+  assert.equal(shouldApplyTargetPlatformResultFilter({ useFiltersInLookup: false }, 'find'), true);
+});
+
+test('target platform scoring respects lookup filter opt-in', async () => {
+  const { getScoreTargetPlatformsForMode } = await import('../src/searchInteractions.js');
+  const { TARGET_PLATFORM_KEYS } = await import('../src/platformFilters.js');
+
+  assert.deepEqual(getScoreTargetPlatformsForMode({
+    targetPlatforms: ['windows'],
+    useFiltersInLookup: false
+  }, 'lookup'), TARGET_PLATFORM_KEYS);
+  assert.deepEqual(getScoreTargetPlatformsForMode({
+    targetPlatforms: ['windows'],
+    useFiltersInLookup: true
+  }, 'lookup'), ['windows']);
+  assert.deepEqual(getScoreTargetPlatformsForMode({
+    targetPlatforms: ['windows'],
+    useFiltersInLookup: false
+  }, 'find'), ['windows']);
 });

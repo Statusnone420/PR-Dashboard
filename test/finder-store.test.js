@@ -19,10 +19,12 @@ function createLocalStorage() {
 test('filter draft changes do not alter applied filters until Apply Filters is used', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');
+  const { TARGET_PLATFORM_KEYS } = await import('../src/platformFilters.js');
 
   const appStore = new AppStore();
   appStore.setDraftFilters({ stars: '5k+' });
 
+  assert.deepEqual(appStore.filters.targetPlatforms, TARGET_PLATFORM_KEYS);
   assert.equal(appStore.draftFilters.stars, '5k+');
   assert.equal(appStore.filters.stars, 'Any');
   assert.equal(appStore.hasDraftFilterChanges(), true);

@@ -127,6 +127,33 @@ function seededCrowdedBoard() {
   };
 }
 
+function seededCompactCrowdedBoard() {
+  const longRepo = 'very-long-owner-name/very-long-repository-name-with-platform-filter-board-polish';
+  const longTitle = 'Compact board candidate with an unusually long issue title that still needs visible workflow actions and lane context';
+  return {
+    Considering: Array.from({ length: 14 }, (_, index) => card(3000 + index, 'Considering', index + 1, {
+      title: `${longTitle} ${index + 1}`,
+      repository: { full_name: longRepo, name: 'platform-filter-board-polish' }
+    })),
+    'Read Docs': Array.from({ length: 8 }, (_, index) => card(3100 + index, 'Read Docs', index + 1, {
+      title: `${longTitle} read-docs ${index + 1}`,
+      repository: { full_name: longRepo, name: 'platform-filter-board-polish' }
+    })),
+    'Asked Maintainer': [],
+    Working: [],
+    'PR Open': [],
+    Merged: Array.from({ length: 12 }, (_, index) => card(3200 + index, 'Merged', index + 1, {
+      title: `${longTitle} merged ${index + 1}`,
+      repository: { full_name: longRepo, name: 'platform-filter-board-polish' }
+    })),
+    Passed: Array.from({ length: 18 }, (_, index) => card(3300 + index, 'Passed', index + 1, {
+      state: 'closed',
+      title: `${longTitle} passed ${index + 1}`,
+      repository: { full_name: longRepo, name: 'platform-filter-board-polish' }
+    }))
+  };
+}
+
 test.describe('A1 board layout', () => {
   test('valid routes render content without runtime errors', async ({ context }) => {
     const routes = [
@@ -374,6 +401,62 @@ test.describe('A1 board layout', () => {
     expect(metrics.laneScrollTop).toBeGreaterThan(0);
 
     await page.screenshot({ path: path.join(screenshotDir, 'board-a1-1090x1212-crowded.png'), fullPage: false });
+  });
+
+  test('forced compact board with many cards remains vertically reachable without horizontal overflow', async ({ page }) => {
+    await fs.mkdir(screenshotDir, { recursive: true });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.addInitScript((board) => {
+      localStorage.clear();
+      localStorage.setItem('pr_dashboard_board_cards', JSON.stringify(board));
+    }, seededCompactCrowdedBoard());
+    await page.goto(`${baseURL}/#board`);
+    await page.getByRole('button', { name: 'Compact' }).click();
+    await expect(page.locator('[data-board-section="completed"]')).toBeVisible();
+
+    const initialMetrics = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const completed = document.querySelector('[data-board-section="completed"]');
+      const passed = document.querySelector('.board-lane-cards-container[data-lane="Passed"]');
+      const compactButtons = Array.from(document.querySelectorAll('.board-compact-card button'));
+      return {
+        documentHorizontalOverflow: doc.scrollWidth > doc.clientWidth + 1,
+        documentCanScrollVertically: doc.scrollHeight > doc.clientHeight + 1,
+        completedBottom: completed.getBoundingClientRect().bottom,
+        viewportHeight: window.innerHeight,
+        passedLaneScrolls: passed.scrollHeight > passed.clientHeight + 1,
+        clippedCompactButtons: compactButtons
+          .filter(button => button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1)
+          .map(button => button.textContent.trim())
+      };
+    });
+
+    expect(initialMetrics.documentHorizontalOverflow).toBe(false);
+    expect(initialMetrics.documentCanScrollVertically).toBe(true);
+    expect(initialMetrics.completedBottom).toBeGreaterThan(initialMetrics.viewportHeight);
+    expect(initialMetrics.passedLaneScrolls).toBe(true);
+    expect(initialMetrics.clippedCompactButtons).toEqual([]);
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const scrolledMetrics = await page.evaluate(() => {
+      const completed = document.querySelector('[data-board-section="completed"]');
+      const passed = document.querySelector('.board-lane-cards-container[data-lane="Passed"]');
+      passed.scrollTop = passed.scrollHeight;
+      return {
+        pageScrollTop: window.scrollY,
+        completedTop: completed.getBoundingClientRect().top,
+        completedVisible: completed.getBoundingClientRect().top < window.innerHeight
+          && completed.getBoundingClientRect().bottom > 0,
+        passedLaneScrollTop: passed.scrollTop
+      };
+    });
+
+    expect(scrolledMetrics.pageScrollTop).toBeGreaterThan(0);
+    expect(scrolledMetrics.completedTop).toBeLessThan(1080);
+    expect(scrolledMetrics.completedVisible).toBe(true);
+    expect(scrolledMetrics.passedLaneScrollTop).toBeGreaterThan(0);
+
+    await page.screenshot({ path: path.join(screenshotDir, 'board-compact-crowded-1920x1080.png'), fullPage: false });
   });
 
   for (const viewport of inspectorViewports) {

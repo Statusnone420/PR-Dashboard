@@ -10,7 +10,9 @@ import { REPO_METADATA_CACHE_KEY } from '../api/repoMetadata.js';
 import { clearScoreEnrichmentCache } from '../api/issueComments.js';
 import {
   clearHiddenItems as clearHiddenItemsFromStorage,
+  getIssueHideKey,
   hideIssue as hideIssueInStorage,
+  isIssueHidden,
   hideRepo as hideRepoInStorage,
   unhideHiddenItem as unhideHiddenItemFromStorage
 } from '../hiddenItems.js';
@@ -33,6 +35,9 @@ import {
   recordMatchFeedbackEvent as recordMatchFeedbackEventInStorage
 } from '../matchFeedback.js';
 import { getCanonicalIssueKey } from '../issueKeys.js';
+import { TARGET_PLATFORM_KEYS, normalizeTargetPlatforms } from '../platformFilters.js';
+
+const PASSED_HIDDEN_ISSUE_KEY = 'passed_hidden_issue_key';
 
 export function createDefaultFilters() {
   return {
@@ -45,12 +50,15 @@ export function createDefaultFilters() {
     sortMode: 'Fit Score',
     includeClosed: false,
     unassigned: false,
-    useFiltersInLookup: false
+    useFiltersInLookup: false,
+    targetPlatforms: [...TARGET_PLATFORM_KEYS]
   };
 }
 
 function cloneFilters(filters) {
-  return JSON.parse(JSON.stringify(filters));
+  const cloned = JSON.parse(JSON.stringify(filters));
+  cloned.targetPlatforms = normalizeTargetPlatforms(cloned.targetPlatforms);
+  return cloned;
 }
 
 function createEmptyRateLimitBucket(resource) {
@@ -231,8 +239,26 @@ export class AppStore {
     this.notify();
   }
 
+  clearPassedHiddenMarkerForKey(key) {
+    if (!key) return false;
+    let changed = false;
+    for (const column of BOARD_COLUMNS) {
+      for (const card of this.boardCards[column] || []) {
+        if (card?.[PASSED_HIDDEN_ISSUE_KEY] === key) {
+          delete card[PASSED_HIDDEN_ISSUE_KEY];
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
   hideIssue(issue) {
+    const key = getIssueHideKey(issue);
     hideIssueInStorage(issue, localStorage);
+    if (this.clearPassedHiddenMarkerForKey(key)) {
+      this.saveBoardToStorage();
+    }
     this.recordMatchFeedback(issue, 'hiddenIssue', { notify: false });
     if (this.inspectedIssue && this.inspectedIssue.id === issue?.id) {
       this.inspectedIssue = null;
@@ -316,7 +342,33 @@ export class AppStore {
 
   unhideHiddenItem(type, key) {
     unhideHiddenItemFromStorage(type, key, localStorage);
+    if (type === 'issue' && this.clearPassedHiddenMarkerForKey(key)) {
+      this.saveBoardToStorage();
+    }
     this.notify();
+  }
+
+  syncPassedHiddenState(cardObj, sourceCol, targetCol) {
+    const key = getIssueHideKey(cardObj);
+
+    if (targetCol === 'Passed') {
+      if (key && !isIssueHidden(cardObj, localStorage)) {
+        cardObj[PASSED_HIDDEN_ISSUE_KEY] = key;
+        hideIssueInStorage(cardObj, localStorage);
+      } else if (cardObj && cardObj[PASSED_HIDDEN_ISSUE_KEY] !== key) {
+        delete cardObj[PASSED_HIDDEN_ISSUE_KEY];
+      }
+      return;
+    }
+
+    if (sourceCol === 'Passed') {
+      if (key && cardObj?.[PASSED_HIDDEN_ISSUE_KEY] === key) {
+        unhideHiddenItemFromStorage('issue', key, localStorage);
+      }
+      if (cardObj) {
+        delete cardObj[PASSED_HIDDEN_ISSUE_KEY];
+      }
+    }
   }
 
   // Inspector Panel Action Plan Tasks Persistence
@@ -431,6 +483,7 @@ export class AppStore {
         } else if (targetCol === 'Passed') {
           this.removeIssueFromProofLog(cardObj);
         }
+        this.syncPassedHiddenState(cardObj, sourceCol, targetCol);
         if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
           this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
         }
@@ -442,9 +495,17 @@ export class AppStore {
 
   removeBoardCard(cardId) {
     const cols = Object.keys(this.boardCards);
+    let removedCard = null;
+    let sourceCol = null;
     for (const col of cols) {
+      const index = this.boardCards[col].findIndex(c => c.id === cardId);
+      if (index !== -1 && !removedCard) {
+        removedCard = this.boardCards[col][index];
+        sourceCol = col;
+      }
       this.boardCards[col] = this.boardCards[col].filter(c => c.id !== cardId);
     }
+    this.syncPassedHiddenState(removedCard, sourceCol, null);
     this.saveBoardToStorage();
     this.notify();
   }
@@ -495,9 +556,11 @@ export class AppStore {
     if (!this.boardCards[targetCol]) return;
 
     let cardObj = null;
+    let sourceCol = null;
     for (const col of Object.keys(this.boardCards)) {
       const index = this.boardCards[col].findIndex(c => c.id === cardId);
       if (index !== -1) {
+        sourceCol = col;
         cardObj = this.boardCards[col].splice(index, 1)[0];
         break;
       }
@@ -519,6 +582,7 @@ export class AppStore {
       } else if (targetCol === 'Passed') {
         this.removeIssueFromProofLog(cardObj);
       }
+      this.syncPassedHiddenState(cardObj, sourceCol, targetCol);
       if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
         this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
       }

@@ -1,4 +1,4 @@
-import { BOARD_COLUMNS, isClosedIssue } from './boardModel.js';
+import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, isClosedIssue } from './boardModel.js';
 
 const FINAL_COLUMNS = new Set(['Merged', 'Passed']);
 
@@ -49,8 +49,8 @@ export function getDashboardHeroRecommendation({ boardCards, githubToken, hidden
 
 export function getDashboardSavedPreviewCards(boardCards = {}, options = {}) {
   const hiddenFilter = resolveHiddenFilter(options);
-  const boardCardsList = Object.values(boardCards).flat();
-  const activeCards = boardCardsList.filter(card => !isClosedIssue(card));
-  const previewSource = activeCards.length ? activeCards : boardCardsList;
-  return hiddenFilter([...previewSource]);
+  const previewSource = ACTIVE_BOARD_COLUMNS.flatMap(column => (
+    Array.isArray(boardCards[column]) ? boardCards[column] : []
+  )).filter(card => !isClosedIssue(card));
+  return hiddenFilter(previewSource);
 }

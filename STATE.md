@@ -1,5 +1,45 @@
 # PR Dashboard State
 
+## 2026-05-25 Web Platform Detection Tightening
+
+- Addressed PR review thread `discussion_r3299034539`.
+- Tightened repo setup Web support detection so incidental setup-doc mentions of React, Vite, HTML, or CSS no longer become authoritative Web platform support. Web support now requires explicit setup context such as `web app`, `frontend app`, `browser-based`, or running/opening in the browser.
+- Added repo setup regressions proving incidental frontend technology mentions do not filter/down-score Windows-targeted candidates, while explicit browser app support still produces `Web setup supported`.
+- Verification on 2026-05-25: `node --test test/repo-setup.test.js` failed first on the incidental frontend mention regression, then passed 9/9 after the fix; `node --test test/repo-setup.test.js test/platform-filters.test.js test/match-score.test.js` passed 44/44; `npm.cmd test` passed 269/269; `npm.cmd run build` passed; `npm.cmd run test:layout` passed 16/16; `git diff --check` passed.
+- Remaining risk: platform support parsing remains heuristic by design; ambiguous setup docs without explicit platform statements stay neutral rather than authoritative.
+
+## 2026-05-25 Passed Hidden Provenance + Dashboard Saved Candidate Fix
+
+- Addressed PR review thread `discussion_r3298947148`.
+- `Passed` now records whether the pass action created the exact hidden issue key. Leaving or removing a `Passed` card only unhides that key when the pass action created it, so manual hides before passing and manual hides made after passing remain hidden.
+- Dashboard and Profile saved-candidate metrics now count active non-final board candidates only. `Passed`, `Merged`, and closed active-lane cards remain visible through `Resolved / Passed` and Board flow, but no longer appear in the Dashboard `Saved candidates` card or preview list.
+- Added store regressions for manual hide before pass, manual hide after pass, and removing a manually hidden passed card, plus dashboard/app metric regressions for excluding final/closed cards from saved candidates.
+- Verification on 2026-05-25: manual red checks failed first for the hidden-provenance and dashboard saved-candidate cases; `node --test test/store-persistence.test.js` passed 23/23 after the fix; dashboard/app targeted tests passed 12/12; `npm.cmd test` passed 267/267; `npm.cmd run build` passed; `npm.cmd run test:layout` passed 16/16; `git diff --check` passed; browser smoke with a seeded single `Passed` card showed Dashboard metrics `0 / 0 / 1`, `No saved candidates`, Board flow `1 in Passed`, and no console warnings/errors. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-passed-dashboard-smoke.png`.
+- Remaining risk: existing local data from older builds cannot prove whether a pre-existing `Passed` hidden key was manual or auto-created if the card has no provenance marker. New pass/unpass flows preserve provenance going forward.
+
+## 2026-05-24 Ship-Ready Platform Filter + Compact Board Polish
+
+- Addressed Codex PR review comment `discussion_r3295747713`: restrictive target-platform filters now queue a bounded background setup scan for the first visible uncached candidates, so fresh Find Contributions/Lookup results can be corrected after compact README/CONTRIBUTING compatibility data is cached without opening each inspector. The scan is skipped when all platforms are selected and remains bounded to avoid scanning all 30 results.
+- Fixed forced Compact Board overflow at wide desktop widths. Full Kanban keeps the locked desktop board height, while Compact mode now allows normal vertical page scrolling so many active cards plus Merged/Passed lanes remain reachable without horizontal scroll or clipped actions.
+- Added focused coverage for bounded platform setup scan candidate selection and a Compact Board layout regression with many active, Merged, and Passed cards plus long titles/repo names.
+- Verification on 2026-05-24: targeted platform/setup/score/store tests passed, `npm.cmd test` passed 251/251, `npm.cmd run build` passed, `npm.cmd run test:layout` passed 16/16, `git diff --check` passed, and in-app rendered smoke at `http://127.0.0.1:5179` verified fresh Windows-only search hides a Linux-only result after background setup scans and crowded Compact Board remains scrollable with no horizontal overflow.
+- Remaining risk: bounded background setup scans trade extra core REST requests for better first-pass platform triage only when platform filters are restrictive. Results outside the scan limit can still remain unknown until inspected or reached by a later scan.
+
+## 2026-05-24 Platform Filter Candidate Triage
+
+- Added a local Target platforms filter for iOS, Android, macOS, Linux, Windows, and Web. All platforms default selected, multiple selections match by OR, the last checkbox cannot be cleared, Lookup can apply the filter, and Broaden Search resets platforms to all selected.
+- Extended inspector setup enrichment to scan discovered README/CONTRIBUTING content in memory for compact platform support/exclusion signals such as Linux only, Ubuntu required, Windows not supported, and Web only. The cache stores only normalized platform booleans and short reasons, not raw setup text.
+- Match Score and Contribution Brief now treat inspected platform mismatches as a strong pass signal: Setup Ease becomes Blocked, score evidence includes Target platform mismatch with the selected-platform reason, and the brief explains the setup-platform risk. Unknown compatibility remains neutral and visible until inspected.
+- Made saved actions reversible from result cards and the inspector: unsaved candidates show Save/Save issue, saved candidates show Remove/Remove from board, and removing from the board does not hide the issue. Moving a board card to Passed now hides that exact issue through hidden-item storage.
+- Verification on 2026-05-24: targeted platform/store/search/setup/score/brief/copy tests passed, `npm.cmd test` passed 250/250, `npm.cmd run build` passed, and `git diff --check` passed. In-app Browser smoke at `http://127.0.0.1:5178/#find-issues` verified all six platform checkboxes default selected, Windows could be left selected alone, and no console warnings/errors. Playwright screenshot smoke with mocked GitHub responses verified Windows-only filtering, inspector platform mismatch/Blocked scoring, reversible Save/Remove from board, Passed hiding exact `demo/platform-app#1`, and no console warnings/errors.
+- Remaining risk: platform compatibility detection is heuristic and depends on setup docs being inspected. Rendered validation used mocked GitHub responses in Chromium and did not use a live PAT or live repository docs.
+
+## 2026-05-24 Impeccable Context Setup
+
+- Added root `PRODUCT.md` and `DESIGN.md` so future `$impeccable` work has explicit product strategy and current visual-system context.
+- Added `.impeccable/design.json` sidecar with representative component snippets, including the accessible icon-button pattern intended for future header/settings-style controls.
+- Verification: impeccable loader returned `hasProduct: true` and `hasDesign: true`, `.impeccable/design.json` parsed as JSON, and `git diff --check` passed. Remaining risk: context documents capture the current UI only; palette/category-reflex improvements remain separate future work.
+
 ## 2026-05-24 UX Polish Pass
 
 - Implemented the scoped polish pass only: inspector Action Center is pinned under the title chrome, title height is set synchronously and watched with `ResizeObserver`, Advanced Context holds for `1200ms`, its cards use an auto-fit grid, and Find Contributions has a smaller hero plus persisted `More filters`.
@@ -440,3 +480,69 @@
 - Browser smoke on `http://127.0.0.1:5173/#find-issues`: looked up `facebook/react#1`, hid it, repeated the exact Lookup, and verified `Showing 0 issues` with no result card, `Hidden locally`, `Unhide`, or hidden-count hint.
 - Verification on 2026-05-24: `node --test test/ui-copy.test.js test/hidden-items.test.js`, `npm test`, `npm run build`, and `git diff --check` passed.
 - Remaining risk: GitHub Search can still return low-quality automation-created issues, but the matcher flags them as likely pass/low match; this change only enforces hidden suppression.
+
+## 2026-05-24 Authenticated Platform Filter Loop Hotfix
+
+- Cause: restrictive Target platforms filters launched background setup scans. When a GitHub token was active and issue repository visibility was unknown, the privacy guard correctly skipped persistent cache writes, but the finder then treated the same results as unscanned on every render. That created repeated setup fetches and desktop re-renders after Apply Filters.
+- Fixed the loop by keeping normalized repo setup summaries in session memory when persistent cache writes are skipped, and by debouncing scan-triggered finder re-renders.
+- Search card actions now resolve from the hidden-filtered result set instead of recomputing platform visibility at click time, so a visible card cannot become a dead click if setup compatibility cache changes between render and user action.
+- Browser smoke on the authenticated local app at `http://127.0.0.1:5180/find-issues#find-issues`: Linux and Android unchecked, Apply Filters stayed clickable, 27 result cards remained stable over the wait window, Inspect opened the desktop drawer, and the screenshot was saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-auth-os-filter-fixed.png`.
+- Verification on 2026-05-24: `npm test -- test/platform-setup-scan.test.js test/ui-copy.test.js` passed 252/252, and `npm run build` passed.
+- Remaining risk: live GitHub rate-limit headers can still change while setup/inspector enrichment runs, but the authenticated platform filter no longer reschedules the same uncached setup scans indefinitely.
+
+## 2026-05-24 Lookup Platform Filter Opt-In Hotfix
+
+- Addressed PR review thread `discussion_r3295800467`: exact Lookup results were still being passed through Target platforms result filtering even when `Use filters in Lookup` was disabled.
+- Added an explicit `shouldApplyTargetPlatformResultFilter()` contract: Find mode always applies Target platforms, while Lookup applies them only when lookup filters are opted in.
+- Render-time result filtering and background platform setup scans now use the last search mode, so exact Lookup remains broad/literal unless the user enables filters. Hidden issue/repo suppression remains active in Lookup.
+- Browser smoke in an isolated Chromium context seeded a cached Linux-only setup summary for `microsoft/vscode#1`, selected Windows only, and verified the exact Lookup card stayed visible with `Use filters in Lookup` off, then hid only after the lookup filter checkbox was enabled. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-lookup-platform-opt-out.png`.
+- Verification on 2026-05-24: `npm test` passed 253/253, `npm run build` passed, and the targeted lookup platform smoke passed.
+- Remaining risk: exact Lookup still scores the issue with normal contribution heuristics; this fix only restores the display/filtering contract.
+
+## 2026-05-25 Platform Filter P2 Review Polish
+
+- Addressed PR review threads `discussion_r3295849661` and `discussion_r3295849663`.
+- Added a read-once repo setup cache resolver for platform filtering so a finder render does not reparse the full score enrichment cache for every visible issue. The finder now shares the same per-render summary resolver across result filtering, card rendering, and background setup scan candidate selection.
+- Tightened platform mismatch wording so support-only evidence for an unselected platform falls back to selected-platform copy instead of contradictory text like `Target platform mismatch: Linux setup supported` when Windows is selected.
+- Verification on 2026-05-25: `npm test` passed 255/255, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a desktop browser smoke for `/#find-issues` passed without runtime errors or horizontal overflow. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-p2-review-smoke.png`.
+- Remaining risk: the browser smoke did not make live GitHub API calls; the cache and mismatch behavior are covered by deterministic unit tests.
+
+## 2026-05-25 Lookup Scoring And Session TTL Review Fix
+
+- Addressed PR review threads `discussion_r3295883527` and `discussion_r3295883529`.
+- Exact Lookup scoring now follows the same `Use filters in Lookup` contract as result visibility: when lookup filters are off, platform scoring receives all target platforms so cached setup evidence cannot create a platform mismatch warning for a literal lookup.
+- In-memory platform setup scan summaries now store an expiry and are deleted after the enrichment TTL, allowing long-lived tabs to rescan instead of treating stale session summaries as permanent cache hits.
+- Verification on 2026-05-25: `npm test` passed 257/257, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a deterministic exact Lookup browser smoke verified a Windows-only filter plus cached Linux-only setup did not show platform mismatch or `Not a contribution candidate` while `Use filters in Lookup` was off. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-lookup-score-opt-out.png`.
+- Remaining risk: the browser smoke used mocked GitHub API responses to keep the scoring regression deterministic; live GitHub data can still affect non-platform score signals.
+
+## 2026-05-25 Passed Reversal Hidden-State Fix
+
+- Addressed PR review thread `discussion_r3295918103`.
+- Board movement now treats `Passed` hiding as reversible workflow state: entering `Passed` still hides the exact issue, while leaving `Passed` through either `moveCardToColumn` or `moveBoardCard` unhides that exact issue so Finder can show it again.
+- Added store regressions for both board move paths and kept remove-from-board behavior unchanged.
+- Verification on 2026-05-25: `npm test` passed 259/259, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a board browser smoke moved a hidden Passed card back to Merged and verified its exact hidden issue key was removed. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-passed-unhide-smoke.png`.
+- Historical remaining risk: hidden issue storage did not record provenance in this pass. Resolved for new movement flows by the 2026-05-25 Passed Hidden Provenance fix.
+
+## 2026-05-25 Passed Remove Hidden-State Fix
+
+- Addressed PR review thread `discussion_r3298657974`.
+- Removing a card from the board now captures the source lane before deletion and reuses the `Passed` hidden-state sync, so removing a `Passed` card also unhides that exact issue. Removing cards from other lanes still does not hide or pass the issue.
+- Added a store regression for save -> move to `Passed` -> remove from board -> exact issue visible again.
+- Verification on 2026-05-25: `node --test test/store-persistence.test.js` failed first against the old remove path, then passed 20/20 after the fix. `npm test` passed 260/260, `npm run build` passed, `npm run test:layout` passed 16/16, and a browser smoke removed a seeded `Passed` card through the inspector `Remove from board` button and verified the exact hidden key was cleared. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-remove-passed-unhide-smoke.png`.
+- Historical remaining risk: hidden issue storage still had no provenance in this pass. Resolved for new removal flows by the 2026-05-25 Passed Hidden Provenance fix.
+
+## 2026-05-25 Platform Setup Scan Budget Fix
+
+- Addressed PR review thread `discussion_r3298803420`.
+- Restrictive Target platforms searches now have a cumulative per-search background setup-scan budget. The finder still scans only when platform filters are restrictive, but completed scans can no longer trigger rerenders that walk the next uncached batch until all visible results have been inspected. Search entry points also enter loading state before filter-change renders, preventing stale results from spending the new search budget.
+- Added budget coverage for repeated renders in one search and a finder source contract requiring search-budget reserve/reset wiring.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` failed first against the old behavior, then passed 34/34 after the fix. `npm test` passed 261/261, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed. Browser smoke with 20 mocked Linux-only results verified one search request, one repo metadata request, exactly 16 setup `/contents` requests for the 8-scan budget, and 12 visible cards after the first 8 scanned candidates were filtered. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-scan-budget-smoke.png`.
+- Remaining risk: manually opening inspectors still performs deliberate setup enrichment outside the background budget, so live GitHub core usage can still increase when the user actively inspects many candidates.
+
+## 2026-05-25 Platform Setup Stale Failure Fix
+
+- Addressed PR review thread `discussion_r3298894681`.
+- Background setup-scan failures are now scoped to the search run that started the scan. If an older in-flight setup request rejects after a newer search has reset the scan state, its failure is ignored instead of poisoning `platformFilterSetupScanFailures` for the active search.
+- Added regression coverage for current-run versus stale-run failure recording and a finder source contract that prevents direct global failure writes from the async catch path.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` failed first against the old direct failure write, then passed 35/35 after the fix. `npm test` passed 262/262, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed. Browser smoke started a second restrictive platform search while the first setup scan was still in flight, then failed the stale request; the active search rescanned successfully and hid the Linux-only candidate. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-stale-failure-smoke.png`.
+- Remaining risk: stale successful setup scans can still populate factual session summaries for the same issue key, which is intentional because repo setup evidence is not search-filter-specific.

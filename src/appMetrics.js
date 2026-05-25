@@ -25,7 +25,7 @@ export function summarizeAppMetrics({
   return {
     boardEntries,
     boardCards: boardEntries.map(entry => entry.card),
-    savedCandidates: boardEntries.length,
+    savedCandidates: activeBoardWork,
     activeBoardWork,
     resolvedOrPassed,
     hiddenIssues: hiddenIssues.length,

@@ -1,9 +1,21 @@
+import { TARGET_PLATFORM_KEYS, normalizeTargetPlatforms } from './platformFilters.js';
+
 export function applyFilterPatch(appStore, patch) {
   if (typeof appStore.setDraftFilters === 'function') {
     appStore.setDraftFilters(patch);
     return;
   }
   appStore.setFilters(patch);
+}
+
+export function shouldApplyTargetPlatformResultFilter(filters = {}, mode = 'find') {
+  return mode !== 'lookup' || Boolean(filters?.useFiltersInLookup);
+}
+
+export function getScoreTargetPlatformsForMode(filters = {}, mode = 'find') {
+  return shouldApplyTargetPlatformResultFilter(filters, mode)
+    ? normalizeTargetPlatforms(filters?.targetPlatforms)
+    : [...TARGET_PLATFORM_KEYS];
 }
 
 export function getPresetFilterPatch(preset) {
@@ -56,7 +68,8 @@ export function getRelaxedFilters() {
     comments: 'Any',
     updatedDate: 'Any',
     includeClosed: false,
-    unassigned: false
+    unassigned: false,
+    targetPlatforms: [...TARGET_PLATFORM_KEYS]
   };
 }
 

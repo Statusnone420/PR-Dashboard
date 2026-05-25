@@ -160,3 +160,33 @@ test('likely-pass why copy does not call a high score below the bar', async () =
   assert.doesNotMatch(brief.why.join(' '), /below the usual contribution bar/i);
   assert.match(brief.why.join(' '), /blocked|label/i);
 });
+
+test('platform mismatch appears as a concrete likely-pass reason', async () => {
+  const input = issue();
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const scoreData = calculateMatchScore(input, {
+    now: NOW,
+    targetPlatforms: ['windows'],
+    enrichment: {
+      setup: {
+        inspected: true,
+        setupDocsPresent: true,
+        contributingPresent: true,
+        workflowPresent: false,
+        configHintsPresent: true,
+        testHintsPresent: true,
+        setupUnclear: false,
+        platformSupport: { linux: true },
+        platformUnsupported: { windows: true },
+        reasons: ['Linux setup supported', 'Windows is not supported']
+      }
+    }
+  });
+  const { buildContributionBrief } = await import('../src/contributionBrief.js');
+  const brief = buildContributionBrief(input, scoreData, { now: NOW });
+
+  assert.equal(brief.verdict, 'Likely pass');
+  assert.equal(brief.bestFor, 'Skip');
+  assert.match(brief.why.join(' '), /target platform/i);
+  assert.match(brief.risks.join(' '), /platform/i);
+});

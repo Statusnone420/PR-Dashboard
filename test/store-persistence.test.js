@@ -252,6 +252,168 @@ test('moving a card to Passed clears matching proof log entry', async () => {
   assert.equal(appStore.boardCards.Passed[0].id, 13997);
   assert.equal(listProofEntries(globalThis.localStorage).length, 0);
   assert.match(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Passed/);
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_hidden_v1'), /teammates\/teammates#13997/);
+});
+
+test('moving a card out of Passed with moveCardToColumn unhides the exact issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13997,
+    number: 13997,
+    title: 'Restore passed issue',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13997'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(13997, 'Passed');
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+
+  appStore.moveCardToColumn(13997, 'Working');
+
+  assert.equal(appStore.boardCards.Working[0].id, 13997);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
+});
+
+test('moving a card out of Passed with moveBoardCard unhides the exact issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13998,
+    number: 13998,
+    title: 'Restore passed issue with arrows',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13998'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(13998, 'Passed');
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+
+  appStore.moveBoardCard(13998, -1);
+
+  assert.equal(appStore.boardCards.Merged[0].id, 13998);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
+});
+
+test('moving a manually hidden card out of Passed keeps the exact issue hidden', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13999,
+    number: 13999,
+    title: 'Manual hide survives pass reversal',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13999'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.hideIssue(target);
+  appStore.moveCardToColumn(13999, 'Passed');
+  appStore.moveCardToColumn(13999, 'Working');
+
+  assert.equal(appStore.boardCards.Working[0].id, 13999);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+});
+
+test('removing a manually hidden Passed board card keeps the exact issue hidden', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 3580,
+    number: 3580,
+    title: 'Remove manually hidden passed candidate',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/3580'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.hideIssue(target);
+  appStore.moveCardToColumn(3580, 'Passed');
+  appStore.removeBoardCard(3580);
+
+  assert.equal(Object.values(appStore.boardCards).flat().length, 0);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+});
+
+test('manually hiding an already Passed card keeps the exact issue hidden when moved back', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 3581,
+    number: 3581,
+    title: 'Manual hide after pass survives reversal',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/3581'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(3581, 'Passed');
+  appStore.hideIssue(target);
+  appStore.moveCardToColumn(3581, 'Working');
+
+  assert.equal(appStore.boardCards.Working[0].id, 3581);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+});
+
+test('removing a board card does not hide or pass the issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.saveIssueToBoard({
+    id: 2468,
+    number: 2468,
+    title: 'Remove without passing',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/2468'
+  });
+
+  appStore.removeBoardCard(2468);
+
+  assert.equal(Object.values(appStore.boardCards).flat().length, 0);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_hidden_v1'), null);
+  assert.doesNotMatch(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Passed/);
+});
+
+test('removing a Passed board card unhides the exact issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 3579,
+    number: 3579,
+    title: 'Remove passed candidate',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/3579'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(3579, 'Passed');
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+
+  appStore.removeBoardCard(3579);
+
+  assert.equal(Object.values(appStore.boardCards).flat().length, 0);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
 });
 
 test('save, repeated save, Working move, and hide actions record feedback once', async () => {

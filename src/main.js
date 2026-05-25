@@ -1,14 +1,14 @@
 import { store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
-import { applyFilterPatch, applyPresetSearch, getRelaxedFilters } from './searchInteractions.js';
+import { applyFilterPatch, applyPresetSearch, getRelaxedFilters, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { fetchIssueCommentsEnrichment, getCachedIssueCommentEnrichment, getIssueCommentsCacheKey } from './api/issueComments.js';
 import { fetchIssueTimelineEnrichment } from './api/issueTimeline.js';
-import { fetchRepoSetupEnrichment } from './api/repoSetup.js';
+import { createCachedRepoSetupEnrichmentResolver, fetchRepoSetupEnrichment, getCachedRepoSetupEnrichment } from './api/repoSetup.js';
 import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
@@ -26,6 +26,23 @@ import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
 import { getBoardMode } from './boardMode.js';
 import { attachResize } from './inspectorResize.js';
+import {
+  TARGET_PLATFORM_OPTIONS,
+  getNextTargetPlatforms,
+  hasAllTargetPlatformsSelected,
+  issueMatchesTargetPlatforms,
+  normalizeTargetPlatforms
+} from './platformFilters.js';
+import {
+  DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
+  createPlatformSetupScanBudget,
+  getPlatformSetupScanCandidates,
+  getPlatformSetupSessionSummary,
+  recordPlatformSetupScanFailure,
+  reservePlatformSetupScanBudget,
+  resetPlatformSetupScanBudget,
+  setPlatformSetupSessionSummary
+} from './platformSetupScan.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -54,6 +71,12 @@ let inspectorAdvancedContextRefreshPendingKey = '';
 let boardViewMode = 'auto';
 let inspectorResizeDetach = () => {};
 let inspectorTitleResizeObserver = null;
+const platformFilterSetupScans = new Map();
+const platformFilterSetupScanFailures = new Set();
+const platformFilterSetupScanResults = new Map();
+const platformFilterSetupScanBudget = createPlatformSetupScanBudget({ limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT });
+let platformFilterSetupRerenderTimer = null;
+let platformFilterSetupSearchRunId = 0;
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -81,11 +104,19 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Calculates issue match score from 0-100.
  */
+function getCurrentScoreMode() {
+  return store.currentScreen === 'find-issues'
+    ? store.lastSearchMode || store.finderMode || 'find'
+    : 'find';
+}
+
 function calculateFitScore(issue, options = {}) {
+  const mode = options.mode || getCurrentScoreMode();
   const result = calculateMatchScore(issue, {
     profile: store.contributionPreferences,
     feedback: store.matchFeedback,
-    enrichment: options.enrichment
+    enrichment: options.enrichment,
+    targetPlatforms: options.targetPlatforms || getScoreTargetPlatformsForMode(store.filters, mode)
   });
   return {
     ...result,
@@ -694,6 +725,115 @@ function getSearchItemsForActions() {
   return filterHiddenIssues(items);
 }
 
+function getPlatformFilterSetupScanKey(issue) {
+  return getCanonicalIssueKey(issue) || String(issue?.id || issue?.html_url || '');
+}
+
+function getPlatformFilterSetupSummary(issue, cachedSetupResolver = null) {
+  const cached = cachedSetupResolver
+    ? cachedSetupResolver(issue)
+    : getCachedRepoSetupEnrichment(issue, localStorage);
+  if (cached?.summary) return cached.summary;
+
+  const key = getPlatformFilterSetupScanKey(issue);
+  return key ? getPlatformSetupSessionSummary(platformFilterSetupScanResults, key) : null;
+}
+
+function createPlatformFilterSetupSummaryResolver() {
+  const cachedSetupResolver = createCachedRepoSetupEnrichmentResolver(localStorage);
+  const summaries = new Map();
+  return issue => {
+    const key = getPlatformFilterSetupScanKey(issue);
+    if (key && summaries.has(key)) return summaries.get(key);
+    const summary = getPlatformFilterSetupSummary(issue, cachedSetupResolver);
+    if (key) summaries.set(key, summary);
+    return summary;
+  };
+}
+
+function schedulePlatformFilterSetupRerender() {
+  if (platformFilterSetupRerenderTimer) return;
+  platformFilterSetupRerenderTimer = setTimeout(() => {
+    platformFilterSetupRerenderTimer = null;
+    if (store.currentScreen === 'find-issues') {
+      renderActiveScreen();
+    }
+  }, 120);
+}
+
+function resetPlatformFilterSetupScanBudget() {
+  platformFilterSetupSearchRunId += 1;
+  platformFilterSetupScanFailures.clear();
+  resetPlatformSetupScanBudget(platformFilterSetupScanBudget, platformFilterSetupSearchRunId);
+}
+
+function queuePlatformFilterSetupInspection(items, filters = store.filters, options = {}) {
+  if (!shouldApplyTargetPlatformResultFilter(filters, options.mode || store.lastSearchMode || 'find')) return;
+
+  const setupSummaryResolver = options.setupSummaryResolver || createPlatformFilterSetupSummaryResolver();
+  const visibleItems = filterHiddenIssues(items || []);
+  const candidates = getPlatformSetupScanCandidates(visibleItems, filters, {
+    limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
+    getKey: getPlatformFilterSetupScanKey,
+    hasCachedSetup: issue => Boolean(setupSummaryResolver(issue)),
+    isAlreadyScanning: issue => {
+      const key = getPlatformFilterSetupScanKey(issue);
+      return Boolean(key && (platformFilterSetupScans.has(key) || platformFilterSetupScanFailures.has(key)));
+    }
+  });
+
+  const budgetedCandidates = reservePlatformSetupScanBudget(
+    platformFilterSetupScanBudget,
+    platformFilterSetupSearchRunId,
+    candidates,
+    { getKey: getPlatformFilterSetupScanKey }
+  );
+
+  budgetedCandidates.forEach(issue => {
+    const key = getPlatformFilterSetupScanKey(issue);
+    if (!key) return;
+    const scanRunId = platformFilterSetupSearchRunId;
+
+    const scan = fetchRepoSetupEnrichment(issue, {
+      token: store.githubToken,
+      storage: localStorage
+    })
+      .then(result => {
+        if (result?.summary) {
+          setPlatformSetupSessionSummary(platformFilterSetupScanResults, key, result.summary);
+        }
+        updateInspectorRateLimit(result.rateLimit);
+      })
+      .catch(() => {
+        recordPlatformSetupScanFailure(platformFilterSetupScanFailures, key, scanRunId, platformFilterSetupSearchRunId);
+      })
+      .finally(() => {
+        platformFilterSetupScans.delete(key);
+        const stillInCurrentResults = (store.searchResults || [])
+          .some(item => getPlatformFilterSetupScanKey(item) === key);
+        if (store.currentScreen === 'find-issues' && stillInCurrentResults) {
+          schedulePlatformFilterSetupRerender();
+        }
+      });
+
+    platformFilterSetupScans.set(key, scan);
+  });
+}
+
+function filterVisibleIssueResults(items, filters = store.filters, options = {}) {
+  const mode = options.mode || store.lastSearchMode || store.finderMode || 'find';
+  if (!shouldApplyTargetPlatformResultFilter(filters, mode)) {
+    return filterHiddenIssues(items);
+  }
+
+  const targetPlatforms = normalizeTargetPlatforms(filters?.targetPlatforms);
+  const setupSummaryResolver = options.setupSummaryResolver || createPlatformFilterSetupSummaryResolver();
+  return filterHiddenIssues(items).filter(issue => {
+    const setupSummary = setupSummaryResolver(issue);
+    return issueMatchesTargetPlatforms(setupSummary, targetPlatforms);
+  });
+}
+
 function updateInspectorTaskVisualState(checkbox) {
   if (!checkbox) return;
 
@@ -991,6 +1131,8 @@ function setupGlobalSearch() {
         const val = input.value.trim();
         store.setSearchQuery(val);
         store.setFinderMode('find');
+        resetPlatformFilterSetupScanBudget();
+        store.setSearchState(true, null);
         store.applyDraftFilters();
         store.setScreen('find-issues');
         searchGitHubIssues(val, true, { mode: 'find', filters: store.filters });
@@ -1264,10 +1406,10 @@ function renderBoardFlow(reviewFlow) {
 function renderDashboard(container) {
   // Grab dynamic data
   const dashboardMetrics = summarizeDashboardMetrics(store.boardCards);
-  const boardCards = dashboardMetrics.boardCards;
-  const activeCards = boardCards.filter(card => !isClosedIssue(card));
-  const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
-  const totalSavedCount = dashboardMetrics.totalSavedCount;
+  const dashboardSavedCards = getDashboardSavedPreviewCards(store.boardCards, {
+    hiddenFilter: filterHiddenIssues
+  });
+  const savedCandidateCount = dashboardMetrics.savedCandidateCount;
   const activeReviewCount = dashboardMetrics.activeReviewCount;
   const resolvedOrPassedCount = dashboardMetrics.resolvedOrPassedCount;
   const hiddenItems = listHiddenItems(localStorage);
@@ -1441,7 +1583,7 @@ function renderDashboard(container) {
               </div>
               <span class="material-symbols-outlined text-primary">bookmarks</span>
             </div>
-            <span class="metric-card-value">${totalSavedCount}</span>
+            <span class="metric-card-value">${savedCandidateCount}</span>
           </div>
 
           <div class="metric-card flex flex-col gap-4">
@@ -1668,6 +1810,13 @@ function describeActiveFilters(filters) {
   if (filters.stars && filters.stars !== 'Any') parts.push(`Stars: ${filters.stars}`);
   if (filters.comments && filters.comments !== 'Any') parts.push(`Comments: ${filters.comments}`);
   if (filters.updatedDate && filters.updatedDate !== 'Any') parts.push(`Updated: ${filters.updatedDate}`);
+  if (!hasAllTargetPlatformsSelected(filters.targetPlatforms)) {
+    const selected = normalizeTargetPlatforms(filters.targetPlatforms);
+    const platformLabels = TARGET_PLATFORM_OPTIONS
+      .filter(platform => selected.includes(platform.key))
+      .map(platform => platform.label);
+    parts.push(`Platforms: ${platformLabels.join(', ')}`);
+  }
   if (filters.includeClosed) parts.push('Includes closed issues');
   return parts.length ? parts : ['No restrictive filters'];
 }
@@ -1677,6 +1826,7 @@ function getFirstRelaxationHint(filters) {
   if (filters.stars && filters.stars !== 'Any') return 'Relax stars first: switch stars to Any.';
   if (filters.comments && filters.comments !== 'Any') return 'Relax comments first: switch comments to Any.';
   if (filters.languages?.length) return 'Relax language first: clear selected languages.';
+  if (!hasAllTargetPlatformsSelected(filters.targetPlatforms)) return 'Relax target platforms first: select all platforms.';
   if (filters.updatedDate && filters.updatedDate !== 'Any') return 'Relax updated date first: switch updated date to Any.';
   return 'PR Dashboard searches GitHub issues, not users or profiles. Try an issue topic, repo name, or owner/repo.';
 }
@@ -1686,7 +1836,8 @@ function hasActiveMoreFilters(filters = {}) {
     (filters.comments && filters.comments !== 'Any') ||
     (filters.updatedDate && filters.updatedDate !== 'Any') ||
     Boolean(filters.includeClosed) ||
-    Boolean(filters.unassigned)
+    Boolean(filters.unassigned) ||
+    !hasAllTargetPlatformsSelected(filters.targetPlatforms)
   );
 }
 
@@ -1754,6 +1905,8 @@ function updateQueryPreviewText(value) {
 async function runFinderSearch(value) {
   const queryValue = String(value ?? store.searchQuery ?? '').trim();
   store.setSearchQuery(queryValue);
+  resetPlatformFilterSetupScanBudget();
+  store.setSearchState(true, null);
   const appliedFilters = store.applyDraftFilters();
   const mode = store.finderMode;
 
@@ -1769,11 +1922,18 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
-  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.draftFilters;
   const appliedFilters = store.filters;
+  const resultMode = store.lastSearchMode || store.finderMode || 'find';
+  const setupSummaryResolver = Array.isArray(results) ? createPlatformFilterSetupSummaryResolver() : null;
+  const visibleResults = Array.isArray(results)
+    ? filterVisibleIssueResults(results, appliedFilters, { mode: resultMode, setupSummaryResolver })
+    : results;
+  if (!loading && Array.isArray(results)) {
+    queuePlatformFilterSetupInspection(results, appliedFilters, { mode: resultMode, setupSummaryResolver });
+  }
   const mode = store.finderMode;
   const exactLookup = mode === 'lookup'
     ? parseExactLookupInput(store.searchQuery, { repoContext: store.lookupRepoContext })
@@ -1831,6 +1991,17 @@ function renderFindIssues(container) {
     `;
   }).join('');
 
+  const selectedPlatforms = normalizeTargetPlatforms(filters.targetPlatforms);
+  const platformCheckboxesHTML = TARGET_PLATFORM_OPTIONS.map(platform => {
+    const checked = selectedPlatforms.includes(platform.key) ? 'checked' : '';
+    return `
+      <label class="flex items-center gap-3 group cursor-pointer">
+        <input class="platform-filter-checkbox" type="checkbox" data-platform="${escapeHTML(platform.key)}" ${checked} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${escapeHTML(platform.label)}</span>
+      </label>
+    `;
+  }).join('');
+
   // Results rendering
   let resultsHTML = '';
   let countText = 'Enter keywords and click search';
@@ -1854,7 +2025,7 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults, { mode: resultMode, setupSummaryResolver }) : ''}
       </div>
     `;
     countText = visibleResults ? `Showing ${visibleResults.length} issues` : 'Request failed';
@@ -1863,7 +2034,7 @@ function renderFindIssues(container) {
     if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(visibleResults);
+      resultsHTML = renderIssueCardsList(visibleResults, { mode: resultMode, setupSummaryResolver });
     }
   } else {
     // Initial screen state - explain Token details
@@ -2029,6 +2200,13 @@ function renderFindIssues(container) {
                   <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Unassigned only</span>
                 </label>
               </div>
+
+              <div class="flex flex-col gap-3">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Target platforms</h3>
+                <div class="grid grid-cols-2 gap-2">
+                  ${platformCheckboxesHTML}
+                </div>
+              </div>
             </div>
           </details>
           
@@ -2097,10 +2275,15 @@ function renderFindIssues(container) {
     btn.addEventListener('click', () => {
       const preset = btn.getAttribute('data-preset');
       store.setFinderMode('find');
-      applyPresetSearch(store, preset, (query, forceRefresh) => searchGitHubIssues(query, forceRefresh, {
-        mode: 'find',
-        filters: store.filters
-      }));
+      resetPlatformFilterSetupScanBudget();
+      store.setSearchState(true, null);
+      applyPresetSearch(store, preset, (query, forceRefresh) => {
+        resetPlatformFilterSetupScanBudget();
+        return searchGitHubIssues(query, forceRefresh, {
+          mode: 'find',
+          filters: store.filters
+        });
+      });
     });
   });
 
@@ -2189,6 +2372,13 @@ function renderFindIssues(container) {
     });
   }
 
+  document.querySelectorAll('.platform-filter-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const next = getNextTargetPlatforms(store.draftFilters.targetPlatforms, cb.getAttribute('data-platform'), cb.checked);
+      applyFilterPatch(store, { targetPlatforms: next });
+    });
+  });
+
   const lookupFilterCheckbox = document.querySelector('.lookup-filter-checkbox');
   if (lookupFilterCheckbox) {
     lookupFilterCheckbox.addEventListener('change', () => {
@@ -2210,13 +2400,17 @@ function renderFindIssues(container) {
 /**
  * Render lists of cards
  */
-function renderIssueCardsList(issuesList) {
+function renderIssueCardsList(issuesList, options = {}) {
   // Sort list if local sorting is needed
-  let sorted = filterHiddenIssues(issuesList);
+  const scoreMode = options.mode || store.lastSearchMode || 'find';
+  let sorted = filterVisibleIssueResults(issuesList, store.filters, {
+    mode: scoreMode,
+    setupSummaryResolver: options.setupSummaryResolver
+  });
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
-    const fitObj = calculateFitScore(issue);
+    const fitObj = calculateFitScore(issue, { mode: scoreMode });
     return { ...issue, fitScore: fitObj.score, fitRating: fitObj };
   });
 
@@ -2316,8 +2510,8 @@ function renderIssueCardsList(issuesList) {
             Inspect
             </button>
             <button class="action-button px-3 py-1.5 text-xs save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
-              ${saved ? 'View on board' : 'Save'}
+              <span class="material-symbols-outlined text-[14px]">${saved ? 'close' : 'bookmark'}</span>
+              ${saved ? 'Remove' : 'Save'}
             </button>
             <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
@@ -2390,7 +2584,7 @@ function bindIssueCardListEvents() {
       if (issue) {
         const fitObj = calculateFitScore(issue);
         if (isIssueSavedToBoard(issue)) {
-          store.setScreen('board');
+          store.removeBoardCard(issue.id);
           return;
         }
         if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
@@ -2838,7 +3032,7 @@ function renderBoard(container) {
 
   container.innerHTML = `
     <!-- Kanban Board layout -->
-    <section class="board-page flex min-h-[calc(100vh-3.5rem)] flex-col bg-background">
+    <section class="board-page flex min-h-[calc(100vh-3.5rem)] flex-col bg-background" data-board-mode="${escapeHTML(boardMode)}">
       
       <!-- Board Header Context -->
       <div class="px-6 md:px-8 py-5 border-b border-outline-variant flex-shrink-0 flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-surface-container-lowest">
@@ -4063,8 +4257,8 @@ function openInspector() {
       <span class="text-xs text-on-surface-variant">Action center</span>
       <div class="flex flex-wrap gap-2">
         <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn">
-          <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
-          ${saved ? 'Saved to board' : 'Save issue'}
+          <span class="material-symbols-outlined text-[16px]">${saved ? 'close' : 'bookmark'}</span>
+          ${saved ? 'Remove from board' : 'Save issue'}
         </button>
         <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
           <span class="material-symbols-outlined text-[16px]">visibility_off</span>
@@ -4222,7 +4416,12 @@ function openInspector() {
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
       if (isIssueSavedToBoard(issue)) {
-        store.setScreen('board');
+        store.removeBoardCard(issue.id);
+        if (store.currentScreen === 'board') {
+          closeInspector();
+        } else {
+          openInspector();
+        }
         return;
       }
       if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
@@ -4232,8 +4431,10 @@ function openInspector() {
         return;
       }
       store.saveIssueToBoard(issue);
-      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">check</span> Saved to board`;
+      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">close</span> Remove from board`;
       saveBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');
+      saveBtn.classList.remove('bg-error-container/10', 'text-error', 'border-error/30');
+      saveBtn.removeAttribute('data-confirm-risk');
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();

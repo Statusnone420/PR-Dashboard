@@ -906,6 +906,20 @@
       max-height: 12rem;
       min-height: 7rem;
     }
+
+    .board-page[data-board-mode='compact'] {
+      height: auto;
+      min-height: calc(100vh - 3.5rem);
+    }
+
+    .board-page[data-board-mode='compact'] .board-page-body {
+      overflow-x: hidden;
+      overflow-y: visible;
+    }
+
+    .board-page[data-board-mode='compact'] .board-layout-shell {
+      height: auto;
+    }
   }
 
   .kanban-card {
