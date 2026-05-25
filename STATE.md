@@ -513,3 +513,11 @@
 - Added a store regression for save -> move to `Passed` -> remove from board -> exact issue visible again.
 - Verification on 2026-05-25: `node --test test/store-persistence.test.js` failed first against the old remove path, then passed 20/20 after the fix. `npm test` passed 260/260, `npm run build` passed, `npm run test:layout` passed 16/16, and a browser smoke removed a seeded `Passed` card through the inspector `Remove from board` button and verified the exact hidden key was cleared. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-remove-passed-unhide-smoke.png`.
 - Remaining risk: hidden issue storage still has no provenance, so removing a card from `Passed` removes the exact issue hide even if that key had also been hidden manually before it entered `Passed`.
+
+## 2026-05-25 Platform Setup Scan Budget Fix
+
+- Addressed PR review thread `discussion_r3298803420`.
+- Restrictive Target platforms searches now have a cumulative per-search background setup-scan budget. The finder still scans only when platform filters are restrictive, but completed scans can no longer trigger rerenders that walk the next uncached batch until all visible results have been inspected. Search entry points also enter loading state before filter-change renders, preventing stale results from spending the new search budget.
+- Added budget coverage for repeated renders in one search and a finder source contract requiring search-budget reserve/reset wiring.
+- Verification on 2026-05-25: `node --test test/platform-setup-scan.test.js test/ui-copy.test.js` failed first against the old behavior, then passed 34/34 after the fix. `npm test` passed 261/261, `npm run build` passed, `npm run test:layout` passed 16/16, and `git diff --check` passed. Browser smoke with 20 mocked Linux-only results verified one search request, one repo metadata request, exactly 16 setup `/contents` requests for the 8-scan budget, and 12 visible cards after the first 8 scanned candidates were filtered. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-platform-scan-budget-smoke.png`.
+- Remaining risk: manually opening inspectors still performs deliberate setup enrichment outside the background budget, so live GitHub core usage can still increase when the user actively inspects many candidates.

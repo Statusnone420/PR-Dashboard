@@ -35,8 +35,11 @@ import {
 } from './platformFilters.js';
 import {
   DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
+  createPlatformSetupScanBudget,
   getPlatformSetupScanCandidates,
   getPlatformSetupSessionSummary,
+  reservePlatformSetupScanBudget,
+  resetPlatformSetupScanBudget,
   setPlatformSetupSessionSummary
 } from './platformSetupScan.js';
 import {
@@ -70,7 +73,9 @@ let inspectorTitleResizeObserver = null;
 const platformFilterSetupScans = new Map();
 const platformFilterSetupScanFailures = new Set();
 const platformFilterSetupScanResults = new Map();
+const platformFilterSetupScanBudget = createPlatformSetupScanBudget({ limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT });
 let platformFilterSetupRerenderTimer = null;
+let platformFilterSetupSearchRunId = 0;
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -755,6 +760,12 @@ function schedulePlatformFilterSetupRerender() {
   }, 120);
 }
 
+function resetPlatformFilterSetupScanBudget() {
+  platformFilterSetupSearchRunId += 1;
+  platformFilterSetupScanFailures.clear();
+  resetPlatformSetupScanBudget(platformFilterSetupScanBudget, platformFilterSetupSearchRunId);
+}
+
 function queuePlatformFilterSetupInspection(items, filters = store.filters, options = {}) {
   if (!shouldApplyTargetPlatformResultFilter(filters, options.mode || store.lastSearchMode || 'find')) return;
 
@@ -770,7 +781,14 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters, opti
     }
   });
 
-  candidates.forEach(issue => {
+  const budgetedCandidates = reservePlatformSetupScanBudget(
+    platformFilterSetupScanBudget,
+    platformFilterSetupSearchRunId,
+    candidates,
+    { getKey: getPlatformFilterSetupScanKey }
+  );
+
+  budgetedCandidates.forEach(issue => {
     const key = getPlatformFilterSetupScanKey(issue);
     if (!key) return;
 
@@ -1111,6 +1129,8 @@ function setupGlobalSearch() {
         const val = input.value.trim();
         store.setSearchQuery(val);
         store.setFinderMode('find');
+        resetPlatformFilterSetupScanBudget();
+        store.setSearchState(true, null);
         store.applyDraftFilters();
         store.setScreen('find-issues');
         searchGitHubIssues(val, true, { mode: 'find', filters: store.filters });
@@ -1883,9 +1903,10 @@ function updateQueryPreviewText(value) {
 async function runFinderSearch(value) {
   const queryValue = String(value ?? store.searchQuery ?? '').trim();
   store.setSearchQuery(queryValue);
+  resetPlatformFilterSetupScanBudget();
+  store.setSearchState(true, null);
   const appliedFilters = store.applyDraftFilters();
   const mode = store.finderMode;
-  platformFilterSetupScanFailures.clear();
 
   if (mode === 'lookup') {
     const exact = parseExactLookupInput(queryValue, { repoContext: store.lookupRepoContext });
@@ -2252,10 +2273,15 @@ function renderFindIssues(container) {
     btn.addEventListener('click', () => {
       const preset = btn.getAttribute('data-preset');
       store.setFinderMode('find');
-      applyPresetSearch(store, preset, (query, forceRefresh) => searchGitHubIssues(query, forceRefresh, {
-        mode: 'find',
-        filters: store.filters
-      }));
+      resetPlatformFilterSetupScanBudget();
+      store.setSearchState(true, null);
+      applyPresetSearch(store, preset, (query, forceRefresh) => {
+        resetPlatformFilterSetupScanBudget();
+        return searchGitHubIssues(query, forceRefresh, {
+          mode: 'find',
+          filters: store.filters
+        });
+      });
     });
   });
 

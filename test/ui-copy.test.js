@@ -444,6 +444,8 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.match(mainJs, /filterHiddenIssues\(items\)\.filter/);
   assert.match(mainJs, /platformFilterSetupScanResults/);
   assert.match(mainJs, /schedulePlatformFilterSetupRerender/);
+  assert.match(mainJs, /reservePlatformSetupScanBudget/);
+  assert.match(mainJs, /resetPlatformFilterSetupScanBudget/);
   assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
   assert.doesNotMatch(mainJs, /const applyHiddenFilter = store\.lastSearchMode !== 'lookup'/);
   assert.doesNotMatch(mainJs, /hiddenCountText|hiddenResultsCount/);

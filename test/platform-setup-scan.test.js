@@ -85,3 +85,26 @@ test('platform setup session summaries expire before suppressing future scans', 
   }), null);
   assert.equal(summaries.has('demo/platform#1'), false);
 });
+
+test('platform setup scan budget caps cumulative scans for one search', async () => {
+  const {
+    createPlatformSetupScanBudget,
+    reservePlatformSetupScanBudget
+  } = await import('../src/platformSetupScan.js');
+  const budget = createPlatformSetupScanBudget({ limit: 3 });
+  const issues = Array.from({ length: 5 }, (_, index) => ({
+    number: index + 1,
+    repository: { full_name: 'demo/platform' }
+  }));
+  const getKey = issue => `demo/platform#${issue.number}`;
+
+  const firstRender = reservePlatformSetupScanBudget(budget, 'search-a', issues.slice(0, 2), { getKey });
+  const secondRender = reservePlatformSetupScanBudget(budget, 'search-a', issues.slice(2), { getKey });
+  const thirdRender = reservePlatformSetupScanBudget(budget, 'search-a', issues.slice(3), { getKey });
+  const nextSearch = reservePlatformSetupScanBudget(budget, 'search-b', issues.slice(3), { getKey });
+
+  assert.deepEqual(firstRender.map(issue => issue.number), [1, 2]);
+  assert.deepEqual(secondRender.map(issue => issue.number), [3]);
+  assert.deepEqual(thirdRender.map(issue => issue.number), []);
+  assert.deepEqual(nextSearch.map(issue => issue.number), [4, 5]);
+});
