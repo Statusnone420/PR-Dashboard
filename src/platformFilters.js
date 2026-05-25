@@ -73,14 +73,28 @@ export function getPlatformMismatchReason(setupSummary, targetPlatforms) {
   const labels = Object.fromEntries(TARGET_PLATFORM_OPTIONS.map(item => [item.key, item.label]));
   const selectedLabel = selected.map(key => labels[key]).join(', ');
   const reasons = Array.isArray(setupSummary?.reasons) ? setupSummary.reasons : [];
+  const support = normalizePlatformFlags(setupSummary?.platformSupport);
+  const unsupported = normalizePlatformFlags(setupSummary?.platformUnsupported);
   const selectedReason = selected.map(key => {
     const labelPattern = key === 'macos'
       ? /macos|mac os/i
       : key === 'ios'
         ? /\bios\b/i
         : new RegExp(`\\b${key}\\b`, 'i');
-    return reasons.find(reason => labelPattern.test(reason));
+    return reasons.find(reason => labelPattern.test(reason) && /not supported|unsupported|no .*\bsupport\b|does not support|only|required|requires/i.test(reason));
   }).find(Boolean);
-  const platformReason = selectedReason || reasons.find(reason => /ios|android|macos|linux|windows|web|ubuntu|wsl|platform/i.test(reason));
+  if (selectedReason) return selectedReason;
+
+  const unsupportedSelected = selected.filter(key => unsupported[key]);
+  if (unsupportedSelected.length > 0) {
+    return `Setup docs mark ${unsupportedSelected.map(key => labels[key]).join(', ')} unsupported.`;
+  }
+
+  const supportedKeys = TARGET_PLATFORM_KEYS.filter(key => support[key]);
+  if (supportedKeys.length > 0) {
+    return `Setup docs only confirm ${supportedKeys.map(key => labels[key]).join(', ')} support; selected target platforms: ${selectedLabel}.`;
+  }
+
+  const platformReason = reasons.find(reason => /not supported|unsupported|platform mismatch/i.test(reason));
   return platformReason || `Setup docs do not match selected target platforms: ${selectedLabel}`;
 }

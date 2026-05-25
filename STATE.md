@@ -481,3 +481,11 @@
 - Browser smoke in an isolated Chromium context seeded a cached Linux-only setup summary for `microsoft/vscode#1`, selected Windows only, and verified the exact Lookup card stayed visible with `Use filters in Lookup` off, then hid only after the lookup filter checkbox was enabled. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-lookup-platform-opt-out.png`.
 - Verification on 2026-05-24: `npm test` passed 253/253, `npm run build` passed, and the targeted lookup platform smoke passed.
 - Remaining risk: exact Lookup still scores the issue with normal contribution heuristics; this fix only restores the display/filtering contract.
+
+## 2026-05-25 Platform Filter P2 Review Polish
+
+- Addressed PR review threads `discussion_r3295849661` and `discussion_r3295849663`.
+- Added a read-once repo setup cache resolver for platform filtering so a finder render does not reparse the full score enrichment cache for every visible issue. The finder now shares the same per-render summary resolver across result filtering, card rendering, and background setup scan candidate selection.
+- Tightened platform mismatch wording so support-only evidence for an unselected platform falls back to selected-platform copy instead of contradictory text like `Target platform mismatch: Linux setup supported` when Windows is selected.
+- Verification on 2026-05-25: `npm test` passed 255/255, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a desktop browser smoke for `/#find-issues` passed without runtime errors or horizontal overflow. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-p2-review-smoke.png`.
+- Remaining risk: the browser smoke did not make live GitHub API calls; the cache and mismatch behavior are covered by deterministic unit tests.

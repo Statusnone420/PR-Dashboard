@@ -436,7 +436,8 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.match(actionItems, /return filterHiddenIssues\(items\)/);
   assert.doesNotMatch(actionItems, /filterVisibleIssueResults/);
   assert.match(mainJs, /const resultMode = store\.lastSearchMode \|\| store\.finderMode \|\| 'find'/);
-  assert.match(mainJs, /filterVisibleIssueResults\(results, appliedFilters, \{ mode: resultMode \}\)/);
+  assert.match(mainJs, /const setupSummaryResolver = Array\.isArray\(results\) \? createPlatformFilterSetupSummaryResolver\(\) : null/);
+  assert.match(mainJs, /filterVisibleIssueResults\(results, appliedFilters, \{ mode: resultMode, setupSummaryResolver \}\)/);
   assert.match(mainJs, /shouldApplyTargetPlatformResultFilter/);
   assert.match(mainJs, /filterHiddenIssues\(items\)\.filter/);
   assert.match(mainJs, /platformFilterSetupScanResults/);

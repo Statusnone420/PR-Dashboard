@@ -40,6 +40,18 @@ test('platform mismatch requires known incompatibility with every selected platf
     platformUnsupported: { windows: true },
     reasons: ['iOS setup unsupported', 'Windows setup unsupported']
   }, ['windows']), /Windows/);
+  assert.doesNotMatch(getPlatformMismatchReason({
+    inspected: true,
+    platformSupport: { linux: true },
+    platformUnsupported: {},
+    reasons: ['Linux setup supported']
+  }, ['windows']), /Linux setup supported/);
+  assert.match(getPlatformMismatchReason({
+    inspected: true,
+    platformSupport: { linux: true },
+    platformUnsupported: {},
+    reasons: ['Linux setup supported']
+  }, ['windows']), /Windows/);
   assert.equal(issueMatchesTargetPlatforms({
     inspected: true,
     platformSupport: {},

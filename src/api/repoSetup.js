@@ -1,4 +1,12 @@
-import { cleanReason, getCachedIssueEnrichmentEntry, getStorage, isoFromMs, nowMs, saveIssueEnrichmentEntry } from './enrichmentCache.js';
+import {
+  cleanReason,
+  getCachedIssueEnrichmentEntry,
+  getStorage,
+  isoFromMs,
+  nowMs,
+  readScoreEnrichmentCache,
+  saveIssueEnrichmentEntry
+} from './enrichmentCache.js';
 import { createReadOnlyGitHubRequestOptions, rateLimitFromReadOnlyResponse } from './githubReadOnly.js';
 import { getCanonicalIssueKey, getRepoDisplayName } from '../issueKeys.js';
 import { TARGET_PLATFORM_KEYS, TARGET_PLATFORM_OPTIONS } from '../platformFilters.js';
@@ -248,6 +256,19 @@ export function saveRepoSetupEnrichment(issue, summary, storage = getStorage(), 
 export function getCachedRepoSetupEnrichment(issue, storage = getStorage(), options = {}) {
   const entry = getCachedIssueEnrichmentEntry(issue, REPO_SETUP_CACHE_TYPE, storage, options);
   return entry ? { ...entry, summary: normalizeRepoSetupSummary(entry.summary) } : null;
+}
+
+export function createCachedRepoSetupEnrichmentResolver(storage = getStorage(), options = {}) {
+  const cache = readScoreEnrichmentCache(storage);
+  const now = nowMs(options);
+  return issue => {
+    const key = getCanonicalIssueKey(issue);
+    if (!key) return null;
+    const entry = cache.entries[`${key}|${REPO_SETUP_CACHE_TYPE}`];
+    if (!entry || entry.type !== REPO_SETUP_CACHE_TYPE) return null;
+    if (Date.parse(entry.expires_at) <= now) return null;
+    return { ...entry, summary: normalizeRepoSetupSummary(entry.summary) };
+  };
 }
 
 export async function fetchRepoSetupEnrichment(issue, options = {}) {

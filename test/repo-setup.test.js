@@ -16,6 +16,29 @@ function createLocalStorage() {
   };
 }
 
+function createCountingLocalStorage() {
+  const storage = createLocalStorage();
+  let getItemCalls = 0;
+  return {
+    getItem(key) {
+      getItemCalls += 1;
+      return storage.getItem(key);
+    },
+    setItem(key, value) {
+      storage.setItem(key, value);
+    },
+    removeItem(key) {
+      storage.removeItem(key);
+    },
+    resetCounts() {
+      getItemCalls = 0;
+    },
+    get getItemCalls() {
+      return getItemCalls;
+    }
+  };
+}
+
 function issue(overrides = {}) {
   return {
     number: 13997,
@@ -228,6 +251,39 @@ test('fetchRepoSetupEnrichment detects setup docs, workflow, and test hints comp
   assert.equal(result.summary.setupUnclear, false);
   assert.equal(getCachedRepoSetupEnrichment(issue(), storage, { now: Date.parse('2026-05-23T13:00:00.000Z') }).summary.workflowPresent, true);
   assert.doesNotMatch(storage.getItem(SCORE_ENRICHMENT_CACHE_KEY), /sample-token|Authorization|Bearer|vitest|vite build/i);
+});
+
+test('repo setup cache resolver reads storage once for repeated visible-result lookups', async () => {
+  const {
+    createCachedRepoSetupEnrichmentResolver,
+    saveRepoSetupEnrichment
+  } = await import('../src/api/repoSetup.js');
+  const storage = createCountingLocalStorage();
+  const first = issue({ number: 1, html_url: 'https://github.com/TEAMMATES/teammates/issues/1' });
+  const second = issue({ number: 2, html_url: 'https://github.com/TEAMMATES/teammates/issues/2' });
+
+  saveRepoSetupEnrichment(first, {
+    inspected: true,
+    setupDocsPresent: true,
+    platformSupport: { linux: true },
+    reasons: ['Linux setup supported']
+  }, storage, { now: Date.parse('2026-05-23T12:00:00.000Z') });
+  saveRepoSetupEnrichment(second, {
+    inspected: true,
+    setupDocsPresent: true,
+    platformSupport: { windows: true },
+    reasons: ['Windows setup supported']
+  }, storage, { now: Date.parse('2026-05-23T12:00:00.000Z') });
+
+  storage.resetCounts();
+  const resolver = createCachedRepoSetupEnrichmentResolver(storage, {
+    now: Date.parse('2026-05-23T13:00:00.000Z')
+  });
+
+  assert.equal(resolver(first).summary.platformSupport.linux, true);
+  assert.equal(resolver(second).summary.platformSupport.windows, true);
+  assert.equal(resolver(first).summary.platformSupport.linux, true);
+  assert.equal(storage.getItemCalls, 1);
 });
 
 test('repo setup summary stays cautious when setup files are missing', async () => {

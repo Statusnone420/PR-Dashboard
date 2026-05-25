@@ -8,7 +8,7 @@ import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { fetchIssueCommentsEnrichment, getCachedIssueCommentEnrichment, getIssueCommentsCacheKey } from './api/issueComments.js';
 import { fetchIssueTimelineEnrichment } from './api/issueTimeline.js';
-import { fetchRepoSetupEnrichment, getCachedRepoSetupEnrichment } from './api/repoSetup.js';
+import { createCachedRepoSetupEnrichmentResolver, fetchRepoSetupEnrichment, getCachedRepoSetupEnrichment } from './api/repoSetup.js';
 import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
@@ -711,12 +711,26 @@ function getPlatformFilterSetupScanKey(issue) {
   return getCanonicalIssueKey(issue) || String(issue?.id || issue?.html_url || '');
 }
 
-function getPlatformFilterSetupSummary(issue) {
-  const cached = getCachedRepoSetupEnrichment(issue, localStorage);
+function getPlatformFilterSetupSummary(issue, cachedSetupResolver = null) {
+  const cached = cachedSetupResolver
+    ? cachedSetupResolver(issue)
+    : getCachedRepoSetupEnrichment(issue, localStorage);
   if (cached?.summary) return cached.summary;
 
   const key = getPlatformFilterSetupScanKey(issue);
   return key ? platformFilterSetupScanResults.get(key) || null : null;
+}
+
+function createPlatformFilterSetupSummaryResolver() {
+  const cachedSetupResolver = createCachedRepoSetupEnrichmentResolver(localStorage);
+  const summaries = new Map();
+  return issue => {
+    const key = getPlatformFilterSetupScanKey(issue);
+    if (key && summaries.has(key)) return summaries.get(key);
+    const summary = getPlatformFilterSetupSummary(issue, cachedSetupResolver);
+    if (key) summaries.set(key, summary);
+    return summary;
+  };
 }
 
 function schedulePlatformFilterSetupRerender() {
@@ -732,11 +746,12 @@ function schedulePlatformFilterSetupRerender() {
 function queuePlatformFilterSetupInspection(items, filters = store.filters, options = {}) {
   if (!shouldApplyTargetPlatformResultFilter(filters, options.mode || store.lastSearchMode || 'find')) return;
 
+  const setupSummaryResolver = options.setupSummaryResolver || createPlatformFilterSetupSummaryResolver();
   const visibleItems = filterHiddenIssues(items || []);
   const candidates = getPlatformSetupScanCandidates(visibleItems, filters, {
     limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
     getKey: getPlatformFilterSetupScanKey,
-    hasCachedSetup: issue => Boolean(getPlatformFilterSetupSummary(issue)),
+    hasCachedSetup: issue => Boolean(setupSummaryResolver(issue)),
     isAlreadyScanning: issue => {
       const key = getPlatformFilterSetupScanKey(issue);
       return Boolean(key && (platformFilterSetupScans.has(key) || platformFilterSetupScanFailures.has(key)));
@@ -780,8 +795,9 @@ function filterVisibleIssueResults(items, filters = store.filters, options = {})
   }
 
   const targetPlatforms = normalizeTargetPlatforms(filters?.targetPlatforms);
+  const setupSummaryResolver = options.setupSummaryResolver || createPlatformFilterSetupSummaryResolver();
   return filterHiddenIssues(items).filter(issue => {
-    const setupSummary = getPlatformFilterSetupSummary(issue);
+    const setupSummary = setupSummaryResolver(issue);
     return issueMatchesTargetPlatforms(setupSummary, targetPlatforms);
   });
 }
@@ -1876,9 +1892,12 @@ function renderFindIssues(container) {
   const filters = store.draftFilters;
   const appliedFilters = store.filters;
   const resultMode = store.lastSearchMode || store.finderMode || 'find';
-  const visibleResults = Array.isArray(results) ? filterVisibleIssueResults(results, appliedFilters, { mode: resultMode }) : results;
+  const setupSummaryResolver = Array.isArray(results) ? createPlatformFilterSetupSummaryResolver() : null;
+  const visibleResults = Array.isArray(results)
+    ? filterVisibleIssueResults(results, appliedFilters, { mode: resultMode, setupSummaryResolver })
+    : results;
   if (!loading && Array.isArray(results)) {
-    queuePlatformFilterSetupInspection(results, appliedFilters, { mode: resultMode });
+    queuePlatformFilterSetupInspection(results, appliedFilters, { mode: resultMode, setupSummaryResolver });
   }
   const mode = store.finderMode;
   const exactLookup = mode === 'lookup'
@@ -1971,7 +1990,7 @@ function renderFindIssues(container) {
           </div>
         </div>
         
-        ${visibleResults ? renderIssueCardsList(visibleResults) : ''}
+        ${visibleResults ? renderIssueCardsList(visibleResults, { mode: resultMode, setupSummaryResolver }) : ''}
       </div>
     `;
     countText = visibleResults ? `Showing ${visibleResults.length} issues` : 'Request failed';
@@ -1980,7 +1999,7 @@ function renderFindIssues(container) {
     if (visibleResults.length === 0) {
       resultsHTML = renderNoResults(queryPreview, filters);
     } else {
-      resultsHTML = renderIssueCardsList(visibleResults);
+      resultsHTML = renderIssueCardsList(visibleResults, { mode: resultMode, setupSummaryResolver });
     }
   } else {
     // Initial screen state - explain Token details
@@ -2341,9 +2360,12 @@ function renderFindIssues(container) {
 /**
  * Render lists of cards
  */
-function renderIssueCardsList(issuesList) {
+function renderIssueCardsList(issuesList, options = {}) {
   // Sort list if local sorting is needed
-  let sorted = filterVisibleIssueResults(issuesList, store.filters, { mode: store.lastSearchMode || 'find' });
+  let sorted = filterVisibleIssueResults(issuesList, store.filters, {
+    mode: options.mode || store.lastSearchMode || 'find',
+    setupSummaryResolver: options.setupSummaryResolver
+  });
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
