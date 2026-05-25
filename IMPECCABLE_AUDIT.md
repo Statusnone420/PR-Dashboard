@@ -4,6 +4,8 @@
 
 - **2026-05-25:** PR #15 resolved the Material Symbols `aria-hidden` finding. Current HEAD has regression coverage ensuring decorative Material Symbols spans in `index.html` and `src/main.js` stay hidden from assistive tech.
 - **2026-05-25:** The A11y/Responsive follow-up added mobile API limits, mobile 44px chrome targets, inspector resize slider semantics, tooltip wrapping/Escape suppression, coarse-pointer tooltip suppression, and a collapsed mobile Find Contributions filter stack. The audit score below is intentionally unchanged until a fresh audit is run.
+- **2026-05-25:** Platform evidence badges now expose compact icon-only labels with `role="img"`/`aria-label`, and the macOS badge contrast issue was fixed without changing the broader icon set.
+- **2026-05-25:** Platform setup evidence was tightened after review: incidental frontend technology mentions no longer imply Web support, explicit Ubuntu support counts as Linux support, and negated Ubuntu support stays unsupported. The audit score below is still unchanged because this is not a fresh audit.
 
 ## Anti-Patterns Verdict
 

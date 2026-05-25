@@ -1,5 +1,12 @@
 # PR Dashboard State
 
+## 2026-05-25 Docs Truth Sync
+
+- Refreshed public docs for the current local-first product truth: Activity owns Proof Log, Review reminders, and learned feedback/history; Profile is identity, stats, and contribution preferences; platform/setup evidence, bounded setup scans, reversible Board outcomes, API limits, export/import, and no-backend/no-auth/no-token-export boundaries now agree across README, security, data model, product, design, audit, plan, and agent guidance.
+- Updated the README gallery contract from the stale Profile Proof Log screenshot to an Activity Proof Log/reminders screenshot, regenerated the README gallery screenshots, and removed the old `profile-proof-log-1920x1080.png` asset.
+- Verification on 2026-05-25: `npm test` passed 288/288, `npm run build` passed, `npm run test:layout` passed 18/18, `npm run test:readme-screenshots` passed 4/4, and `git diff --check` passed.
+- Remaining risk: README gallery screenshots are deterministic mocked public TEAMMATES snapshots, not live GitHub/PAT validation; the preserved `IMPECCABLE_AUDIT.md` score remains historical until a fresh audit is run.
+
 ## 2026-05-25 macOS Platform Badge Contrast
 
 - Fixed the compact macOS platform evidence badge so the black Apple glyph remains legible on the dark chip surface. The badge image now carries a platform data attribute, and only `data-platform='macos'` gets the contrast filter.

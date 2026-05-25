@@ -60,6 +60,13 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## PR-Dashboard Guardrails
+
+- Preserve the v1 local-first boundary unless explicitly asked: no backend sync, OAuth, GitHub App auth, database, model/API dependency, or token export.
+- Keep GitHub API behavior read-only. Do not introduce write methods or broader token scopes without an explicit product/security decision.
+- Preserve Match Score math and storage contracts unless the task is specifically about scoring or migrations.
+- For product changes, run the relevant smallest check plus the standard gates when feasible: `npm test`, `npm run build`, `npm run test:layout`, and `git diff --check`.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

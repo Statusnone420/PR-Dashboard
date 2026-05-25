@@ -398,15 +398,15 @@ test.describe('README gallery screenshots', () => {
     await page.screenshot({ path: path.join(screenshotDir, 'board-workflow-1920x1080.png'), fullPage: false });
   });
 
-  test('captures Profile Proof Log and Review reminders', async ({ page }) => {
-    await page.goto(`${baseURL}/#profile`);
-    await expect(page.locator('body')).toContainText('Statusnone420');
+  test('captures Activity Proof Log and Review reminders', async ({ page }) => {
+    await page.goto(`${baseURL}/#activity`);
     await expect(page.locator('body')).toContainText('Proof Log');
     await expect(page.locator('body')).toContainText('[#13997] Replace JSON deep clones with structuredClone');
     await expect(page.locator('body')).toContainText('Review reminders');
-    await expectHealthyPage(page, 'Profile');
+    await expect(page.locator('body')).toContainText('Personal scoring signals');
+    await expectHealthyPage(page, 'Activity');
     expect(page.runtimeErrors).toEqual([]);
-    await page.screenshot({ path: path.join(screenshotDir, 'profile-proof-log-1920x1080.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotDir, 'activity-proof-log-1920x1080.png'), fullPage: false });
   });
 
   test('captures API limits popover with core and search buckets', async ({ page }) => {

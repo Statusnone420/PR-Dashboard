@@ -221,7 +221,7 @@ Buttons are compact, familiar product controls with an 8px radius, medium weight
 
 Icon buttons are common in the header, inspector, Board, and Settings. Every icon-only button must have an accessible name via `aria-label` or visible text. Decorative icon spans inside named buttons should be hidden from assistive technology.
 
-- **Shape:** 32px current header controls, with 44px preferred for touch-heavy future passes.
+- **Shape:** Compact desktop controls may stay dense, but mobile/touch chrome should meet 44px target sizing.
 - **State:** Hover shifts to the next surface tier and violet text. Focus must remain visible without depending on hover.
 - **Accessibility:** Do not let Material Symbols glyph names become accessible text. The canonical pattern is a named button plus `aria-hidden="true"` on the decorative icon.
 
@@ -264,6 +264,8 @@ Navigation uses predictable product patterns: fixed side nav on desktop, top she
 
 The inspector is the densest evidence surface. It should keep title, Action Center, alerts, advanced context, contribution brief, score evidence, issue body, and action plan in a readable sequence.
 
+Desktop inspector resizing must expose understandable semantics: the resize handle behaves like a horizontal slider, reports the current width, supports keyboard adjustment, and keeps focus visible.
+
 The Board is a workflow tracker. Active lanes, compact cards, completed lanes, and refresh controls should prioritize state recognition and action clarity over decorative layout.
 
 ### Tooltips
@@ -271,7 +273,16 @@ The Board is a workflow tracker. Active lanes, compact cards, completed lanes, a
 Tooltips are compact labels for icon and dense controls. They should reinforce accessible names, not replace them.
 
 - **Style:** Small surface-container-highest overlay, 1px border, tight padding, centered text.
-- **Behavior:** Hover and focus-visible reveal. Future hardening should handle escape behavior and wrapping better.
+- **Behavior:** Hover and focus-visible reveal on pointer devices, long labels wrap, Escape dismisses focused tooltips, and coarse-pointer/touch views should not depend on visual pseudo-tooltips.
+
+## Accessibility And Responsive Rules
+
+- Icon-only controls need accessible names. Decorative icons, including Material Symbols inside named controls, must use `aria-hidden="true"`.
+- Touch-heavy mobile chrome should use 44px targets for common controls such as menu, API limits, reminders, settings, and profile.
+- Mobile Find Contributions should keep primary actions and quick filters reachable while detailed filters can collapse.
+- Compact Board must remain vertically scrollable without horizontal overflow when active and final lanes contain many cards.
+- Platform evidence badges need names that survive compact/icon-only rendering.
+- Popovers, drawers, disclosures, and resize handles should expose state and keyboard behavior through names, roles, focus, and value semantics instead of relying on color or pointer hover alone.
 
 ## Do's and Don'ts
 

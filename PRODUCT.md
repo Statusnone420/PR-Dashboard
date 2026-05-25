@@ -8,15 +8,17 @@ product
 
 PR Dashboard is for individual open-source contributors who are evaluating public GitHub issues and deciding which ones are worth their time. They may have no prior context in the target repository, limited time, and a practical need to separate credible contribution opportunities from noisy or risky issues.
 
-The primary workflow is discovery to confidence to action to contribution: search or look up candidate issues, compare transparent fit signals, save promising work to the Board, review status and reminders, and keep local proof of completed work.
+The primary workflow is discovery to confidence to action to contribution proof/history: search or look up candidate issues, compare transparent fit and platform signals, save promising work to the Board, review status and reminders, and keep local proof of completed work.
 
 ## Product Purpose
 
-PR Dashboard helps contributors make better contribution decisions, not just find more issues. It keeps the familiar GitHub search model, then adds deterministic scoring, contribution guidance, local Board tracking, Review reminders, Proof Log history, and API-limit visibility.
+PR Dashboard helps contributors make better contribution decisions, not just find more issues. It keeps the familiar GitHub search model, then adds deterministic scoring, contribution guidance, target-platform triage, local Board tracking, Activity history/reminders, and API-limit visibility.
 
 The product exists to turn a cold public issue into a reasoned next action. Success means a contributor can answer: Is this issue a real candidate for me, what are the risks, what should I do first, and where should I track it?
 
 v1 is deliberately local-first and browser-only. There is no backend sync, GitHub OAuth, GitHub App auth, database, model API dependency, or app-owned server receiving GitHub tokens or Board data. Export/Import Local Data is the current cross-device bridge, and GitHub tokens are never exported.
+
+Activity owns Proof Log, Review reminders, and learned feedback/history from local workflow actions. Profile is limited to identity, local stats, and contribution preferences.
 
 ## Brand Personality
 
@@ -43,6 +45,8 @@ Do not imply backend trust guarantees that do not exist. Local-first copy must s
 ## Design Principles
 
 Transparent fit evidence. Scores, confidence, risks, and pass reasons should be visible enough that users can disagree with the product intelligently.
+
+Platform-fit triage. Target-platform filters, compact platform badges, and setup compatibility evidence should help contributors notice local setup risk before saving work.
 
 Local-first trust. The interface should make token, storage, export, and privacy boundaries plain without turning every screen into a security document.
 
