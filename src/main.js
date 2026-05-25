@@ -33,6 +33,7 @@ import {
   issueMatchesTargetPlatforms,
   normalizeTargetPlatforms
 } from './platformFilters.js';
+import { DEFAULT_PLATFORM_SETUP_SCAN_LIMIT, getPlatformSetupScanCandidates } from './platformSetupScan.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -61,6 +62,8 @@ let inspectorAdvancedContextRefreshPendingKey = '';
 let boardViewMode = 'auto';
 let inspectorResizeDetach = () => {};
 let inspectorTitleResizeObserver = null;
+const platformFilterSetupScans = new Map();
+const platformFilterSetupScanFailures = new Set();
 
 // Initialize SPA
 document.addEventListener('DOMContentLoaded', () => {
@@ -700,6 +703,49 @@ function findSavedBoardCard(issue) {
 function getSearchItemsForActions() {
   const items = store.searchResults || [];
   return filterVisibleIssueResults(items, store.filters);
+}
+
+function getPlatformFilterSetupScanKey(issue) {
+  return getCanonicalIssueKey(issue) || String(issue?.id || issue?.html_url || '');
+}
+
+function queuePlatformFilterSetupInspection(items, filters = store.filters) {
+  const visibleItems = filterHiddenIssues(items || []);
+  const candidates = getPlatformSetupScanCandidates(visibleItems, filters, {
+    limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
+    getKey: getPlatformFilterSetupScanKey,
+    hasCachedSetup: issue => Boolean(getCachedRepoSetupEnrichment(issue, localStorage)),
+    isAlreadyScanning: issue => {
+      const key = getPlatformFilterSetupScanKey(issue);
+      return Boolean(key && (platformFilterSetupScans.has(key) || platformFilterSetupScanFailures.has(key)));
+    }
+  });
+
+  candidates.forEach(issue => {
+    const key = getPlatformFilterSetupScanKey(issue);
+    if (!key) return;
+
+    const scan = fetchRepoSetupEnrichment(issue, {
+      token: store.githubToken,
+      storage: localStorage
+    })
+      .then(result => {
+        updateInspectorRateLimit(result.rateLimit);
+      })
+      .catch(() => {
+        platformFilterSetupScanFailures.add(key);
+      })
+      .finally(() => {
+        platformFilterSetupScans.delete(key);
+        const stillInCurrentResults = (store.searchResults || [])
+          .some(item => getPlatformFilterSetupScanKey(item) === key);
+        if (store.currentScreen === 'find-issues' && stillInCurrentResults) {
+          renderActiveScreen();
+        }
+      });
+
+    platformFilterSetupScans.set(key, scan);
+  });
 }
 
 function filterVisibleIssueResults(items, filters = store.filters) {
@@ -1781,6 +1827,7 @@ async function runFinderSearch(value) {
   store.setSearchQuery(queryValue);
   const appliedFilters = store.applyDraftFilters();
   const mode = store.finderMode;
+  platformFilterSetupScanFailures.clear();
 
   if (mode === 'lookup') {
     const exact = parseExactLookupInput(queryValue, { repoContext: store.lookupRepoContext });
@@ -1799,6 +1846,9 @@ function renderFindIssues(container) {
   const filters = store.draftFilters;
   const appliedFilters = store.filters;
   const visibleResults = Array.isArray(results) ? filterVisibleIssueResults(results, appliedFilters) : results;
+  if (!loading && Array.isArray(results)) {
+    queuePlatformFilterSetupInspection(results, appliedFilters);
+  }
   const mode = store.finderMode;
   const exactLookup = mode === 'lookup'
     ? parseExactLookupInput(store.searchQuery, { repoContext: store.lookupRepoContext })
@@ -2888,7 +2938,7 @@ function renderBoard(container) {
 
   container.innerHTML = `
     <!-- Kanban Board layout -->
-    <section class="board-page flex min-h-[calc(100vh-3.5rem)] flex-col bg-background">
+    <section class="board-page flex min-h-[calc(100vh-3.5rem)] flex-col bg-background" data-board-mode="${escapeHTML(boardMode)}">
       
       <!-- Board Header Context -->
       <div class="px-6 md:px-8 py-5 border-b border-outline-variant flex-shrink-0 flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-surface-container-lowest">

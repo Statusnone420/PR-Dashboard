@@ -1,5 +1,13 @@
 # PR Dashboard State
 
+## 2026-05-24 Ship-Ready Platform Filter + Compact Board Polish
+
+- Addressed Codex PR review comment `discussion_r3295747713`: restrictive target-platform filters now queue a bounded background setup scan for the first visible uncached candidates, so fresh Find Contributions/Lookup results can be corrected after compact README/CONTRIBUTING compatibility data is cached without opening each inspector. The scan is skipped when all platforms are selected and remains bounded to avoid scanning all 30 results.
+- Fixed forced Compact Board overflow at wide desktop widths. Full Kanban keeps the locked desktop board height, while Compact mode now allows normal vertical page scrolling so many active cards plus Merged/Passed lanes remain reachable without horizontal scroll or clipped actions.
+- Added focused coverage for bounded platform setup scan candidate selection and a Compact Board layout regression with many active, Merged, and Passed cards plus long titles/repo names.
+- Verification on 2026-05-24: targeted platform/setup/score/store tests passed, `npm.cmd test` passed 251/251, `npm.cmd run build` passed, `npm.cmd run test:layout` passed 16/16, `git diff --check` passed, and in-app rendered smoke at `http://127.0.0.1:5179` verified fresh Windows-only search hides a Linux-only result after background setup scans and crowded Compact Board remains scrollable with no horizontal overflow.
+- Remaining risk: bounded background setup scans trade extra core REST requests for better first-pass platform triage only when platform filters are restrictive. Results outside the scan limit can still remain unknown until inspected or reached by a later scan.
+
 ## 2026-05-24 Platform Filter Candidate Triage
 
 - Added a local Target platforms filter for iOS, Android, macOS, Linux, Windows, and Web. All platforms default selected, multiple selections match by OR, the last checkbox cannot be cleared, Lookup can apply the filter, and Broaden Search resets platforms to all selected.
