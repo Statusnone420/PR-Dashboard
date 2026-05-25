@@ -481,11 +481,27 @@ test('platform badges are icon-only on result cards and independent of active fi
   assert.match(cardsRenderer, /getPlatformBadgeEvidence\(issue, setupSummary\)/);
   assert.match(cardsRenderer, /renderPlatformEvidenceBadge\(issue\.platformEvidence\)/);
   assert.match(badgeRenderer, /if \(!evidence\?\.supportedPlatforms\?\.length\) return ''/);
+  assert.match(badgeRenderer, /platform-evidence-badges/);
   assert.match(badgeRenderer, /\.map\(platform => `\s*<span class="platform-evidence-chip/);
   assert.match(badgeRenderer, /aria-label="\$\{escapeHTML\(getPlatformSupportedLabel\(platform\)\)\}"/);
   assert.doesNotMatch(badgeRenderer, /data-tooltip/);
   assert.doesNotMatch(badgeRenderer, /<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>/);
   assert.doesNotMatch(badgeRenderer, /renderPlatformEvidenceIcons/);
+  assert.doesNotMatch(badgeRenderer, /px-2 py-0\.5/);
+});
+
+test('mobile find contributions shows results before long filter controls', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const workspaceIndex = mainJs.indexOf('<!-- Main Workspace: Filters + Results -->');
+  const resultsIndex = mainJs.indexOf('id="find-results-panel"', workspaceIndex);
+  const sidebarIndex = mainJs.indexOf('id="find-issues-sidebar"', workspaceIndex);
+
+  assert.ok(workspaceIndex > -1);
+  assert.ok(resultsIndex > -1);
+  assert.ok(sidebarIndex > -1);
+  assert.ok(resultsIndex < sidebarIndex);
+  assert.match(mainJs, /id="find-results-panel"[^>]*class="[^"]*\border-1\b[^"]*\blg:order-2\b/);
+  assert.match(mainJs, /id="find-issues-sidebar"[^>]*class="[^"]*\border-2\b[^"]*\blg:order-1\b/);
 });
 
 test('profile avatar markup is safe and falls back to initials', () => {

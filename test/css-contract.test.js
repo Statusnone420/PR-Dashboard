@@ -119,3 +119,18 @@ test('inspector and finder polish styles are defined', async () => {
   assert.match(css, /\.filter-disclosure\b/);
   assert.match(css, /\.filter-disclosure\s*>\s*summary/);
 });
+
+test('platform evidence badges stay compact and square', async () => {
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const badgeGroup = css.match(/\.platform-evidence-badges\s*{(?<body>[^}]*)}/)?.groups?.body || '';
+  const badgeChip = css.match(/\.platform-evidence-chip\s*{(?<body>[^}]*)}/)?.groups?.body || '';
+
+  assert.match(css, /\.platform-evidence-badges\b/);
+  assert.match(badgeGroup, /display:\s*inline-flex/);
+  assert.match(badgeGroup, /gap:\s*0\.25rem/);
+  assert.match(badgeChip, /width:\s*1\.375rem/);
+  assert.match(badgeChip, /height:\s*1\.375rem/);
+  assert.match(badgeChip, /min-width:\s*1\.375rem/);
+  assert.match(badgeChip, /min-height:\s*1\.375rem/);
+  assert.match(badgeChip, /padding:\s*0/);
+});

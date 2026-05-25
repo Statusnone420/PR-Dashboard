@@ -179,11 +179,12 @@ function renderPlatformEvidenceIcon(iconKey) {
 
 function renderPlatformEvidenceBadge(evidence) {
   if (!evidence?.supportedPlatforms?.length) return '';
-  return (evidence.supportedPlatforms || []).map(platform => `
-    <span class="platform-evidence-chip rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant" aria-label="${escapeHTML(getPlatformSupportedLabel(platform))}">
+  const chips = (evidence.supportedPlatforms || []).map(platform => `
+    <span class="platform-evidence-chip rounded border border-outline-variant bg-surface-dim text-on-surface-variant" aria-label="${escapeHTML(getPlatformSupportedLabel(platform))}">
       ${renderPlatformEvidenceIcon(platform)}
     </span>
   `).join('');
+  return `<span class="platform-evidence-badges">${chips}</span>`;
 }
 
 function getIssueLabelNames(labels = []) {
@@ -2179,9 +2180,29 @@ function renderFindIssues(container) {
       
       <!-- Main Workspace: Filters + Results -->
       <div class="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full flex flex-col lg:flex-row gap-8">
-        
+
+        <!-- Results Content viewport -->
+        <div id="find-results-panel" class="order-1 flex w-full min-w-0 flex-col lg:order-2 lg:flex-1">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-sm font-medium text-on-surface-variant" id="results-count-label">${countText}</h2>
+            <div class="flex items-center gap-2 text-sm text-on-surface-variant">
+              <span>Sort by:</span>
+              <select class="bg-transparent border-none text-on-surface focus:ring-0 cursor-pointer font-medium p-0 pr-4" id="sort-filter-select" style="border:none; padding-right:16px;">
+                <option ${filters.sortMode === 'Fit Score' ? 'selected' : ''}>Fit Score</option>
+                <option ${filters.sortMode === 'Updated Date' ? 'selected' : ''}>Updated Date</option>
+                <option ${filters.sortMode === 'Most Commented' ? 'selected' : ''}>Most Commented</option>
+                <option ${filters.sortMode === 'Recently Created' ? 'selected' : ''}>Recently Created</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex-1" id="search-results-viewport">
+            ${resultsHTML}
+          </div>
+        </div>
+
         <!-- Left Sidebar Filters -->
-        <aside class="w-full lg:w-56 shrink-0 flex flex-col gap-6" id="find-issues-sidebar">
+        <aside id="find-issues-sidebar" class="order-2 w-full shrink-0 flex flex-col gap-6 lg:order-1 lg:w-56">
           <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
             <div class="flex items-center justify-between gap-2">
               <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Filters</h3>
@@ -2285,29 +2306,9 @@ function renderFindIssues(container) {
               </div>
             </div>
           </details>
-          
+
         </aside>
-        
-        <!-- Results Content viewport -->
-        <div class="flex-1 flex flex-col">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-sm font-medium text-on-surface-variant" id="results-count-label">${countText}</h2>
-            <div class="flex items-center gap-2 text-sm text-on-surface-variant">
-              <span>Sort by:</span>
-              <select class="bg-transparent border-none text-on-surface focus:ring-0 cursor-pointer font-medium p-0 pr-4" id="sort-filter-select" style="border:none; padding-right:16px;">
-                <option ${filters.sortMode === 'Fit Score' ? 'selected' : ''}>Fit Score</option>
-                <option ${filters.sortMode === 'Updated Date' ? 'selected' : ''}>Updated Date</option>
-                <option ${filters.sortMode === 'Most Commented' ? 'selected' : ''}>Most Commented</option>
-                <option ${filters.sortMode === 'Recently Created' ? 'selected' : ''}>Recently Created</option>
-              </select>
-            </div>
-          </div>
-          
-          <div class="flex-1" id="search-results-viewport">
-            ${resultsHTML}
-          </div>
-        </div>
-        
+
       </div>
     </div>
   `;
