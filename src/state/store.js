@@ -10,7 +10,9 @@ import { REPO_METADATA_CACHE_KEY } from '../api/repoMetadata.js';
 import { clearScoreEnrichmentCache } from '../api/issueComments.js';
 import {
   clearHiddenItems as clearHiddenItemsFromStorage,
+  getIssueHideKey,
   hideIssue as hideIssueInStorage,
+  isIssueHidden,
   hideRepo as hideRepoInStorage,
   unhideHiddenItem as unhideHiddenItemFromStorage
 } from '../hiddenItems.js';
@@ -34,6 +36,8 @@ import {
 } from '../matchFeedback.js';
 import { getCanonicalIssueKey } from '../issueKeys.js';
 import { TARGET_PLATFORM_KEYS, normalizeTargetPlatforms } from '../platformFilters.js';
+
+const PASSED_HIDDEN_ISSUE_KEY = 'passed_hidden_issue_key';
 
 export function createDefaultFilters() {
   return {
@@ -235,8 +239,26 @@ export class AppStore {
     this.notify();
   }
 
+  clearPassedHiddenMarkerForKey(key) {
+    if (!key) return false;
+    let changed = false;
+    for (const column of BOARD_COLUMNS) {
+      for (const card of this.boardCards[column] || []) {
+        if (card?.[PASSED_HIDDEN_ISSUE_KEY] === key) {
+          delete card[PASSED_HIDDEN_ISSUE_KEY];
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
   hideIssue(issue) {
+    const key = getIssueHideKey(issue);
     hideIssueInStorage(issue, localStorage);
+    if (this.clearPassedHiddenMarkerForKey(key)) {
+      this.saveBoardToStorage();
+    }
     this.recordMatchFeedback(issue, 'hiddenIssue', { notify: false });
     if (this.inspectedIssue && this.inspectedIssue.id === issue?.id) {
       this.inspectedIssue = null;
@@ -320,19 +342,31 @@ export class AppStore {
 
   unhideHiddenItem(type, key) {
     unhideHiddenItemFromStorage(type, key, localStorage);
+    if (type === 'issue' && this.clearPassedHiddenMarkerForKey(key)) {
+      this.saveBoardToStorage();
+    }
     this.notify();
   }
 
   syncPassedHiddenState(cardObj, sourceCol, targetCol) {
+    const key = getIssueHideKey(cardObj);
+
     if (targetCol === 'Passed') {
-      hideIssueInStorage(cardObj, localStorage);
+      if (key && !isIssueHidden(cardObj, localStorage)) {
+        cardObj[PASSED_HIDDEN_ISSUE_KEY] = key;
+        hideIssueInStorage(cardObj, localStorage);
+      } else if (cardObj && cardObj[PASSED_HIDDEN_ISSUE_KEY] !== key) {
+        delete cardObj[PASSED_HIDDEN_ISSUE_KEY];
+      }
       return;
     }
 
     if (sourceCol === 'Passed') {
-      const key = getCanonicalIssueKey(cardObj);
-      if (key) {
+      if (key && cardObj?.[PASSED_HIDDEN_ISSUE_KEY] === key) {
         unhideHiddenItemFromStorage('issue', key, localStorage);
+      }
+      if (cardObj) {
+        delete cardObj[PASSED_HIDDEN_ISSUE_KEY];
       }
     }
   }

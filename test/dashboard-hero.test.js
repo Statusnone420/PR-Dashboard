@@ -126,3 +126,13 @@ test('dashboard saved preview is empty when all saved candidates are hidden', ()
 
   assert.deepEqual(preview, []);
 });
+
+test('dashboard saved preview excludes final Passed and Merged cards', () => {
+  const boardCards = createEmptyBoard();
+  boardCards.Passed.push(issue(1));
+  boardCards.Merged.push(issue(2));
+
+  const preview = getDashboardSavedPreviewCards(boardCards);
+
+  assert.deepEqual(preview, []);
+});

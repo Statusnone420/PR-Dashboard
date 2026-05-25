@@ -1,5 +1,14 @@
 # PR Dashboard State
 
+## 2026-05-25 Passed Hidden Provenance + Dashboard Saved Candidate Fix
+
+- Addressed PR review thread `discussion_r3298947148`.
+- `Passed` now records whether the pass action created the exact hidden issue key. Leaving or removing a `Passed` card only unhides that key when the pass action created it, so manual hides before passing and manual hides made after passing remain hidden.
+- Dashboard and Profile saved-candidate metrics now count active non-final board candidates only. `Passed`, `Merged`, and closed active-lane cards remain visible through `Resolved / Passed` and Board flow, but no longer appear in the Dashboard `Saved candidates` card or preview list.
+- Added store regressions for manual hide before pass, manual hide after pass, and removing a manually hidden passed card, plus dashboard/app metric regressions for excluding final/closed cards from saved candidates.
+- Verification on 2026-05-25: manual red checks failed first for the hidden-provenance and dashboard saved-candidate cases; `node --test test/store-persistence.test.js` passed 23/23 after the fix; dashboard/app targeted tests passed 12/12; `npm.cmd test` passed 267/267; `npm.cmd run build` passed; `npm.cmd run test:layout` passed 16/16; `git diff --check` passed; browser smoke with a seeded single `Passed` card showed Dashboard metrics `0 / 0 / 1`, `No saved candidates`, Board flow `1 in Passed`, and no console warnings/errors. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-passed-dashboard-smoke.png`.
+- Remaining risk: existing local data from older builds cannot prove whether a pre-existing `Passed` hidden key was manual or auto-created if the card has no provenance marker. New pass/unpass flows preserve provenance going forward.
+
 ## 2026-05-24 Ship-Ready Platform Filter + Compact Board Polish
 
 - Addressed Codex PR review comment `discussion_r3295747713`: restrictive target-platform filters now queue a bounded background setup scan for the first visible uncached candidates, so fresh Find Contributions/Lookup results can be corrected after compact README/CONTRIBUTING compatibility data is cached without opening each inspector. The scan is skipped when all platforms are selected and remains bounded to avoid scanning all 30 results.
@@ -504,7 +513,7 @@
 - Board movement now treats `Passed` hiding as reversible workflow state: entering `Passed` still hides the exact issue, while leaving `Passed` through either `moveCardToColumn` or `moveBoardCard` unhides that exact issue so Finder can show it again.
 - Added store regressions for both board move paths and kept remove-from-board behavior unchanged.
 - Verification on 2026-05-25: `npm test` passed 259/259, `npm run build` passed, `npm run test:layout` passed 16/16, `git diff --check` passed, and a board browser smoke moved a hidden Passed card back to Merged and verified its exact hidden issue key was removed. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-passed-unhide-smoke.png`.
-- Remaining risk: hidden issue storage does not record provenance, so moving a card out of `Passed` removes the exact issue hide regardless of whether that same key was also manually hidden before it entered `Passed`.
+- Historical remaining risk: hidden issue storage did not record provenance in this pass. Resolved for new movement flows by the 2026-05-25 Passed Hidden Provenance fix.
 
 ## 2026-05-25 Passed Remove Hidden-State Fix
 
@@ -512,7 +521,7 @@
 - Removing a card from the board now captures the source lane before deletion and reuses the `Passed` hidden-state sync, so removing a `Passed` card also unhides that exact issue. Removing cards from other lanes still does not hide or pass the issue.
 - Added a store regression for save -> move to `Passed` -> remove from board -> exact issue visible again.
 - Verification on 2026-05-25: `node --test test/store-persistence.test.js` failed first against the old remove path, then passed 20/20 after the fix. `npm test` passed 260/260, `npm run build` passed, `npm run test:layout` passed 16/16, and a browser smoke removed a seeded `Passed` card through the inspector `Remove from board` button and verified the exact hidden key was cleared. Screenshot saved outside the repo at `C:/Users/Antho/AppData/Local/Temp/pr-dashboard-remove-passed-unhide-smoke.png`.
-- Remaining risk: hidden issue storage still has no provenance, so removing a card from `Passed` removes the exact issue hide even if that key had also been hidden manually before it entered `Passed`.
+- Historical remaining risk: hidden issue storage still had no provenance in this pass. Resolved for new removal flows by the 2026-05-25 Passed Hidden Provenance fix.
 
 ## 2026-05-25 Platform Setup Scan Budget Fix
 

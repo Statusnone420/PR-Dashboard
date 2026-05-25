@@ -303,6 +303,75 @@ test('moving a card out of Passed with moveBoardCard unhides the exact issue', a
   assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 1);
 });
 
+test('moving a manually hidden card out of Passed keeps the exact issue hidden', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 13999,
+    number: 13999,
+    title: 'Manual hide survives pass reversal',
+    repository: { full_name: 'TEAMMATES/teammates' },
+    html_url: 'https://github.com/TEAMMATES/teammates/issues/13999'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.hideIssue(target);
+  appStore.moveCardToColumn(13999, 'Passed');
+  appStore.moveCardToColumn(13999, 'Working');
+
+  assert.equal(appStore.boardCards.Working[0].id, 13999);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+});
+
+test('removing a manually hidden Passed board card keeps the exact issue hidden', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 3580,
+    number: 3580,
+    title: 'Remove manually hidden passed candidate',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/3580'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.hideIssue(target);
+  appStore.moveCardToColumn(3580, 'Passed');
+  appStore.removeBoardCard(3580);
+
+  assert.equal(Object.values(appStore.boardCards).flat().length, 0);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+});
+
+test('manually hiding an already Passed card keeps the exact issue hidden when moved back', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+  const { filterHiddenIssues } = await import('../src/hiddenItems.js');
+
+  const appStore = new AppStore();
+  const target = {
+    id: 3581,
+    number: 3581,
+    title: 'Manual hide after pass survives reversal',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/3581'
+  };
+
+  appStore.saveIssueToBoard(target);
+  appStore.moveCardToColumn(3581, 'Passed');
+  appStore.hideIssue(target);
+  appStore.moveCardToColumn(3581, 'Working');
+
+  assert.equal(appStore.boardCards.Working[0].id, 3581);
+  assert.equal(filterHiddenIssues([target], globalThis.localStorage).length, 0);
+});
+
 test('removing a board card does not hide or pass the issue', async () => {
   globalThis.localStorage = createLocalStorage();
   const { AppStore } = await import('../src/state/store.js');

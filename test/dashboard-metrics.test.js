@@ -18,6 +18,7 @@ test('closed cards in active lanes are excluded from Active Review and counted a
   });
 
   assert.equal(metrics.totalSavedCount, 4);
+  assert.equal(metrics.savedCandidateCount, 2);
   assert.equal(metrics.activeReviewCount, 2);
   assert.equal(metrics.resolvedOrPassedCount, 2);
   assert.equal(metrics.activeReviewProgress, 50);

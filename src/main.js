@@ -1406,10 +1406,10 @@ function renderBoardFlow(reviewFlow) {
 function renderDashboard(container) {
   // Grab dynamic data
   const dashboardMetrics = summarizeDashboardMetrics(store.boardCards);
-  const boardCards = dashboardMetrics.boardCards;
-  const activeCards = boardCards.filter(card => !isClosedIssue(card));
-  const dashboardSavedCards = activeCards.length ? activeCards : boardCards;
-  const totalSavedCount = dashboardMetrics.totalSavedCount;
+  const dashboardSavedCards = getDashboardSavedPreviewCards(store.boardCards, {
+    hiddenFilter: filterHiddenIssues
+  });
+  const savedCandidateCount = dashboardMetrics.savedCandidateCount;
   const activeReviewCount = dashboardMetrics.activeReviewCount;
   const resolvedOrPassedCount = dashboardMetrics.resolvedOrPassedCount;
   const hiddenItems = listHiddenItems(localStorage);
@@ -1583,7 +1583,7 @@ function renderDashboard(container) {
               </div>
               <span class="material-symbols-outlined text-primary">bookmarks</span>
             </div>
-            <span class="metric-card-value">${totalSavedCount}</span>
+            <span class="metric-card-value">${savedCandidateCount}</span>
           </div>
 
           <div class="metric-card flex flex-col gap-4">
