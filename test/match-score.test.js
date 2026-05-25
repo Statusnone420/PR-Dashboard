@@ -624,3 +624,48 @@ test('advanced enrichment updates cautious score rows and mini-scores', async ()
   assert.match(result.confidence.reasons.join(' '), /Timeline inspected/);
   assert.match(result.confidence.reasons.join(' '), /Setup files inspected/);
 });
+
+test('known platform mismatch becomes a likely pass only when target platforms exclude support', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const mismatch = calculateMatchScore(clearBug(), {
+    targetPlatforms: ['windows'],
+    enrichment: {
+      setup: {
+        inspected: true,
+        setupDocsPresent: true,
+        contributingPresent: true,
+        workflowPresent: false,
+        configHintsPresent: true,
+        testHintsPresent: true,
+        setupUnclear: false,
+        platformSupport: { linux: true },
+        platformUnsupported: { windows: true },
+        reasons: ['Linux setup supported', 'Windows is not supported']
+      }
+    }
+  });
+  const compatible = calculateMatchScore(clearBug(), {
+    targetPlatforms: ['linux', 'windows'],
+    enrichment: mismatch.miniScores ? {
+      setup: {
+        inspected: true,
+        setupDocsPresent: true,
+        contributingPresent: true,
+        workflowPresent: false,
+        configHintsPresent: true,
+        testHintsPresent: true,
+        setupUnclear: false,
+        platformSupport: { linux: true },
+        platformUnsupported: { windows: true },
+        reasons: ['Linux setup supported', 'Windows is not supported']
+      }
+    } : {}
+  });
+
+  assert.equal(mismatch.isContributionCandidate, false);
+  assert.match(mismatch.passReasons.join(' '), /Platform mismatch/);
+  assert.match(mismatch.rows.map(row => row.label).join(' '), /Target platform mismatch/);
+  assert.equal(mismatch.miniScores.setupEase.label, 'Blocked');
+  assert.equal(compatible.isContributionCandidate, true);
+});

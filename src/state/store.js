@@ -33,6 +33,7 @@ import {
   recordMatchFeedbackEvent as recordMatchFeedbackEventInStorage
 } from '../matchFeedback.js';
 import { getCanonicalIssueKey } from '../issueKeys.js';
+import { TARGET_PLATFORM_KEYS, normalizeTargetPlatforms } from '../platformFilters.js';
 
 export function createDefaultFilters() {
   return {
@@ -45,12 +46,15 @@ export function createDefaultFilters() {
     sortMode: 'Fit Score',
     includeClosed: false,
     unassigned: false,
-    useFiltersInLookup: false
+    useFiltersInLookup: false,
+    targetPlatforms: [...TARGET_PLATFORM_KEYS]
   };
 }
 
 function cloneFilters(filters) {
-  return JSON.parse(JSON.stringify(filters));
+  const cloned = JSON.parse(JSON.stringify(filters));
+  cloned.targetPlatforms = normalizeTargetPlatforms(cloned.targetPlatforms);
+  return cloned;
 }
 
 function createEmptyRateLimitBucket(resource) {
@@ -430,6 +434,7 @@ export class AppStore {
           });
         } else if (targetCol === 'Passed') {
           this.removeIssueFromProofLog(cardObj);
+          hideIssueInStorage(cardObj, localStorage);
         }
         if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
           this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });
@@ -518,6 +523,7 @@ export class AppStore {
         });
       } else if (targetCol === 'Passed') {
         this.removeIssueFromProofLog(cardObj);
+        hideIssueInStorage(cardObj, localStorage);
       }
       if (targetCol === 'Working' || targetCol === 'Merged' || targetCol === 'Passed') {
         this.recordMatchFeedback(cardObj, `entered:${targetCol}`, { now: timestamp, notify: false });

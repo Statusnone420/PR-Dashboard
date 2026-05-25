@@ -67,6 +67,7 @@ test('low-noise preset applies quiet filters and runs one explicit search', asyn
 
 test('broaden search clears contribution filters instead of swapping labels', async () => {
   const { getRelaxedFilters } = await import('../src/searchInteractions.js');
+  const { TARGET_PLATFORM_KEYS } = await import('../src/platformFilters.js');
 
   assert.deepEqual(getRelaxedFilters(), {
     languages: [],
@@ -76,6 +77,7 @@ test('broaden search clears contribution filters instead of swapping labels', as
     comments: 'Any',
     updatedDate: 'Any',
     includeClosed: false,
-    unassigned: false
+    unassigned: false,
+    targetPlatforms: TARGET_PLATFORM_KEYS
   });
 });

@@ -1,5 +1,6 @@
 import { isClosedIssue } from './boardModel.js';
 import { getFeedbackScoreAdjustment } from './matchFeedback.js';
+import { getPlatformMismatchReason, issueMatchesTargetPlatforms } from './platformFilters.js';
 
 const BEGINNER_LABELS = ['good first issue', 'help wanted', 'beginner', 'starter'];
 const STRONG_FIT_LABELS = [
@@ -254,7 +255,7 @@ function repoMetadataUnavailable(issue) {
   );
 }
 
-function buildConfidence(issue, signals, stage, enrichment = {}) {
+function buildConfidence(issue, signals, stage, enrichment = {}, targetPlatforms = null) {
   const reasons = [];
   const currentWeaknesses = [];
   const repo = issue?.repository || {};
@@ -318,6 +319,10 @@ function buildConfidence(issue, signals, stage, enrichment = {}) {
   if (setupInspected) {
     reasons.push('Setup files inspected');
     if (setupSummary.setupUnclear) {
+      currentWeaknesses.push('setup');
+    }
+    if (!issueMatchesTargetPlatforms(setupSummary, targetPlatforms)) {
+      reasons.push('Target platform mismatch');
       currentWeaknesses.push('setup');
     }
   } else {
@@ -448,7 +453,7 @@ function buildPersonalFit(issue, profile, signals) {
   };
 }
 
-function buildMiniScores(issue, signals, personalFit, enrichment = {}) {
+function buildMiniScores(issue, signals, personalFit, enrichment = {}, targetPlatforms = null) {
   const opportunityReasons = [];
   const historySummary = enrichment?.history || null;
   const timelineSummary = enrichment?.timeline || null;
@@ -496,7 +501,9 @@ function buildMiniScores(issue, signals, personalFit, enrichment = {}) {
         ? createMiniScore('Medium risk', 'Medium', ['Needs comment review'])
         : createMiniScore('Low risk', 'High', [commentSummary?.maintainerEncouragement ? 'Maintainer appears open to PRs' : 'Unassigned or quiet thread']);
   const setupEase = setupSummary?.inspected
-    ? setupSummary.setupUnclear
+    ? !issueMatchesTargetPlatforms(setupSummary, targetPlatforms)
+      ? createMiniScore('Blocked', 'Low', [getPlatformMismatchReason(setupSummary, targetPlatforms)])
+      : setupSummary.setupUnclear
       ? createMiniScore('Unclear', 'Low', ['Setup files look unclear'])
       : setupSummary.setupDocsPresent || setupSummary.workflowPresent || setupSummary.configHintsPresent
         ? createMiniScore('Discoverable', 'High', setupSummary.reasons?.length ? setupSummary.reasons : ['Repo setup files look discoverable'])
@@ -553,6 +560,7 @@ export function calculateMatchScore(issue, options = {}) {
   const updatedDays = daysSince(issue?.updated_at, now);
   const stage = options.stage || (options.enrichment ? 'enriched' : 'preview');
   const enrichment = options.enrichment || {};
+  const targetPlatforms = options.targetPlatforms;
   const signals = {
     now,
     labels,
@@ -589,7 +597,7 @@ export function calculateMatchScore(issue, options = {}) {
         level: 'High',
         reasons: ['Closed issue']
       },
-      miniScores: buildMiniScores(issue, signals, emptyPersonalFit, enrichment),
+      miniScores: buildMiniScores(issue, signals, emptyPersonalFit, enrichment, targetPlatforms),
       personalFit: emptyPersonalFit
     };
   }
@@ -703,8 +711,11 @@ export function calculateMatchScore(issue, options = {}) {
     }
   }
   const setupSummary = enrichment?.setup;
+  const platformMismatch = setupSummary?.inspected && !issueMatchesTargetPlatforms(setupSummary, targetPlatforms);
   if (setupSummary?.inspected) {
-    if (setupSummary.setupUnclear) {
+    if (platformMismatch) {
+      add(-45, `Target platform mismatch: ${getPlatformMismatchReason(setupSummary, targetPlatforms)}`, 'Platform mismatch');
+    } else if (setupSummary.setupUnclear) {
       add(-6, 'Repo setup files look unclear', 'Repo setup risk');
     } else if (setupSummary.setupDocsPresent || setupSummary.workflowPresent || setupSummary.configHintsPresent) {
       add(4, 'Repo setup files look discoverable');
@@ -728,7 +739,7 @@ export function calculateMatchScore(issue, options = {}) {
     || hasActionableTaskList
     || hasSmallScope
     || (hasBugLabel && hasClearBehavior && hasBoundedFix);
-  const confidence = buildConfidence(issue, signals, stage, enrichment);
+  const confidence = buildConfidence(issue, signals, stage, enrichment, targetPlatforms);
   let score = clampScore(rows.reduce((total, row) => total + row.points, 0));
 
   if (!hasStrongContributionFitSignal && score > 90) {
@@ -743,16 +754,20 @@ export function calculateMatchScore(issue, options = {}) {
     score = applyScoreCap(score, CONFIDENCE_CAPS[confidence.level], `${confidence.level} confidence cap`, add);
   }
 
+  if (platformMismatch && score > 45) {
+    score = applyScoreCap(score, 45, 'Platform mismatch cap', add);
+  }
+
   return {
     score,
     rating: getMatchScoreRating(score),
     rows,
     passReasons: [...passReasons],
     flags: { isAssigned, hasBeginnerLabel, hasStaleLabel },
-    isContributionCandidate: score >= 50,
+    isContributionCandidate: score >= 50 && !platformMismatch,
     stage,
     confidence,
-    miniScores: buildMiniScores(issue, signals, personal.personalFit, enrichment),
+    miniScores: buildMiniScores(issue, signals, personal.personalFit, enrichment, targetPlatforms),
     personalFit: personal.personalFit
   };
 }

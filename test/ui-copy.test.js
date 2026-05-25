@@ -432,8 +432,9 @@ test('lookup and search keep hidden results out of result cards', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
 
-  assert.match(mainJs, /return filterHiddenIssues\(items\)/);
-  assert.match(mainJs, /const visibleResults = Array\.isArray\(results\) \? filterHiddenIssues\(results\) : results/);
+  assert.match(mainJs, /return filterVisibleIssueResults\(items, store\.filters\)/);
+  assert.match(mainJs, /const visibleResults = Array\.isArray\(results\) \? filterVisibleIssueResults\(results, appliedFilters\) : results/);
+  assert.match(mainJs, /filterHiddenIssues\(items\)\.filter/);
   assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
   assert.doesNotMatch(mainJs, /const applyHiddenFilter = store\.lastSearchMode !== 'lookup'/);
   assert.doesNotMatch(mainJs, /hiddenCountText|hiddenResultsCount/);
@@ -531,12 +532,24 @@ test('result cards and inspector action center do not expose proof log controls'
 
   assert.doesNotMatch(resultCards, /Proof Log|proof-log|proof-status|proofStatus/);
   assert.match(actionCenter, /Save issue/);
-  assert.match(actionCenter, /Saved to board/);
+  assert.match(actionCenter, /Remove from board/);
   assert.match(actionCenter, /Hide issue/);
   assert.match(actionCenter, /Hide repo/);
   assert.match(actionCenter, /Unhide/);
   assert.match(actionCenter, /Open on GitHub/);
   assert.doesNotMatch(actionCenter, /Proof Log|proof-status-chip|proofStatus|workspace_premium/);
+});
+
+test('finder exposes target platform filters and saved actions are reversible', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const finder = sliceBetween(mainJs, 'function renderFindIssues', 'function renderIssueCardsList');
+  const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const actionCenter = sliceBetween(mainJs, '<!-- inspector-section:action-center -->', '<!-- Scrollable Content Viewport -->');
+
+  assert.match(finder, /Target platforms/);
+  assert.match(finder, /platform-filter-checkbox/);
+  assert.match(resultCards, /Remove/);
+  assert.match(actionCenter, /Remove from board/);
 });
 
 test('refresh batch confirmation uses app modal instead of native browser confirm', () => {

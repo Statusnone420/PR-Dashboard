@@ -131,11 +131,12 @@ function getGuidanceFit({ verdict, scope, clarity, repoHealth, hasHardPassLabel,
   return 'Well-bounded';
 }
 
-function getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel }) {
+function getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel, hasPlatformMismatch }) {
   const reasons = [];
   if (closed) pushUnique(reasons, 'The issue is closed.');
   if (repoHealth.hard) pushUnique(reasons, `${repoHealth.label} makes new contribution work unlikely to land.`);
   if (hasHardPassLabel) pushUnique(reasons, 'A blocked, duplicate, wontfix, or invalid label makes this a poor target.');
+  if (hasPlatformMismatch) pushUnique(reasons, 'The setup docs do not match the selected target platforms.');
   if (assigned && comments > 15) pushUnique(reasons, 'The issue is already assigned and has a crowded thread.');
   if (assigned && stale) pushUnique(reasons, 'The issue is already assigned and stale.');
   if (clarity === 'Too vague' && scope === 'Large/unclear scope') {
@@ -144,10 +145,10 @@ function getHardPassReasons({ closed, assigned, comments, stale, repoHealth, sco
   return reasons;
 }
 
-function getVerdict({ score, closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel }) {
+function getVerdict({ score, closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel, hasPlatformMismatch }) {
   if (
     score < 50
-    || getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel }).length > 0
+    || getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel, hasPlatformMismatch }).length > 0
   ) {
     return 'Likely pass';
   }
@@ -200,6 +201,7 @@ function buildRisks({ issue, text, scoreData, scope, clarity, socialRisk, issueU
   if (issueUpdatedDays > 365 || hasScoreSignal(scoreData, 'old')) pushUnique(risks, 'Stale issue; maintainer interest may have cooled.');
   if (repoHealth.inactive || repoHealth.hard) pushUnique(risks, `${repoHealth.label}; validate the repo before investing time.`);
   if (hasHardPassLabel) pushUnique(risks, 'Blocked, duplicate, or wontfix label makes this a poor target.');
+  if (hasScoreSignal(scoreData, 'platform mismatch')) pushUnique(risks, 'Selected target platforms do not match the setup requirements.');
   if (isMeta) pushUnique(risks, 'Roadmap or meta work is hard to finish as a focused PR.');
   if (scope === 'Large/unclear scope') pushUnique(risks, 'Large scope or refactor language may hide substantial design work.');
   if (clarity !== 'Clear enough') pushUnique(risks, 'Vague body; ask what outcome would be accepted.');
@@ -229,13 +231,14 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
   const hasBeginnerLabel = Boolean(scoreData?.flags?.hasBeginnerLabel)
     || labels.some(label => BEGINNER_LABELS.some(beginner => label.includes(beginner)));
   const hasHardPassLabel = labels.some(label => HARD_PASS_LABELS.some(hardPass => includesWholeTerm(label, hardPass)));
+  const hasPlatformMismatch = hasScoreSignal(scoreData, 'platform mismatch');
   const isMeta = isMetaWork(text, labels);
   const stale = issueUpdatedDays > 180 || hasScoreSignal(scoreData, 'old');
   const repoHealth = getRepoHealth(issue, now);
   const scope = getScope(issue, text, scoreData);
   const clarity = getClarity(issue, text, scoreData);
   const socialRisk = getSocialRisk(issue, issueUpdatedDays);
-  const hardPassReasons = getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel });
+  const hardPassReasons = getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel, hasPlatformMismatch });
   const verdict = getVerdict({
     score,
     closed,
@@ -245,7 +248,8 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
     repoHealth,
     scope,
     clarity,
-    hasHardPassLabel
+    hasHardPassLabel,
+    hasPlatformMismatch
   });
   const bestFor = getBestFor({ verdict, assigned, hasBeginnerLabel, scope, clarity });
   const guidanceFit = getGuidanceFit({ verdict, scope, clarity, repoHealth, hasHardPassLabel, isMeta });

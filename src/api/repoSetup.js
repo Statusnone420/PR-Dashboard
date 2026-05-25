@@ -1,6 +1,7 @@
 import { cleanReason, getCachedIssueEnrichmentEntry, getStorage, isoFromMs, nowMs, saveIssueEnrichmentEntry } from './enrichmentCache.js';
 import { createReadOnlyGitHubRequestOptions, rateLimitFromReadOnlyResponse } from './githubReadOnly.js';
 import { getCanonicalIssueKey, getRepoDisplayName } from '../issueKeys.js';
+import { TARGET_PLATFORM_KEYS, TARGET_PLATFORM_OPTIONS } from '../platformFilters.js';
 
 const REPO_SETUP_CACHE_TYPE = 'repo-setup';
 const CONFIG_FILE_PATHS = new Set(['package.json', 'pyproject.toml', 'pom.xml']);
@@ -33,6 +34,8 @@ function normalizeRepoSetupSummary(summary = {}) {
   const reasons = Array.isArray(summary.reasons)
     ? summary.reasons.map(cleanReason).filter(Boolean).slice(0, 8)
     : [];
+  const platformSupport = normalizePlatformFlags(summary.platformSupport);
+  const platformUnsupported = normalizePlatformFlags(summary.platformUnsupported);
   return {
     inspected: Boolean(summary.inspected),
     filesChecked: Math.max(0, Number.parseInt(summary.filesChecked, 10) || 0),
@@ -42,6 +45,8 @@ function normalizeRepoSetupSummary(summary = {}) {
     configHintsPresent: Boolean(summary.configHintsPresent),
     testHintsPresent: Boolean(summary.testHintsPresent),
     setupUnclear: Boolean(summary.setupUnclear),
+    platformSupport,
+    platformUnsupported,
     reasons
   };
 }
@@ -62,6 +67,86 @@ function pathBasename(path) {
 
 function lowerPath(path) {
   return String(path || '').toLowerCase();
+}
+
+function normalizePlatformFlags(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  return TARGET_PLATFORM_KEYS.reduce((flags, key) => {
+    flags[key] = Boolean(source[key]);
+    return flags;
+  }, {});
+}
+
+function includesPattern(text, pattern) {
+  return pattern.test(text);
+}
+
+function markOnlyPlatform(support, unsupported, platform) {
+  support[platform] = true;
+  TARGET_PLATFORM_KEYS.forEach(key => {
+    if (key !== platform) unsupported[key] = true;
+  });
+}
+
+function detectPlatformCompatibility(text) {
+  const platformSupport = normalizePlatformFlags();
+  const platformUnsupported = normalizePlatformFlags();
+  const reasons = [];
+  const source = String(text || '').toLowerCase();
+  const displayLabels = Object.fromEntries(TARGET_PLATFORM_OPTIONS.map(item => [item.key, item.label]));
+
+  const supportPatterns = {
+    ios: [/\bios\b/, /\biphone\b/, /\bipad\b/],
+    android: [/\bandroid\b/],
+    macos: [/\bmacos\b/, /\bmac os\b/, /\bos x\b/, /\bdarwin\b/],
+    linux: [/\blinux\b/, /\bubuntu\b/, /\bdebian\b/, /\bfedora\b/],
+    windows: [/\bwindows\b/, /\bwin32\b/, /\bpowershell\b/],
+    web: [/\bweb app\b/, /\bbrowser\b/, /\bfrontend\b/, /\breact\b/, /\bvite\b/, /\bhtml\b/, /\bcss\b/]
+  };
+  const unsupportedPatterns = {
+    ios: [/\bios (?:is )?not supported\b/, /\bdoes not support ios\b/, /\bno ios support\b/],
+    android: [/\bandroid (?:is )?not supported\b/, /\bdoes not support android\b/, /\bno android support\b/],
+    macos: [/\bmacos (?:is )?not supported\b/, /\bmac os (?:is )?not supported\b/, /\bdoes not support macos\b/, /\bno macos support\b/],
+    linux: [/\blinux (?:is )?not supported\b/, /\bdoes not support linux\b/, /\bno linux support\b/],
+    windows: [/\bwindows (?:is )?not supported\b/, /\bdoes not support windows\b/, /\bno windows support\b/, /\bwsl required\b/, /\brequires wsl\b/],
+    web: [/\bweb (?:is )?not supported\b/, /\bdoes not support web\b/, /\bno web support\b/]
+  };
+  const onlyPatterns = {
+    ios: [/\bios only\b/, /\bonly (?:supports? )?ios\b/],
+    android: [/\bandroid only\b/, /\bonly (?:supports? )?android\b/],
+    macos: [/\bmacos only\b/, /\bmac os only\b/, /\bonly (?:supports? )?macos\b/],
+    linux: [/\blinux only\b/, /\bubuntu required\b/, /\brequires ubuntu\b/, /\bonly (?:supports? )?linux\b/],
+    windows: [/\bwindows only\b/, /\bonly (?:supports? )?windows\b/],
+    web: [/\bweb only\b/, /\bbrowser only\b/, /\bonly (?:supports? )?web\b/]
+  };
+
+  TARGET_PLATFORM_KEYS.forEach(key => {
+    if (supportPatterns[key].some(pattern => includesPattern(source, pattern))) {
+      platformSupport[key] = true;
+    }
+    if (unsupportedPatterns[key].some(pattern => includesPattern(source, pattern))) {
+      platformUnsupported[key] = true;
+    }
+    if (onlyPatterns[key].some(pattern => includesPattern(source, pattern))) {
+      markOnlyPlatform(platformSupport, platformUnsupported, key);
+    }
+  });
+
+  if (/\bwsl\b/.test(source) || /\bubuntu\b/.test(source)) {
+    platformSupport.linux = true;
+  }
+
+  TARGET_PLATFORM_KEYS.forEach(key => {
+    if (platformUnsupported[key]) platformSupport[key] = false;
+    if (platformSupport[key]) reasons.push(`${displayLabels[key]} setup supported`);
+    if (platformUnsupported[key]) reasons.push(`${displayLabels[key]} setup unsupported`);
+  });
+
+  return {
+    platformSupport,
+    platformUnsupported,
+    reasons
+  };
 }
 
 function isReadmePath(path) {
@@ -107,6 +192,11 @@ function summarizeFetchedItems(items = []) {
   const pyprojectText = decodeContent(pyproject);
   const pomText = decodeContent(pom);
   const configText = [packageText, pyprojectText, pomText].join('\n').toLowerCase();
+  const setupText = successful
+    .filter(item => isReadmePath(item.path) || isContributingPath(item.path))
+    .map(item => decodeContent(item.data))
+    .join('\n');
+  const platformCompatibility = detectPlatformCompatibility(setupText);
 
   const setupDocsPresent = successful.some(item => isReadmePath(item.path));
   const contributingPresent = successful.some(item => isContributingPath(item.path));
@@ -123,6 +213,7 @@ function summarizeFetchedItems(items = []) {
   if (contributingPresent) reasons.push('Contributing guide found');
   if (workflowPresent) reasons.push('CI workflow found');
   if (testHintsPresent || configHintsPresent) reasons.push('Test/build hints found');
+  reasons.push(...platformCompatibility.reasons);
   if (setupUnclear) reasons.push('Setup files look unclear');
 
   return normalizeRepoSetupSummary({
@@ -134,6 +225,8 @@ function summarizeFetchedItems(items = []) {
     configHintsPresent,
     testHintsPresent,
     setupUnclear,
+    platformSupport: platformCompatibility.platformSupport,
+    platformUnsupported: platformCompatibility.platformUnsupported,
     reasons
   });
 }
@@ -192,8 +285,14 @@ export async function fetchRepoSetupEnrichment(issue, options = {}) {
   const githubDir = findListedEntry(rootItems, '.github', 'dir');
   const docsDir = findListedEntry(rootItems, 'docs', 'dir');
 
-  if (readme) fetched.push(createDiscoveredItem(readme, 'README.md'));
-  if (contributing) fetched.push(createDiscoveredItem(contributing, 'CONTRIBUTING.md'));
+  if (readme) {
+    const data = await fetchContents(readme.path || readme.name || 'README.md', { optional: true });
+    fetched.push(createDiscoveredItem(data || readme, readme.path || 'README.md'));
+  }
+  if (contributing) {
+    const data = await fetchContents(contributing.path || contributing.name || 'CONTRIBUTING.md', { optional: true });
+    fetched.push(createDiscoveredItem(data || contributing, contributing.path || 'CONTRIBUTING.md'));
+  }
 
   for (const item of configFiles) {
     const data = await fetchContents(item.path || item.name, { optional: true });
@@ -213,7 +312,8 @@ export async function fetchRepoSetupEnrichment(issue, options = {}) {
     const docsItems = normalizeContentsList(await fetchContents(docsDir.path || 'docs', { optional: true }));
     const docsContributing = firstListedFile(docsItems, isContributingPath);
     if (docsContributing) {
-      fetched.push(createDiscoveredItem(docsContributing, docsContributing.path || 'docs/CONTRIBUTING.md'));
+      const data = await fetchContents(docsContributing.path || 'docs/CONTRIBUTING.md', { optional: true });
+      fetched.push(createDiscoveredItem(data || docsContributing, docsContributing.path || 'docs/CONTRIBUTING.md'));
     }
   }
 

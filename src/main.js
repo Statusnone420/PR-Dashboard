@@ -8,7 +8,7 @@ import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_
 import { buildExactIssueApiUrl, parseExactLookupInput } from './lookup.js';
 import { fetchIssueCommentsEnrichment, getCachedIssueCommentEnrichment, getIssueCommentsCacheKey } from './api/issueComments.js';
 import { fetchIssueTimelineEnrichment } from './api/issueTimeline.js';
-import { fetchRepoSetupEnrichment } from './api/repoSetup.js';
+import { fetchRepoSetupEnrichment, getCachedRepoSetupEnrichment } from './api/repoSetup.js';
 import { fetchRepoHistoryEnrichment } from './api/repoHistory.js';
 import { calculateMatchScore, getMatchScoreRating } from './matchScore.js';
 import { getDashboardHeroRecommendation, getDashboardSavedPreviewCards } from './dashboardHero.js';
@@ -26,6 +26,13 @@ import { getProfileInitials } from './profile.js';
 import { listProofEntries } from './proofLog.js';
 import { getBoardMode } from './boardMode.js';
 import { attachResize } from './inspectorResize.js';
+import {
+  TARGET_PLATFORM_OPTIONS,
+  getNextTargetPlatforms,
+  hasAllTargetPlatformsSelected,
+  issueMatchesTargetPlatforms,
+  normalizeTargetPlatforms
+} from './platformFilters.js';
 import {
   getActiveBoardRefreshRequestCount,
   getBatchRefreshWarning,
@@ -85,7 +92,8 @@ function calculateFitScore(issue, options = {}) {
   const result = calculateMatchScore(issue, {
     profile: store.contributionPreferences,
     feedback: store.matchFeedback,
-    enrichment: options.enrichment
+    enrichment: options.enrichment,
+    targetPlatforms: options.targetPlatforms || store.filters.targetPlatforms
   });
   return {
     ...result,
@@ -691,7 +699,15 @@ function findSavedBoardCard(issue) {
 
 function getSearchItemsForActions() {
   const items = store.searchResults || [];
-  return filterHiddenIssues(items);
+  return filterVisibleIssueResults(items, store.filters);
+}
+
+function filterVisibleIssueResults(items, filters = store.filters) {
+  const targetPlatforms = normalizeTargetPlatforms(filters?.targetPlatforms);
+  return filterHiddenIssues(items).filter(issue => {
+    const setupEntry = getCachedRepoSetupEnrichment(issue, localStorage);
+    return issueMatchesTargetPlatforms(setupEntry?.summary, targetPlatforms);
+  });
 }
 
 function updateInspectorTaskVisualState(checkbox) {
@@ -1668,6 +1684,13 @@ function describeActiveFilters(filters) {
   if (filters.stars && filters.stars !== 'Any') parts.push(`Stars: ${filters.stars}`);
   if (filters.comments && filters.comments !== 'Any') parts.push(`Comments: ${filters.comments}`);
   if (filters.updatedDate && filters.updatedDate !== 'Any') parts.push(`Updated: ${filters.updatedDate}`);
+  if (!hasAllTargetPlatformsSelected(filters.targetPlatforms)) {
+    const selected = normalizeTargetPlatforms(filters.targetPlatforms);
+    const platformLabels = TARGET_PLATFORM_OPTIONS
+      .filter(platform => selected.includes(platform.key))
+      .map(platform => platform.label);
+    parts.push(`Platforms: ${platformLabels.join(', ')}`);
+  }
   if (filters.includeClosed) parts.push('Includes closed issues');
   return parts.length ? parts : ['No restrictive filters'];
 }
@@ -1677,6 +1700,7 @@ function getFirstRelaxationHint(filters) {
   if (filters.stars && filters.stars !== 'Any') return 'Relax stars first: switch stars to Any.';
   if (filters.comments && filters.comments !== 'Any') return 'Relax comments first: switch comments to Any.';
   if (filters.languages?.length) return 'Relax language first: clear selected languages.';
+  if (!hasAllTargetPlatformsSelected(filters.targetPlatforms)) return 'Relax target platforms first: select all platforms.';
   if (filters.updatedDate && filters.updatedDate !== 'Any') return 'Relax updated date first: switch updated date to Any.';
   return 'PR Dashboard searches GitHub issues, not users or profiles. Try an issue topic, repo name, or owner/repo.';
 }
@@ -1686,7 +1710,8 @@ function hasActiveMoreFilters(filters = {}) {
     (filters.comments && filters.comments !== 'Any') ||
     (filters.updatedDate && filters.updatedDate !== 'Any') ||
     Boolean(filters.includeClosed) ||
-    Boolean(filters.unassigned)
+    Boolean(filters.unassigned) ||
+    !hasAllTargetPlatformsSelected(filters.targetPlatforms)
   );
 }
 
@@ -1769,11 +1794,11 @@ async function runFinderSearch(value) {
 
 function renderFindIssues(container) {
   const results = store.searchResults;
-  const visibleResults = Array.isArray(results) ? filterHiddenIssues(results) : results;
   const loading = store.searchLoading;
   const error = store.searchError;
   const filters = store.draftFilters;
   const appliedFilters = store.filters;
+  const visibleResults = Array.isArray(results) ? filterVisibleIssueResults(results, appliedFilters) : results;
   const mode = store.finderMode;
   const exactLookup = mode === 'lookup'
     ? parseExactLookupInput(store.searchQuery, { repoContext: store.lookupRepoContext })
@@ -1827,6 +1852,17 @@ function renderFindIssues(container) {
       <label class="flex items-center gap-3 group cursor-pointer">
         <input class="stars-filter-radio" type="radio" name="stars" data-value="${safeStarOpt}" ${checked} />
         <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${safeStarOpt}</span>
+      </label>
+    `;
+  }).join('');
+
+  const selectedPlatforms = normalizeTargetPlatforms(filters.targetPlatforms);
+  const platformCheckboxesHTML = TARGET_PLATFORM_OPTIONS.map(platform => {
+    const checked = selectedPlatforms.includes(platform.key) ? 'checked' : '';
+    return `
+      <label class="flex items-center gap-3 group cursor-pointer">
+        <input class="platform-filter-checkbox" type="checkbox" data-platform="${escapeHTML(platform.key)}" ${checked} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${escapeHTML(platform.label)}</span>
       </label>
     `;
   }).join('');
@@ -2029,6 +2065,13 @@ function renderFindIssues(container) {
                   <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">Unassigned only</span>
                 </label>
               </div>
+
+              <div class="flex flex-col gap-3">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Target platforms</h3>
+                <div class="grid grid-cols-2 gap-2">
+                  ${platformCheckboxesHTML}
+                </div>
+              </div>
             </div>
           </details>
           
@@ -2189,6 +2232,13 @@ function renderFindIssues(container) {
     });
   }
 
+  document.querySelectorAll('.platform-filter-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const next = getNextTargetPlatforms(store.draftFilters.targetPlatforms, cb.getAttribute('data-platform'), cb.checked);
+      applyFilterPatch(store, { targetPlatforms: next });
+    });
+  });
+
   const lookupFilterCheckbox = document.querySelector('.lookup-filter-checkbox');
   if (lookupFilterCheckbox) {
     lookupFilterCheckbox.addEventListener('change', () => {
@@ -2212,7 +2262,7 @@ function renderFindIssues(container) {
  */
 function renderIssueCardsList(issuesList) {
   // Sort list if local sorting is needed
-  let sorted = filterHiddenIssues(issuesList);
+  let sorted = filterVisibleIssueResults(issuesList, store.filters);
   
   // Calculate fit scores and inject them into objects
   sorted = sorted.map(issue => {
@@ -2316,8 +2366,8 @@ function renderIssueCardsList(issuesList) {
             Inspect
             </button>
             <button class="action-button px-3 py-1.5 text-xs save-issue-btn ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 'interactive-button-secondary'}" data-id="${issueId}">
-              <span class="material-symbols-outlined text-[14px]">${saved ? 'check' : 'bookmark'}</span>
-              ${saved ? 'View on board' : 'Save'}
+              <span class="material-symbols-outlined text-[14px]">${saved ? 'close' : 'bookmark'}</span>
+              ${saved ? 'Remove' : 'Save'}
             </button>
             <button class="action-button interactive-button-secondary px-3 py-1.5 text-xs hide-issue-btn" data-id="${issueId}">
               <span class="material-symbols-outlined text-[14px]">visibility_off</span>
@@ -2390,7 +2440,7 @@ function bindIssueCardListEvents() {
       if (issue) {
         const fitObj = calculateFitScore(issue);
         if (isIssueSavedToBoard(issue)) {
-          store.setScreen('board');
+          store.removeBoardCard(issue.id);
           return;
         }
         if (store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate && btn.getAttribute('data-confirm-risk') !== 'true') {
@@ -4063,8 +4113,8 @@ function openInspector() {
       <span class="text-xs text-on-surface-variant">Action center</span>
       <div class="flex flex-wrap gap-2">
         <button class="action-button min-w-fit px-4 py-2 text-xs ${saved ? 'bg-tertiary/10 text-tertiary border-tertiary/30' : 'interactive-button-secondary'}" id="inspector-save-issue-btn">
-          <span class="material-symbols-outlined text-[16px]">${saved ? 'check' : 'bookmark'}</span>
-          ${saved ? 'Saved to board' : 'Save issue'}
+          <span class="material-symbols-outlined text-[16px]">${saved ? 'close' : 'bookmark'}</span>
+          ${saved ? 'Remove from board' : 'Save issue'}
         </button>
         <button class="action-button interactive-button-secondary min-w-fit px-4 py-2 text-xs" id="inspector-hide-issue-btn">
           <span class="material-symbols-outlined text-[16px]">visibility_off</span>
@@ -4222,7 +4272,12 @@ function openInspector() {
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
       if (isIssueSavedToBoard(issue)) {
-        store.setScreen('board');
+        store.removeBoardCard(issue.id);
+        if (store.currentScreen === 'board') {
+          closeInspector();
+        } else {
+          openInspector();
+        }
         return;
       }
       if (riskyContribution && saveBtn.getAttribute('data-confirm-risk') !== 'true') {
@@ -4232,8 +4287,10 @@ function openInspector() {
         return;
       }
       store.saveIssueToBoard(issue);
-      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">check</span> Saved to board`;
+      saveBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">close</span> Remove from board`;
       saveBtn.classList.add('bg-tertiary/10', 'text-tertiary', 'border-tertiary/30');
+      saveBtn.classList.remove('bg-error-container/10', 'text-error', 'border-error/30');
+      saveBtn.removeAttribute('data-confirm-risk');
       saveBtn.classList.remove('bg-surface-container', 'border-outline-variant', 'text-on-surface');
       // Trigger a re-render of active screen (Find Issues cards list or Dashboard) to reflect Saved status
       renderActiveScreen();

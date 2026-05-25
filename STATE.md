@@ -1,5 +1,14 @@
 # PR Dashboard State
 
+## 2026-05-24 Platform Filter Candidate Triage
+
+- Added a local Target platforms filter for iOS, Android, macOS, Linux, Windows, and Web. All platforms default selected, multiple selections match by OR, the last checkbox cannot be cleared, Lookup can apply the filter, and Broaden Search resets platforms to all selected.
+- Extended inspector setup enrichment to scan discovered README/CONTRIBUTING content in memory for compact platform support/exclusion signals such as Linux only, Ubuntu required, Windows not supported, and Web only. The cache stores only normalized platform booleans and short reasons, not raw setup text.
+- Match Score and Contribution Brief now treat inspected platform mismatches as a strong pass signal: Setup Ease becomes Blocked, score evidence includes Target platform mismatch with the selected-platform reason, and the brief explains the setup-platform risk. Unknown compatibility remains neutral and visible until inspected.
+- Made saved actions reversible from result cards and the inspector: unsaved candidates show Save/Save issue, saved candidates show Remove/Remove from board, and removing from the board does not hide the issue. Moving a board card to Passed now hides that exact issue through hidden-item storage.
+- Verification on 2026-05-24: targeted platform/store/search/setup/score/brief/copy tests passed, `npm.cmd test` passed 250/250, `npm.cmd run build` passed, and `git diff --check` passed. In-app Browser smoke at `http://127.0.0.1:5178/#find-issues` verified all six platform checkboxes default selected, Windows could be left selected alone, and no console warnings/errors. Playwright screenshot smoke with mocked GitHub responses verified Windows-only filtering, inspector platform mismatch/Blocked scoring, reversible Save/Remove from board, Passed hiding exact `demo/platform-app#1`, and no console warnings/errors.
+- Remaining risk: platform compatibility detection is heuristic and depends on setup docs being inspected. Rendered validation used mocked GitHub responses in Chromium and did not use a live PAT or live repository docs.
+
 ## 2026-05-24 Impeccable Context Setup
 
 - Added root `PRODUCT.md` and `DESIGN.md` so future `$impeccable` work has explicit product strategy and current visual-system context.

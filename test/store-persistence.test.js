@@ -252,6 +252,27 @@ test('moving a card to Passed clears matching proof log entry', async () => {
   assert.equal(appStore.boardCards.Passed[0].id, 13997);
   assert.equal(listProofEntries(globalThis.localStorage).length, 0);
   assert.match(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Passed/);
+  assert.match(globalThis.localStorage.getItem('pr_dashboard_hidden_v1'), /teammates\/teammates#13997/);
+});
+
+test('removing a board card does not hide or pass the issue', async () => {
+  globalThis.localStorage = createLocalStorage();
+  const { AppStore } = await import('../src/state/store.js');
+
+  const appStore = new AppStore();
+  appStore.saveIssueToBoard({
+    id: 2468,
+    number: 2468,
+    title: 'Remove without passing',
+    repository: { full_name: 'openai/codex' },
+    html_url: 'https://github.com/openai/codex/issues/2468'
+  });
+
+  appStore.removeBoardCard(2468);
+
+  assert.equal(Object.values(appStore.boardCards).flat().length, 0);
+  assert.equal(globalThis.localStorage.getItem('pr_dashboard_hidden_v1'), null);
+  assert.doesNotMatch(globalThis.localStorage.getItem('pr_dashboard_match_feedback_v1'), /entered:Passed/);
 });
 
 test('save, repeated save, Working move, and hide actions record feedback once', async () => {

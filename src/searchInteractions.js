@@ -1,3 +1,5 @@
+import { TARGET_PLATFORM_KEYS } from './platformFilters.js';
+
 export function applyFilterPatch(appStore, patch) {
   if (typeof appStore.setDraftFilters === 'function') {
     appStore.setDraftFilters(patch);
@@ -56,7 +58,8 @@ export function getRelaxedFilters() {
     comments: 'Any',
     updatedDate: 'Any',
     includeClosed: false,
-    unassigned: false
+    unassigned: false,
+    targetPlatforms: [...TARGET_PLATFORM_KEYS]
   };
 }
 
