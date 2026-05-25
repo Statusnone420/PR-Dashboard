@@ -78,6 +78,14 @@ export function reservePlatformSetupScanBudget(budget, searchKey, candidates = [
   return reserved;
 }
 
+export function recordPlatformSetupScanFailure(failures, key, scanRunId, activeRunId) {
+  if (!failures || typeof failures.add !== 'function') return false;
+  const normalizedKey = String(key || '');
+  if (!normalizedKey || scanRunId !== activeRunId) return false;
+  failures.add(normalizedKey);
+  return true;
+}
+
 export function setPlatformSetupSessionSummary(results, key, summary, options = {}) {
   if (!results || typeof results.set !== 'function') return null;
   const normalizedKey = String(key || '');

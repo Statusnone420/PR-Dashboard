@@ -38,6 +38,7 @@ import {
   createPlatformSetupScanBudget,
   getPlatformSetupScanCandidates,
   getPlatformSetupSessionSummary,
+  recordPlatformSetupScanFailure,
   reservePlatformSetupScanBudget,
   resetPlatformSetupScanBudget,
   setPlatformSetupSessionSummary
@@ -791,6 +792,7 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters, opti
   budgetedCandidates.forEach(issue => {
     const key = getPlatformFilterSetupScanKey(issue);
     if (!key) return;
+    const scanRunId = platformFilterSetupSearchRunId;
 
     const scan = fetchRepoSetupEnrichment(issue, {
       token: store.githubToken,
@@ -803,7 +805,7 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters, opti
         updateInspectorRateLimit(result.rateLimit);
       })
       .catch(() => {
-        platformFilterSetupScanFailures.add(key);
+        recordPlatformSetupScanFailure(platformFilterSetupScanFailures, key, scanRunId, platformFilterSetupSearchRunId);
       })
       .finally(() => {
         platformFilterSetupScans.delete(key);

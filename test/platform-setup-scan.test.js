@@ -108,3 +108,14 @@ test('platform setup scan budget caps cumulative scans for one search', async ()
   assert.deepEqual(thirdRender.map(issue => issue.number), []);
   assert.deepEqual(nextSearch.map(issue => issue.number), [4, 5]);
 });
+
+test('platform setup scan failures are scoped to the active search run', async () => {
+  const { recordPlatformSetupScanFailure } = await import('../src/platformSetupScan.js');
+  const failures = new Set();
+
+  assert.equal(recordPlatformSetupScanFailure(failures, 'demo/platform#1', 1, 2), false);
+  assert.equal(failures.has('demo/platform#1'), false);
+
+  assert.equal(recordPlatformSetupScanFailure(failures, 'demo/platform#1', 2, 2), true);
+  assert.equal(failures.has('demo/platform#1'), true);
+});
