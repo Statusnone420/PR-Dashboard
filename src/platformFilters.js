@@ -12,6 +12,14 @@ export const TARGET_PLATFORM_KEYS = TARGET_PLATFORM_OPTIONS.map(platform => plat
 const PLATFORM_KEY_SET = new Set(TARGET_PLATFORM_KEYS);
 
 const PLATFORM_LABELS = Object.fromEntries(TARGET_PLATFORM_OPTIONS.map(platform => [platform.key, platform.label]));
+const PLATFORM_TOPIC_ALIASES = {
+  ios: new Set(['ios']),
+  android: new Set(['android']),
+  macos: new Set(['macos', 'mac-os']),
+  linux: new Set(['linux']),
+  windows: new Set(['windows']),
+  web: new Set(['web'])
+};
 
 export function normalizeTargetPlatforms(value) {
   const selected = Array.isArray(value)
@@ -50,6 +58,20 @@ function normalizePlatformFlags(value) {
   }, {});
 }
 
+function normalizeTopic(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+export function getIssuePlatformTopicSupport(issue) {
+  const topics = Array.isArray(issue?.repository?.topics) ? issue.repository.topics : [];
+  const normalizedTopics = new Set(topics.map(normalizeTopic).filter(Boolean));
+  return TARGET_PLATFORM_KEYS.reduce((flags, key) => {
+    const aliases = PLATFORM_TOPIC_ALIASES[key] || new Set();
+    flags[key] = [...aliases].some(alias => normalizedTopics.has(alias));
+    return flags;
+  }, {});
+}
+
 function formatPlatformList(keys = []) {
   return keys.map(key => PLATFORM_LABELS[key] || key).join(' + ');
 }
@@ -68,10 +90,34 @@ function createPlatformEvidence(status, values) {
   };
 }
 
-export function getPlatformEvidence(setupSummary, targetPlatforms) {
+function getMergedPlatformSupport(setupSummary, options = {}) {
+  const support = normalizePlatformFlags(setupSummary?.platformSupport);
+  const unsupported = normalizePlatformFlags(setupSummary?.platformUnsupported);
+  const topicSupport = normalizePlatformFlags(options.topicSupport || getIssuePlatformTopicSupport(options.issue));
+  TARGET_PLATFORM_KEYS.forEach(key => {
+    if (!unsupported[key] && topicSupport[key]) {
+      support[key] = true;
+    }
+  });
+  return { support, unsupported };
+}
+
+export function getPlatformEvidence(setupSummary, targetPlatforms, options = {}) {
   const selected = normalizeTargetPlatforms(targetPlatforms);
   const filterActive = selected.length < TARGET_PLATFORM_KEYS.length;
-  if (!setupSummary?.inspected) {
+  const { support, unsupported } = getMergedPlatformSupport(setupSummary, options);
+  const supportedKeys = TARGET_PLATFORM_KEYS.filter(key => support[key]);
+  const unsupportedKeys = TARGET_PLATFORM_KEYS.filter(key => unsupported[key]);
+  const matchedKeys = selected.filter(key => support[key]);
+  const topicReasons = supportedKeys
+    .filter(key => options.issue && !setupSummary?.platformSupport?.[key])
+    .map(key => `${PLATFORM_LABELS[key]} topic confirmed`);
+  const reasons = [
+    ...(Array.isArray(setupSummary?.reasons) ? setupSummary.reasons : []),
+    ...topicReasons
+  ];
+
+  if (!setupSummary?.inspected && supportedKeys.length === 0) {
     return createPlatformEvidence('pending', {
       selectedPlatforms: selected,
       filterActive,
@@ -79,13 +125,7 @@ export function getPlatformEvidence(setupSummary, targetPlatforms) {
     });
   }
 
-  const support = normalizePlatformFlags(setupSummary?.platformSupport);
-  const unsupported = normalizePlatformFlags(setupSummary?.platformUnsupported);
-  const supportedKeys = TARGET_PLATFORM_KEYS.filter(key => support[key]);
-  const unsupportedKeys = TARGET_PLATFORM_KEYS.filter(key => unsupported[key]);
-  const matchedKeys = selected.filter(key => support[key]);
   const unsupportedSelected = selected.filter(key => unsupported[key]);
-  const reasons = Array.isArray(setupSummary?.reasons) ? setupSummary.reasons : [];
   const base = {
     selectedPlatforms: selected,
     supportedPlatforms: supportedKeys,
@@ -121,12 +161,29 @@ export function getPlatformEvidence(setupSummary, targetPlatforms) {
   });
 }
 
-export function issueMatchesTargetPlatforms(setupSummary, targetPlatforms) {
-  return getPlatformEvidence(setupSummary, targetPlatforms).status !== 'mismatch';
+export function getPlatformBadgeEvidence(issue, setupSummary = null) {
+  const evidence = getPlatformEvidence(setupSummary, TARGET_PLATFORM_KEYS, { issue });
+  if (!evidence.supportedPlatforms.length) {
+    return createPlatformEvidence(evidence.status, {
+      ...evidence,
+      label: evidence.status === 'pending' ? 'Platform pending' : 'Platform-neutral'
+    });
+  }
+  return createPlatformEvidence('confirmed', {
+    ...evidence,
+    status: 'confirmed',
+    filterActive: false,
+    matchedPlatforms: evidence.supportedPlatforms,
+    label: `${formatPlatformList(evidence.supportedPlatforms)} confirmed`
+  });
 }
 
-export function getPlatformMismatchReason(setupSummary, targetPlatforms) {
-  const evidence = getPlatformEvidence(setupSummary, targetPlatforms);
+export function issueMatchesTargetPlatforms(setupSummary, targetPlatforms, options = {}) {
+  return getPlatformEvidence(setupSummary, targetPlatforms, options).status !== 'mismatch';
+}
+
+export function getPlatformMismatchReason(setupSummary, targetPlatforms, options = {}) {
+  const evidence = getPlatformEvidence(setupSummary, targetPlatforms, options);
   if (evidence.status !== 'mismatch') return '';
   const selected = normalizeTargetPlatforms(targetPlatforms);
   const selectedLabel = selected.map(key => PLATFORM_LABELS[key]).join(', ');

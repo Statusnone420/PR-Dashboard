@@ -341,7 +341,7 @@ test('repo setup web detection ignores incidental frontend technology mentions',
   const { issueMatchesTargetPlatforms } = await import('../src/platformFilters.js');
   const readme = Buffer.from([
     '# Contributing',
-    'The docs include React examples, Vite command output, and HTML/CSS snippets.',
+    'The docs include React examples, Vite command output, HTML/CSS snippets, Streamlit examples, requirements.txt, and ubuntu-latest CI output.',
     'Run the test suite before opening a PR.'
   ].join('\n')).toString('base64');
 
@@ -361,6 +361,7 @@ test('repo setup web detection ignores incidental frontend technology mentions',
   });
 
   assert.equal(result.summary.platformSupport.web, false);
+  assert.equal(result.summary.platformSupport.linux, false);
   assert.equal(issueMatchesTargetPlatforms(result.summary, ['windows']), true);
 });
 

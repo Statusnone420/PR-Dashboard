@@ -109,3 +109,41 @@ test('support-only platform evidence does not hide unconfirmed target platforms'
   assert.deepEqual(evidence.supportedPlatforms, ['linux']);
   assert.equal(issueMatchesTargetPlatforms(linuxSupportedOnly, ['windows']), true);
 });
+
+test('platform badge evidence uses confirmed setup and explicit repo topics without target filters', async () => {
+  const { getPlatformBadgeEvidence, getPlatformEvidence } = await import('../src/platformFilters.js');
+  const issue = {
+    repository: {
+      topics: ['python', 'linux', 'macos', 'streamlit', 'ubuntu-latest']
+    }
+  };
+
+  const badgeEvidence = getPlatformBadgeEvidence(issue, null);
+  const scoreEvidence = getPlatformEvidence(null, ['ios', 'android', 'macos', 'linux', 'windows', 'web'], { issue });
+
+  assert.equal(badgeEvidence.status, 'confirmed');
+  assert.deepEqual(badgeEvidence.supportedPlatforms, ['macos', 'linux']);
+  assert.equal(badgeEvidence.label, 'macOS + Linux confirmed');
+  assert.equal(scoreEvidence.status, 'confirmed');
+  assert.deepEqual(scoreEvidence.supportedPlatforms, ['macos', 'linux']);
+});
+
+test('platform badge evidence ignores generic stack topics and respects setup unsupported signals', async () => {
+  const { getPlatformBadgeEvidence } = await import('../src/platformFilters.js');
+  const genericIssue = {
+    repository: {
+      topics: ['python', 'streamlit', 'requirements', 'ubuntu-latest', 'frontend']
+    }
+  };
+  const explicitUnsupportedSetup = {
+    inspected: true,
+    platformSupport: {},
+    platformUnsupported: { windows: true },
+    reasons: ['Windows setup unsupported']
+  };
+
+  assert.deepEqual(getPlatformBadgeEvidence(genericIssue, null).supportedPlatforms, []);
+  assert.deepEqual(getPlatformBadgeEvidence({
+    repository: { topics: ['windows', 'linux'] }
+  }, explicitUnsupportedSetup).supportedPlatforms, ['linux']);
+});

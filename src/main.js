@@ -28,13 +28,14 @@ import { getBoardMode } from './boardMode.js';
 import { attachResize } from './inspectorResize.js';
 import {
   TARGET_PLATFORM_OPTIONS,
-  getPlatformEvidence,
+  getPlatformBadgeEvidence,
   getNextTargetPlatforms,
   hasAllTargetPlatformsSelected,
   issueMatchesTargetPlatforms,
   normalizeTargetPlatforms
 } from './platformFilters.js';
 import {
+  DEFAULT_PLATFORM_SETUP_SCAN_CONCURRENCY,
   DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
   createPlatformSetupScanBudget,
   getPlatformSetupScanCandidates,
@@ -75,6 +76,7 @@ let inspectorTitleResizeObserver = null;
 const platformFilterSetupScans = new Map();
 const platformFilterSetupScanFailures = new Set();
 const platformFilterSetupScanResults = new Map();
+const platformFilterSetupScanRepoResults = new Map();
 const platformFilterSetupScanBudget = createPlatformSetupScanBudget({ limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT });
 let platformFilterSetupRerenderTimer = null;
 let platformFilterSetupSearchRunId = 0;
@@ -166,8 +168,7 @@ function getPlatformEvidenceTone(status) {
   return 'border-outline-variant bg-surface-dim text-on-surface-variant';
 }
 
-function renderPlatformEvidenceIcon(evidence) {
-  const iconKey = evidence.matchedPlatforms?.[0] || evidence.supportedPlatforms?.[0] || '';
+function renderPlatformEvidenceIcon(iconKey) {
   const path = PLATFORM_ICON_PATHS[iconKey];
   if (path) {
     return `<img class="platform-evidence-icon" src="${escapeHTML(path)}" alt="" loading="lazy" decoding="async" />`;
@@ -175,20 +176,23 @@ function renderPlatformEvidenceIcon(evidence) {
   if (iconKey === 'web') {
     return '<span class="material-symbols-outlined text-[13px]">public</span>';
   }
-  if (evidence.status === 'pending') {
-    return '<span class="material-symbols-outlined text-[13px]">hourglass_empty</span>';
-  }
   return '<span class="material-symbols-outlined text-[13px]">code</span>';
 }
 
-function renderPlatformEvidenceBadge(evidence) {
-  if (!evidence || (!evidence.filterActive && evidence.status === 'pending')) return '';
-  if (!evidence.filterActive && evidence.status === 'platform-neutral' && !evidence.supportedPlatforms?.length) return '';
+function renderPlatformEvidenceIcons(evidence) {
+  return (evidence.supportedPlatforms || [])
+    .map(platform => renderPlatformEvidenceIcon(platform))
+    .join('');
+}
+
+function renderPlatformEvidenceBadge(evidence, options = {}) {
+  if (!evidence?.supportedPlatforms?.length) return '';
+  const showText = Boolean(options.showText);
   const tone = getPlatformEvidenceTone(evidence.status);
   return `
     <span class="platform-evidence-chip interactive-chip rounded border ${tone} px-2 py-0.5 text-xs" aria-label="${escapeHTML(evidence.label)}" data-tooltip="${escapeHTML(evidence.reasons?.[0] || evidence.label)}" data-tooltip-position="top">
-      ${renderPlatformEvidenceIcon(evidence)}
-      <span>${escapeHTML(evidence.label)}</span>
+      ${renderPlatformEvidenceIcons(evidence)}
+      ${showText ? `<span>${escapeHTML(evidence.label)}</span>` : ''}
     </span>
   `;
 }
@@ -772,11 +776,19 @@ function getPlatformFilterSetupScanKey(issue) {
   return getCanonicalIssueKey(issue) || String(issue?.id || issue?.html_url || '');
 }
 
+function getPlatformFilterSetupRepoScanKey(issue) {
+  return getCanonicalRepoKey(issue) || getPlatformFilterSetupScanKey(issue);
+}
+
 function getPlatformFilterSetupSummary(issue, cachedSetupResolver = null) {
   const cached = cachedSetupResolver
     ? cachedSetupResolver(issue)
     : getCachedRepoSetupEnrichment(issue, localStorage);
   if (cached?.summary) return cached.summary;
+
+  const repoKey = getPlatformFilterSetupRepoScanKey(issue);
+  const repoSummary = repoKey ? getPlatformSetupSessionSummary(platformFilterSetupScanRepoResults, repoKey) : null;
+  if (repoSummary) return repoSummary;
 
   const key = getPlatformFilterSetupScanKey(issue);
   return key ? getPlatformSetupSessionSummary(platformFilterSetupScanResults, key) : null;
@@ -810,6 +822,66 @@ function resetPlatformFilterSetupScanBudget() {
   resetPlatformSetupScanBudget(platformFilterSetupScanBudget, platformFilterSetupSearchRunId);
 }
 
+function isPlatformSetupRateLimitError(error) {
+  return /rate.?limit|secondary rate|abuse detection|too many requests|status code 403|status code 429/i
+    .test(String(error?.message || error || ''));
+}
+
+async function scanPlatformFilterSetupIssue(issue, key, scanRunId) {
+  let rateLimited = false;
+  try {
+    const result = await fetchRepoSetupEnrichment(issue, {
+      token: store.githubToken,
+      storage: localStorage
+    });
+    if (result?.summary) {
+      setPlatformSetupSessionSummary(platformFilterSetupScanResults, getPlatformFilterSetupScanKey(issue), result.summary);
+      setPlatformSetupSessionSummary(platformFilterSetupScanRepoResults, key, result.summary);
+    }
+    updateInspectorRateLimit(result.rateLimit);
+  } catch (error) {
+    rateLimited = isPlatformSetupRateLimitError(error);
+    recordPlatformSetupScanFailure(platformFilterSetupScanFailures, key, scanRunId, platformFilterSetupSearchRunId);
+  } finally {
+    platformFilterSetupScans.delete(key);
+    const stillInCurrentResults = (store.searchResults || [])
+      .some(item => getPlatformFilterSetupRepoScanKey(item) === key);
+    if (store.currentScreen === 'find-issues' && stillInCurrentResults) {
+      schedulePlatformFilterSetupRerender();
+    }
+  }
+  return { rateLimited };
+}
+
+function runPlatformFilterSetupScanQueue(candidates, scanRunId) {
+  if (!candidates.length) return;
+  let nextIndex = 0;
+  let stopForRateLimit = false;
+
+  const workers = Array.from({
+    length: Math.min(DEFAULT_PLATFORM_SETUP_SCAN_CONCURRENCY, candidates.length)
+  }, async () => {
+    while (!stopForRateLimit && nextIndex < candidates.length) {
+      const issue = candidates[nextIndex];
+      nextIndex += 1;
+      const key = getPlatformFilterSetupRepoScanKey(issue);
+      if (!key || platformFilterSetupScans.has(key)) continue;
+      const scan = scanPlatformFilterSetupIssue(issue, key, scanRunId);
+      platformFilterSetupScans.set(key, scan);
+      const result = await scan;
+      if (result.rateLimited) {
+        stopForRateLimit = true;
+      }
+    }
+  });
+
+  Promise.allSettled(workers).then(() => {
+    if (store.currentScreen === 'find-issues') {
+      schedulePlatformFilterSetupRerender();
+    }
+  });
+}
+
 function queuePlatformFilterSetupInspection(items, filters = store.filters, options = {}) {
   if (!shouldApplyTargetPlatformResultFilter(filters, options.mode || store.lastSearchMode || 'find')) return;
 
@@ -817,10 +889,10 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters, opti
   const visibleItems = filterHiddenIssues(items || []);
   const candidates = getPlatformSetupScanCandidates(visibleItems, filters, {
     limit: DEFAULT_PLATFORM_SETUP_SCAN_LIMIT,
-    getKey: getPlatformFilterSetupScanKey,
+    getKey: getPlatformFilterSetupRepoScanKey,
     hasCachedSetup: issue => Boolean(setupSummaryResolver(issue)),
     isAlreadyScanning: issue => {
-      const key = getPlatformFilterSetupScanKey(issue);
+      const key = getPlatformFilterSetupRepoScanKey(issue);
       return Boolean(key && (platformFilterSetupScans.has(key) || platformFilterSetupScanFailures.has(key)));
     }
   });
@@ -829,38 +901,10 @@ function queuePlatformFilterSetupInspection(items, filters = store.filters, opti
     platformFilterSetupScanBudget,
     platformFilterSetupSearchRunId,
     candidates,
-    { getKey: getPlatformFilterSetupScanKey }
+    { getKey: getPlatformFilterSetupRepoScanKey }
   );
 
-  budgetedCandidates.forEach(issue => {
-    const key = getPlatformFilterSetupScanKey(issue);
-    if (!key) return;
-    const scanRunId = platformFilterSetupSearchRunId;
-
-    const scan = fetchRepoSetupEnrichment(issue, {
-      token: store.githubToken,
-      storage: localStorage
-    })
-      .then(result => {
-        if (result?.summary) {
-          setPlatformSetupSessionSummary(platformFilterSetupScanResults, key, result.summary);
-        }
-        updateInspectorRateLimit(result.rateLimit);
-      })
-      .catch(() => {
-        recordPlatformSetupScanFailure(platformFilterSetupScanFailures, key, scanRunId, platformFilterSetupSearchRunId);
-      })
-      .finally(() => {
-        platformFilterSetupScans.delete(key);
-        const stillInCurrentResults = (store.searchResults || [])
-          .some(item => getPlatformFilterSetupScanKey(item) === key);
-        if (store.currentScreen === 'find-issues' && stillInCurrentResults) {
-          schedulePlatformFilterSetupRerender();
-        }
-      });
-
-    platformFilterSetupScans.set(key, scan);
-  });
+  runPlatformFilterSetupScanQueue(budgetedCandidates, platformFilterSetupSearchRunId);
 }
 
 function filterVisibleIssueResults(items, filters = store.filters, options = {}) {
@@ -873,7 +917,7 @@ function filterVisibleIssueResults(items, filters = store.filters, options = {})
   const setupSummaryResolver = options.setupSummaryResolver || createPlatformFilterSetupSummaryResolver();
   return filterHiddenIssues(items).filter(issue => {
     const setupSummary = setupSummaryResolver(issue);
-    return issueMatchesTargetPlatforms(setupSummary, targetPlatforms);
+    return issueMatchesTargetPlatforms(setupSummary, targetPlatforms, { issue });
   });
 }
 
@@ -2462,7 +2506,7 @@ function renderIssueCardsList(issuesList, options = {}) {
       targetPlatforms: scoreTargetPlatforms,
       enrichment: setupSummary ? { setup: setupSummary } : undefined
     });
-    const platformEvidence = getPlatformEvidence(setupSummary, scoreTargetPlatforms);
+    const platformEvidence = getPlatformBadgeEvidence(issue, setupSummary);
     return { ...issue, fitScore: fitObj.score, fitRating: fitObj, platformEvidence };
   });
 
@@ -2496,7 +2540,7 @@ function renderIssueCardsList(issuesList, options = {}) {
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
     const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
-    const platformEvidenceHTML = renderPlatformEvidenceBadge(issue.platformEvidence);
+    const platformEvidenceHTML = renderPlatformEvidenceBadge(issue.platformEvidence, { showText: false });
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
@@ -4142,11 +4186,12 @@ function openInspector() {
   });
   const inspectorScoreMode = getCurrentScoreMode();
   const inspectorTargetPlatforms = getScoreTargetPlatformsForMode(store.filters, inspectorScoreMode);
+  const inspectorSetupSummary = repoSetupEnrichmentState?.status === 'loaded' ? repoSetupEnrichmentState.summary : null;
   const fitObj = calculateFitScore(issue, {
     enrichment: inspectorEnrichment,
     targetPlatforms: inspectorTargetPlatforms
   });
-  const platformEvidenceHTML = renderPlatformEvidenceBadge(getPlatformEvidence(repoSetupEnrichmentState, inspectorTargetPlatforms));
+  const platformEvidenceHTML = renderPlatformEvidenceBadge(getPlatformBadgeEvidence(issue, inspectorSetupSummary), { showText: true });
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const contributionBrief = buildContributionBrief(issue, fitObj);

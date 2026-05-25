@@ -453,7 +453,9 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.match(mainJs, /schedulePlatformFilterSetupRerender/);
   assert.match(mainJs, /reservePlatformSetupScanBudget/);
   assert.match(mainJs, /resetPlatformFilterSetupScanBudget/);
-  assert.match(mainJs, /const scanRunId = platformFilterSetupSearchRunId/);
+  assert.match(mainJs, /runPlatformFilterSetupScanQueue\(budgetedCandidates, platformFilterSetupSearchRunId\)/);
+  assert.match(mainJs, /DEFAULT_PLATFORM_SETUP_SCAN_CONCURRENCY/);
+  assert.match(mainJs, /platformFilterSetupScanRepoResults/);
   assert.match(mainJs, /recordPlatformSetupScanFailure/);
   assert.doesNotMatch(mainJs, /platformFilterSetupScanFailures\.add\(key\)/);
   assert.doesNotMatch(mainJs, /store\.lastSearchMode === 'lookup' \? items : filterHiddenIssues\(items\)/);
@@ -468,6 +470,19 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.doesNotMatch(mainJs, /proof-log-add-btn/);
   assert.doesNotMatch(mainJs, /inspector-proof-log-btn/);
   assert.doesNotMatch(mainJs, /source:\s*['"]manual_lookup['"]/);
+});
+
+test('platform badges are icon-only on result cards and independent of active filters', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const cardsRenderer = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
+  const badgeRenderer = sliceBetween(mainJs, 'function renderPlatformEvidenceBadge', 'function getIssueLabelNames');
+
+  assert.match(mainJs, /getPlatformBadgeEvidence/);
+  assert.match(cardsRenderer, /getPlatformBadgeEvidence\(issue, setupSummary\)/);
+  assert.match(cardsRenderer, /renderPlatformEvidenceBadge\(issue\.platformEvidence, \{ showText: false \}\)/);
+  assert.match(badgeRenderer, /if \(!evidence\?\.supportedPlatforms\?\.length\) return ''/);
+  assert.match(badgeRenderer, /const showText = Boolean\(options\.showText\)/);
+  assert.match(badgeRenderer, /showText \? `<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>` : ''/);
 });
 
 test('profile avatar markup is safe and falls back to initials', () => {

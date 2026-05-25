@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('platform setup scan candidates are bounded to restrictive platform filters only', async () => {
-  const { getPlatformSetupScanCandidates } = await import('../src/platformSetupScan.js');
+test('platform setup scan candidates include default all-platform searches and cap at thirty', async () => {
+  const { DEFAULT_PLATFORM_SETUP_SCAN_LIMIT, getPlatformSetupScanCandidates } = await import('../src/platformSetupScan.js');
 
-  const issues = Array.from({ length: 10 }, (_, index) => ({
+  const issues = Array.from({ length: 40 }, (_, index) => ({
     id: index + 1,
     title: `Issue ${index + 1}`,
     html_url: `https://github.com/demo/platform/issues/${index + 1}`,
@@ -13,12 +13,16 @@ test('platform setup scan candidates are bounded to restrictive platform filters
   }));
   const cachedKeys = new Set(['demo/platform#2']);
 
+  assert.equal(DEFAULT_PLATFORM_SETUP_SCAN_LIMIT, 30);
   assert.deepEqual(getPlatformSetupScanCandidates(issues, {
     targetPlatforms: ['ios', 'android', 'macos', 'linux', 'windows', 'web']
   }, {
-    limit: 4,
     hasCachedSetup: issue => cachedKeys.has(`demo/platform#${issue.number}`)
-  }), []);
+  }).map(issue => issue.number), [
+    1, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+  ]);
 
   const candidates = getPlatformSetupScanCandidates(issues, {
     targetPlatforms: ['windows']

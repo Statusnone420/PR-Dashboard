@@ -107,7 +107,7 @@ function detectPlatformCompatibility(text) {
     ios: [/\bios\b/, /\biphone\b/, /\bipad\b/],
     android: [/\bandroid\b/],
     macos: [/\bmacos\b/, /\bmac os\b/, /\bos x\b/, /\bdarwin\b/],
-    linux: [/\blinux\b/, /\bubuntu\b/, /\bdebian\b/, /\bfedora\b/],
+    linux: [/\blinux\b/, /\bdebian\b/, /\bfedora\b/],
     windows: [/\bwindows\b/, /\bwin32\b/, /\bpowershell\b/],
     web: [
       /\bweb (?:app|application|client|frontend|front-end|ui)\b/,
@@ -147,7 +147,7 @@ function detectPlatformCompatibility(text) {
     }
   });
 
-  if (/\bwsl\b/.test(source) || /\bubuntu\b/.test(source)) {
+  if (/\bwsl\b/.test(source) || /\b(?:use|using|requires?|run(?:s)? on|tested on)\s+ubuntu\b|\bubuntu\s+required\b/.test(source)) {
     platformSupport.linux = true;
   }
 
