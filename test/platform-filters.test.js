@@ -46,12 +46,12 @@ test('platform mismatch requires known incompatibility with every selected platf
     platformUnsupported: {},
     reasons: ['Linux setup supported']
   }, ['windows']), /Linux setup supported/);
-  assert.equal(getPlatformMismatchReason({
+  assert.match(getPlatformMismatchReason({
     inspected: true,
     platformSupport: { linux: true },
     platformUnsupported: {},
     reasons: ['Linux setup supported']
-  }, ['windows']), '');
+  }, ['windows']), /Windows/);
   assert.equal(issueMatchesTargetPlatforms({
     inspected: true,
     platformSupport: {},
@@ -94,7 +94,7 @@ test('platform evidence keeps neutral results and hides only explicit mismatches
   assert.equal(issueMatchesTargetPlatforms(null, ['linux']), true);
 });
 
-test('support-only platform evidence does not hide unconfirmed target platforms', async () => {
+test('support-only platform evidence hides when all confirmed support is unchecked', async () => {
   const { getPlatformEvidence, issueMatchesTargetPlatforms } = await import('../src/platformFilters.js');
   const linuxSupportedOnly = {
     inspected: true,
@@ -105,9 +105,44 @@ test('support-only platform evidence does not hide unconfirmed target platforms'
 
   const evidence = getPlatformEvidence(linuxSupportedOnly, ['windows']);
 
-  assert.equal(evidence.status, 'platform-neutral');
+  assert.equal(evidence.status, 'mismatch');
   assert.deepEqual(evidence.supportedPlatforms, ['linux']);
-  assert.equal(issueMatchesTargetPlatforms(linuxSupportedOnly, ['windows']), true);
+  assert.equal(issueMatchesTargetPlatforms(linuxSupportedOnly, ['windows']), false);
+  assert.equal(issueMatchesTargetPlatforms(linuxSupportedOnly, ['ios', 'macos', 'windows', 'web']), false);
+  assert.equal(issueMatchesTargetPlatforms(linuxSupportedOnly, ['linux', 'windows']), true);
+});
+
+test('unchecked-only platform filter keeps selected-platform and neutral results visible', async () => {
+  const { getPlatformMismatchReason, issueMatchesTargetPlatforms } = await import('../src/platformFilters.js');
+  const androidOnly = {
+    inspected: true,
+    platformSupport: { android: true },
+    platformUnsupported: {},
+    reasons: ['Android setup supported']
+  };
+  const windowsAndLinux = {
+    inspected: true,
+    platformSupport: { windows: true, linux: true },
+    platformUnsupported: {},
+    reasons: ['Windows setup supported', 'Linux setup supported']
+  };
+  const neutral = {
+    inspected: true,
+    platformSupport: {},
+    platformUnsupported: {},
+    reasons: ['Setup docs found']
+  };
+
+  assert.equal(issueMatchesTargetPlatforms(androidOnly, ['ios', 'macos', 'windows', 'web']), false);
+  assert.equal(issueMatchesTargetPlatforms(windowsAndLinux, ['ios', 'macos', 'windows', 'web']), true);
+  assert.equal(issueMatchesTargetPlatforms(neutral, ['ios', 'macos', 'windows', 'web']), true);
+  assert.equal(issueMatchesTargetPlatforms(null, ['ios', 'macos', 'windows', 'web']), true);
+  assert.equal(issueMatchesTargetPlatforms(null, ['ios', 'macos', 'windows', 'web'], {
+    issue: { repository: { topics: ['android'] } }
+  }), false);
+  assert.match(getPlatformMismatchReason(null, ['windows'], {
+    issue: { repository: { topics: ['android'] } }
+  }), /Android.*Windows/);
 });
 
 test('platform badge evidence uses confirmed setup and explicit repo topics without target filters', async () => {

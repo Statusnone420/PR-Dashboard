@@ -479,10 +479,13 @@ test('platform badges are icon-only on result cards and independent of active fi
 
   assert.match(mainJs, /getPlatformBadgeEvidence/);
   assert.match(cardsRenderer, /getPlatformBadgeEvidence\(issue, setupSummary\)/);
-  assert.match(cardsRenderer, /renderPlatformEvidenceBadge\(issue\.platformEvidence, \{ showText: false \}\)/);
+  assert.match(cardsRenderer, /renderPlatformEvidenceBadge\(issue\.platformEvidence\)/);
   assert.match(badgeRenderer, /if \(!evidence\?\.supportedPlatforms\?\.length\) return ''/);
-  assert.match(badgeRenderer, /const showText = Boolean\(options\.showText\)/);
-  assert.match(badgeRenderer, /showText \? `<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>` : ''/);
+  assert.match(badgeRenderer, /\.map\(platform => `\s*<span class="platform-evidence-chip/);
+  assert.match(badgeRenderer, /aria-label="\$\{escapeHTML\(getPlatformSupportedLabel\(platform\)\)\}"/);
+  assert.doesNotMatch(badgeRenderer, /data-tooltip/);
+  assert.doesNotMatch(badgeRenderer, /<span>\$\{escapeHTML\(evidence\.label\)\}<\/span>/);
+  assert.doesNotMatch(badgeRenderer, /renderPlatformEvidenceIcons/);
 });
 
 test('profile avatar markup is safe and falls back to initials', () => {

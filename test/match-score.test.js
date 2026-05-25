@@ -670,7 +670,7 @@ test('known platform mismatch becomes a likely pass only when target platforms e
   assert.equal(compatible.isContributionCandidate, true);
 });
 
-test('support-only platform mismatch uses selected-platform wording', async () => {
+test('support-only platform mismatch blocks unchecked-only platform support', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 
   const result = calculateMatchScore(clearBug(), {
@@ -693,9 +693,10 @@ test('support-only platform mismatch uses selected-platform wording', async () =
   const rowText = result.rows.map(row => row.label).join(' ');
   const setupText = result.miniScores.setupEase.reasons.join(' ');
 
-  assert.equal(result.isContributionCandidate, true);
-  assert.doesNotMatch(rowText, /Target platform mismatch/);
-  assert.doesNotMatch(setupText, /Blocked/);
+  assert.equal(result.isContributionCandidate, false);
+  assert.match(rowText, /Target platform mismatch/);
+  assert.match(setupText, /Windows/);
+  assert.equal(result.miniScores.setupEase.label, 'Blocked');
 });
 
 test('confirmed selected platform support gets a small score boost', async () => {

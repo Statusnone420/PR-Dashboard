@@ -161,11 +161,9 @@ const PLATFORM_ICON_PATHS = {
   windows: '/platform-icons/windows.png'
 };
 
-function getPlatformEvidenceTone(status) {
-  if (status === 'confirmed') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
-  if (status === 'mismatch') return 'border-error/25 bg-error-container/10 text-error';
-  if (status === 'pending') return 'border-primary/20 bg-primary/10 text-primary';
-  return 'border-outline-variant bg-surface-dim text-on-surface-variant';
+function getPlatformSupportedLabel(platform) {
+  const option = TARGET_PLATFORM_OPTIONS.find(item => item.key === platform);
+  return `${option?.label || platform} supported`;
 }
 
 function renderPlatformEvidenceIcon(iconKey) {
@@ -179,22 +177,13 @@ function renderPlatformEvidenceIcon(iconKey) {
   return '<span class="material-symbols-outlined text-[13px]">code</span>';
 }
 
-function renderPlatformEvidenceIcons(evidence) {
-  return (evidence.supportedPlatforms || [])
-    .map(platform => renderPlatformEvidenceIcon(platform))
-    .join('');
-}
-
-function renderPlatformEvidenceBadge(evidence, options = {}) {
+function renderPlatformEvidenceBadge(evidence) {
   if (!evidence?.supportedPlatforms?.length) return '';
-  const showText = Boolean(options.showText);
-  const tone = getPlatformEvidenceTone(evidence.status);
-  return `
-    <span class="platform-evidence-chip interactive-chip rounded border ${tone} px-2 py-0.5 text-xs" aria-label="${escapeHTML(evidence.label)}" data-tooltip="${escapeHTML(evidence.reasons?.[0] || evidence.label)}" data-tooltip-position="top">
-      ${renderPlatformEvidenceIcons(evidence)}
-      ${showText ? `<span>${escapeHTML(evidence.label)}</span>` : ''}
+  return (evidence.supportedPlatforms || []).map(platform => `
+    <span class="platform-evidence-chip rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant" aria-label="${escapeHTML(getPlatformSupportedLabel(platform))}">
+      ${renderPlatformEvidenceIcon(platform)}
     </span>
-  `;
+  `).join('');
 }
 
 function getIssueLabelNames(labels = []) {
@@ -2540,7 +2529,7 @@ function renderIssueCardsList(issuesList, options = {}) {
     const issueUrl = getSafeIssueHtmlUrl(issue);
     const repoMetadataUnavailable = Boolean(issue.repository_metadata_unavailable || issue.repository?.metadataUnavailable);
     const topReason = contributionBrief.why[0] || fitObj.rows.find(row => row.points > 0)?.label || contributionBrief.firstMove;
-    const platformEvidenceHTML = renderPlatformEvidenceBadge(issue.platformEvidence, { showText: false });
+    const platformEvidenceHTML = renderPlatformEvidenceBadge(issue.platformEvidence);
     const lookupRisky = store.lastSearchMode === 'lookup' && !fitObj.isContributionCandidate;
     const lookupWarningHTML = lookupRisky ? `
       <div class="rounded border border-error/25 bg-error-container/10 px-3 py-2 text-xs text-error flex items-center gap-2">
@@ -4191,7 +4180,7 @@ function openInspector() {
     enrichment: inspectorEnrichment,
     targetPlatforms: inspectorTargetPlatforms
   });
-  const platformEvidenceHTML = renderPlatformEvidenceBadge(getPlatformBadgeEvidence(issue, inspectorSetupSummary), { showText: true });
+  const platformEvidenceHTML = renderPlatformEvidenceBadge(getPlatformBadgeEvidence(issue, inspectorSetupSummary));
   const { score } = fitObj;
   const rating = getFitScoreRating(score);
   const contributionBrief = buildContributionBrief(issue, fitObj);
