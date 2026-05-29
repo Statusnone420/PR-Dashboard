@@ -107,3 +107,29 @@ test('target platform scoring respects lookup filter opt-in', async () => {
     useFiltersInLookup: false
   }, 'find'), ['windows']);
 });
+
+test('finder intent normalizes applied filters for match scoring', async () => {
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+
+  const intent = buildFinderIntent({
+    labels: ['help wanted', 'help wanted', 'docs'],
+    labelMode: 'AND',
+    stars: '5k+',
+    comments: 'Low (0-5)',
+    updatedDate: 'Last month',
+    unassigned: true,
+    targetPlatforms: ['linux']
+  }, {
+    preferredWork: ['docs'],
+    avoidWork: ['migration']
+  });
+
+  assert.deepEqual(intent.selectedLabels, ['help wanted', 'docs']);
+  assert.equal(intent.labelMode, 'AND');
+  assert.equal(intent.starsThreshold, 5000);
+  assert.deepEqual(intent.commentsRange, { min: 0, max: 5, label: 'Low (0-5)' });
+  assert.equal(intent.updatedDateDays, 30);
+  assert.equal(intent.unassignedOnly, true);
+  assert.deepEqual(intent.targetPlatforms, ['linux']);
+  assert.deepEqual(intent.profile.preferredWork, ['docs']);
+});

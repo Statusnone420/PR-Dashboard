@@ -168,16 +168,17 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
 });
 
-test('match score v3 UI exposes compact confidence and inspector diagnostics', () => {
+test('match score UI keeps Match visible without separate confidence copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
 
   assert.match(resultCards, /% Match/);
   assert.match(resultCards, /Why:/);
-  assert.match(resultCards, /Confidence:/);
+  assert.doesNotMatch(resultCards, /Confidence:/);
   assert.doesNotMatch(inspector, /Score diagnostics/);
-  assert.match(inspector, /Confidence/);
+  assert.doesNotMatch(inspector, /Confidence:/);
+  assert.doesNotMatch(inspector, />\s*Confidence\s*</);
   assert.match(inspector, /Mini-scores/);
   assert.match(inspector, /Opportunity Fit/);
   assert.match(inspector, /Issue Clarity/);
@@ -223,9 +224,9 @@ test('inspector source order keeps decision brief before evidence and action pla
   assertSourceOrder(inspector, '<!-- inspector-section:score-evidence -->', 'Action Plan');
 
   assert.match(evidence, /Why this score\?/);
-  assert.match(evidence, /Confidence/);
+  assert.doesNotMatch(evidence, /Confidence:/);
+  assert.doesNotMatch(evidence, />\s*Confidence\s*</);
   assert.match(evidence, /Mini-scores/);
-  assert.match(evidence, /\$\{confidenceReasonsHTML\}/);
   assert.match(evidence, /\$\{miniScoresHTML\}/);
   assert.match(evidence, /\$\{fitScoreReasonsHTML\}/);
   assert.match(evidence, /\$\{passChipsHTML\}/);
@@ -396,7 +397,7 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
   const moreFilters = sliceBetween(finder, '<details class="filter-disclosure"', '</details>');
 
   assert.match(resultCards, /% Match/);
-  assert.match(resultCards, /Confidence:/);
+  assert.doesNotMatch(resultCards, /Confidence:/);
   assert.match(resultCards, /renderPlatformEvidenceBadge/);
   assert.match(inspector, /renderPlatformEvidenceBadge/);
   assert.match(mainJs, /platform-evidence-chip/);

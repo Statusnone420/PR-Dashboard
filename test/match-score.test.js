@@ -82,7 +82,7 @@ test('clear beginner docs issues score as strong candidates with signed breakdow
 
   assert.equal(result.rating, 'Strong candidate');
   assert.ok(result.score >= 85);
-  assert.ok(result.rows.some(row => row.points > 0 && row.label === 'Beginner-friendly label'));
+  assert.ok(result.rows.some(row => row.points > 0 && row.label === 'Beginner-friendly label with actionable details'));
   assert.ok(result.rows.every(row => Number.isInteger(row.points)));
 });
 
@@ -342,7 +342,7 @@ test('preview advisory enrichment gaps do not make strong hydrated issues low co
   assert.ok(result.confidence.reasons.includes('Comments not inspected'));
 });
 
-test('low confidence requires current data weakness and caps score at 88', async () => {
+test('missing reliable score evidence lowers match score directly', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 
   const result = calculateMatchScore(issue({
@@ -352,10 +352,10 @@ test('low confidence requires current data weakness and caps score at 88', async
   assert.equal(result.confidence.level, 'Low');
   assert.ok(result.confidence.reasons.includes('Repository metadata unavailable'));
   assert.ok(result.score <= 88);
-  assert.ok(result.rows.some(row => row.label === 'Low confidence cap'));
+  assert.ok(result.rows.some(row => row.label === 'Missing reliable score evidence'));
 });
 
-test('medium confidence caps score at 94', async () => {
+test('medium evidence risk lowers match score without a visible confidence cap', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 
   const result = calculateMatchScore(issue({
@@ -365,7 +365,100 @@ test('medium confidence caps score at 94', async () => {
 
   assert.equal(result.confidence.level, 'Medium');
   assert.ok(result.score <= 94);
-  assert.ok(result.rows.some(row => row.label === 'Medium confidence cap'));
+  assert.ok(result.rows.some(row => row.label === 'Score evidence needs review'));
+  assert.ok(!result.rows.some(row => /confidence cap/i.test(row.label)));
+});
+
+test('empty template good-first issues cannot score as strong matches', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Lab',
+    body: [
+      '<!-- If you have time, send us a pull request. Otherwise fill out the fields. -->',
+      '## Language name',
+      'Lab',
+      '',
+      '## URL of example repository',
+      '',
+      '## URL of syntax highlighting grammar',
+      '',
+      '## Most popular extensions',
+      '',
+      '## Detected language'
+    ].join('\n'),
+    labels: [{ name: 'Good First Issue' }],
+    comments: 0,
+    repository: strongRepo({
+      full_name: 'github-linguist/linguist',
+      stargazers_count: 13000,
+      language: 'Ruby'
+    })
+  }));
+
+  assert.ok(result.score < 50);
+  assert.ok(result.passReasons.includes('Too vague'));
+  assert.ok(result.rows.some(row => row.label === 'Unfilled issue template'));
+});
+
+test('assigned issues are demoted even when labels and body look good', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Fix README install command typo',
+    body: [
+      'Expected behavior: the README should show the correct install command.',
+      'Actual behavior: it shows the old package name.',
+      'Proposed fix:',
+      '- Update README.md.',
+      '- Add a tiny docs regression check if the repo has one.'
+    ].join('\n'),
+    assignee: { login: 'maintainer' },
+    assignees: [{ login: 'maintainer' }],
+    labels: [{ name: 'good first issue' }, { name: 'documentation' }],
+    repository: strongRepo()
+  }));
+
+  assert.ok(result.score <= 69);
+  assert.ok(result.passReasons.includes('Assigned'));
+  assert.ok(result.rows.some(row => row.label === 'Assigned issue cap'));
+});
+
+test('selected filters change match score after apply/search intent', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+  const candidate = issue({
+    repository: strongRepo({
+      full_name: 'fullsend-ai/fullsend',
+      stargazers_count: 65,
+      language: 'TypeScript'
+    })
+  });
+
+  const defaultIntent = buildFinderIntent({
+    labels: ['good first issue', 'help wanted'],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    unassigned: false
+  });
+  const highStarIntent = buildFinderIntent({
+    labels: ['good first issue', 'help wanted'],
+    labelMode: 'OR',
+    stars: '5k+',
+    comments: 'Low (0-5)',
+    updatedDate: 'Last month',
+    unassigned: true
+  });
+
+  const defaultScore = calculateMatchScore(candidate, { intent: defaultIntent });
+  const filteredScore = calculateMatchScore(candidate, { intent: highStarIntent });
+
+  assert.ok(defaultScore.score > filteredScore.score);
+  assert.ok(filteredScore.score < 50);
+  assert.ok(filteredScore.passReasons.includes('Below stars filter'));
+  assert.ok(filteredScore.rows.some(row => row.label === 'Below selected repo stars cap'));
 });
 
 test('mini-scores expose all dimensions with stable labels', async () => {

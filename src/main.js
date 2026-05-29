@@ -1,7 +1,7 @@
 import { createDefaultFilters, store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
-import { applyFilterPatch, applyPresetSearch, getRelaxedFilters, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
+import { applyFilterPatch, applyPresetSearch, buildFinderIntent, getRelaxedFilters, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
@@ -118,8 +118,10 @@ function getCurrentScoreMode() {
 
 function calculateFitScore(issue, options = {}) {
   const mode = options.mode || getCurrentScoreMode();
+  const filtersForScore = options.filters || store.filters;
   const result = calculateMatchScore(issue, {
     profile: store.contributionPreferences,
+    intent: buildFinderIntent(filtersForScore, store.contributionPreferences),
     feedback: store.matchFeedback,
     enrichment: options.enrichment,
     targetPlatforms: options.targetPlatforms || getScoreTargetPlatformsForMode(store.filters, mode)
@@ -148,12 +150,6 @@ function getInspectorBestFitLabel(bestFor) {
   if (bestFor === 'Standard') return 'Standard contributor';
   if (bestFor === 'Deep Dive') return 'Deep dive';
   return bestFor;
-}
-
-function getConfidenceTone(level) {
-  if (level === 'High') return 'border-tertiary/25 bg-tertiary/10 text-tertiary';
-  if (level === 'Medium') return 'border-primary/20 bg-primary/10 text-primary';
-  return 'border-error/25 bg-error-container/10 text-error';
 }
 
 const PLATFORM_ICON_PATHS = {
@@ -1680,7 +1676,6 @@ function renderDashboard(container) {
                 ${score}% Match
               </div>
               <span class="px-2 py-0.5 rounded text-xs border border-primary/20 bg-primary/10 text-primary whitespace-nowrap">Fit: ${escapeHTML(contributionBrief.bestFor)}</span>
-              <span class="px-2 py-0.5 rounded text-xs border ${getConfidenceTone(fitObj.confidence.level)} whitespace-nowrap">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
             </div>
           </div>
           <h4 class="text-on-surface font-medium group-hover:text-primary transition-colors leading-snug">${issueTitle}</h4>
@@ -2693,7 +2688,6 @@ function renderIssueCardsList(issuesList, options = {}) {
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="interactive-chip rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
           ${platformEvidenceHTML}
           ${primaryLabelHTML}
           ${labelOverflowHTML}
@@ -3157,7 +3151,6 @@ function renderBoard(container) {
         <p class="mt-2 text-sm text-on-surface-variant">Next: ${escapeHTML(brief.firstMove)}</p>
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
-          <span class="rounded border ${getConfidenceTone(fitObj.confidence.level)} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
           <span class="text-xs text-on-surface-variant">${cardDate}</span>
         </div>
         <div class="mt-5 flex flex-wrap gap-2">
@@ -4364,13 +4357,6 @@ function openInspector() {
     <span class="text-xs text-on-surface-variant" id="inspector-refresh-status">${escapeHTML(inspectorRefreshStatus)}</span>
   ` : '';
   const stageLabel = getStageLabel(fitObj.stage);
-  const confidenceTone = getConfidenceTone(fitObj.confidence.level);
-  const confidenceReasonsHTML = (fitObj.confidence.reasons || []).map(reason => `
-    <li class="flex items-start gap-2 text-xs text-on-surface-variant">
-      <span class="material-symbols-outlined text-primary text-[13px] mt-0.5" aria-hidden="true">info</span>
-      <span>${escapeHTML(reason)}</span>
-    </li>
-  `).join('');
   const miniScoresHTML = renderMiniScoreList(fitObj.miniScores);
 
   // Render match score explanations
@@ -4435,9 +4421,9 @@ function openInspector() {
       <div class="max-w-2xl">
         <div class="flex items-center flex-wrap gap-2 mb-3">
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm bg-primary/10 text-primary border border-primary/20">${safeIssueLanguage}</span>
+          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${score}% Match</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${rating.bgClass}">${rating.rating}</span>
           <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border border-outline-variant bg-surface-container-high text-on-surface-variant">${stageLabel}</span>
-          <span class="px-2 py-0.5 text-xs font-mono font-medium rounded-sm border ${confidenceTone}">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
           ${platformEvidenceHTML}
           <span class="text-xs text-on-surface-variant font-mono">${repoName} #${safeIssueNumber}</span>
         </div>
@@ -4561,17 +4547,10 @@ function openInspector() {
             </h4>
             <p class="text-xs text-on-surface-variant">${score}% Match - ${escapeHTML(rating.rating)} - ${stageLabel} stage</p>
           </div>
-          <span class="w-fit rounded border ${confidenceTone} px-2 py-0.5 text-xs">Confidence: ${escapeHTML(fitObj.confidence.level)}</span>
         </div>
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-          <div>
-            <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Confidence</div>
-            <ul class="space-y-2">${confidenceReasonsHTML}</ul>
-          </div>
-          <div>
-            <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
-            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
-          </div>
+        <div>
+          <div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">Mini-scores</div>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3" aria-label="Mini-scores: Opportunity Fit, Issue Clarity, Scope, Repo Health, Social Risk, Setup Ease, Personal Fit">${miniScoresHTML}</div>
         </div>
         <div class="mt-5 border-t border-outline-variant/40 pt-4">
           <ul class="space-y-2">

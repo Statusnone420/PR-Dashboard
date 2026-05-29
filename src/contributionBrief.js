@@ -74,6 +74,58 @@ function firstItems(list, count) {
   return list.filter(Boolean).slice(0, count);
 }
 
+function formatCompactNumber(value) {
+  const count = Number(value || 0);
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}k`;
+  return `${count}`;
+}
+
+function hasPositiveScoreSignal(scoreData, needle) {
+  const normalized = needle.toLowerCase();
+  return (scoreData?.rows || []).some(row => Number(row?.points || 0) > 0 && String(row?.label || '').toLowerCase().includes(normalized));
+}
+
+function buildPrimaryScoreReason(issue, scoreData) {
+  const score = Number(scoreData?.score || 0);
+  const rows = scoreData?.rows || [];
+  const negativeRows = rows
+    .filter(row => Number(row?.points || 0) < 0)
+    .map(row => String(row?.label || '').toLowerCase());
+
+  if (score < 70) {
+    const risks = [];
+    if (negativeRows.some(label => label.includes('unfilled issue template'))) pushUnique(risks, 'unfilled issue template');
+    if (negativeRows.some(label => label.includes('assigned'))) pushUnique(risks, 'already assigned');
+    if (negativeRows.some(label => label.includes('below selected repo stars'))) pushUnique(risks, 'below selected stars filter');
+    if (negativeRows.some(label => label.includes('thin issue') || label.includes('vague'))) pushUnique(risks, 'not enough issue detail');
+    if (negativeRows.some(label => label.includes('too many comments') || label.includes('comment'))) pushUnique(risks, 'comment noise');
+    if (risks.length) return `${risks.join(', ')}.`;
+    if (score < 50) return null;
+  }
+
+  const parts = [];
+  const preferenceRows = rows
+    .filter(row => Number(row?.points || 0) > 0 && /^Matches .* preference$/.test(String(row?.label || '')))
+    .map(row => String(row.label).replace(/^Matches\s+/i, '').replace(/\s+preference$/i, ''));
+  if (preferenceRows.length) pushUnique(parts, `matches ${firstItems(preferenceRows, 2).join('/')} preference`);
+  if (hasPositiveScoreSignal(scoreData, 'selected label filter')) pushUnique(parts, 'matches selected labels');
+  if (hasPositiveScoreSignal(scoreData, 'unassigned')) pushUnique(parts, 'unassigned');
+  if (hasPositiveScoreSignal(scoreData, 'small') || hasPositiveScoreSignal(scoreData, 'task list')) pushUnique(parts, 'bounded work');
+  if (hasPositiveScoreSignal(scoreData, 'expected behavior')) pushUnique(parts, 'clear expected behavior');
+
+  const stars = Number(issue?.repository?.stargazers_count || 0);
+  if (stars >= 5000) {
+    const repoActivity = hasPositiveScoreSignal(scoreData, 'pushed recently') || hasPositiveScoreSignal(scoreData, 'repo prs are merging')
+      ? 'active '
+      : '';
+    pushUnique(parts, `${repoActivity}${formatCompactNumber(stars)}-star repo`);
+  } else if (hasPositiveScoreSignal(scoreData, 'selected repo stars filter')) {
+    pushUnique(parts, 'meets selected star filter');
+  }
+
+  return parts.length ? `${firstItems(parts, 3).join(', ')}.` : null;
+}
+
 function getRepoHealth(issue, now) {
   const repo = issue?.repository || {};
   if (repo.archived) return { label: 'Archived repo', inactive: true, hard: true };
@@ -165,8 +217,11 @@ function getBestFor({ verdict, assigned, hasBeginnerLabel, scope, clarity }) {
   return 'Standard';
 }
 
-function buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }) {
+function buildWhy({ verdict, issue, score, scoreData, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }) {
   const why = [];
+  const primaryScoreReason = buildPrimaryScoreReason(issue, scoreData);
+  if (primaryScoreReason) pushUnique(why, primaryScoreReason);
+
   if (verdict === 'Likely pass') {
     if (score < 50) {
       pushUnique(why, `Match score is ${score}, below the usual contribution bar.`);
@@ -180,7 +235,7 @@ function buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, soc
     return firstItems(why, 3);
   }
 
-  if (hasBeginnerLabel) pushUnique(why, 'Beginner-friendly labels match the contribution search intent.');
+  if (hasBeginnerLabel) pushUnique(why, 'Beginner-friendly label is present, but the score uses the issue details too.');
   if (scope === 'Small scope') pushUnique(why, 'The visible work looks small and bounded.');
   if (scope === 'Medium scope') pushUnique(why, 'The issue looks approachable after a normal repo read-through.');
   if (scope === 'Large/unclear scope') pushUnique(why, 'This looks like deeper repo work, not a quick first PR.');
@@ -265,7 +320,7 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
     socialRisk,
     repoHealth: repoHealth.label,
     guidanceFit,
-    why: buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }),
+    why: buildWhy({ verdict, issue, score, scoreData, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }),
     risks: buildRisks({ issue, text, scoreData, scope, clarity, socialRisk, issueUpdatedDays, repoHealth, hasHardPassLabel, isMeta }),
     firstMove: getFirstMove({ verdict, bestFor, guidanceFit }),
     maintainerQuestion
