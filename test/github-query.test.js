@@ -48,8 +48,38 @@ test('buildQueryString adds difficulty labels separately from availability label
     includeClosed: false
   });
 
-  assert.match(query, /label:"level:intermediate","difficulty:intermediate"/);
+  assert.match(query, /label:"level:intermediate","difficulty:intermediate","intermediate"/);
   assert.match(query, /label:"help wanted"/);
+});
+
+test('buildQueryString includes plain difficulty labels used by common repositories', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const beginnerQuery = buildQueryString('setup', {
+    languages: [],
+    labels: [],
+    labelMode: 'OR',
+    difficulty: 'Beginner',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false
+  });
+  const advancedQuery = buildQueryString('perf', {
+    languages: [],
+    labels: [],
+    labelMode: 'OR',
+    difficulty: 'Advanced',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false
+  });
+
+  assert.match(beginnerQuery, /label:"good first issue","level:beginner","difficulty:beginner","beginner"/);
+  assert.match(advancedQuery, /label:"level:advanced","difficulty:advanced","advanced"/);
 });
 
 test('buildQueryString quotes languages with GitHub search punctuation', async () => {

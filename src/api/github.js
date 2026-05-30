@@ -7,9 +7,9 @@ import { extractRepoFullName, filterIssuesByStars, hydrateIssueRepositories } fr
 let recentSearchCache = null;
 
 const DIFFICULTY_LABELS = {
-  Beginner: ['good first issue', 'level:beginner', 'difficulty:beginner'],
-  Intermediate: ['level:intermediate', 'difficulty:intermediate'],
-  Advanced: ['level:advanced', 'difficulty:advanced']
+  Beginner: ['good first issue', 'level:beginner', 'difficulty:beginner', 'beginner'],
+  Intermediate: ['level:intermediate', 'difficulty:intermediate', 'intermediate'],
+  Advanced: ['level:advanced', 'difficulty:advanced', 'advanced']
 };
 
 function quoteGitHubValue(value) {
