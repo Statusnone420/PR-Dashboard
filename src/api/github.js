@@ -446,6 +446,10 @@ export function createGitHubRequestOptions(url, token = '', init = {}) {
   };
 }
 
+function getFetchImpl(fetchImpl) {
+  return fetchImpl || ((url, init) => globalThis.fetch(url, init));
+}
+
 export class GitHubRefreshRateLimitError extends Error {
   constructor(message, details = {}) {
     super(message);
@@ -557,7 +561,7 @@ export async function fetchIssueMetadataForRefresh(issue, options = {}) {
   const etag = options.etag || issue?.github_activity?.etag || '';
   const headers = etag ? { 'If-None-Match': etag } : {};
   const token = options.token ?? store.githubToken;
-  const fetchImpl = options.fetchImpl || fetch;
+  const fetchImpl = getFetchImpl(options.fetchImpl);
   const response = await fetchImpl(url, createGitHubRequestOptions(url, token, { headers }));
 
   const rateLimit = rateLimitFromResponse(response, 'core');
@@ -607,7 +611,7 @@ function getLookupRepoContextFromIssue(issue) {
 export async function fetchExactIssue(reference, options = {}) {
   const url = buildExactIssueApiUrl(reference);
   const mode = 'lookup';
-  const fetchImpl = options.fetchImpl || fetch;
+  const fetchImpl = getFetchImpl(options.fetchImpl);
   store.setSearchState(true, null);
 
   try {
@@ -688,7 +692,7 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
   store.setSearchState(true, null);
 
   const token = options.token ?? store.githubToken;
-  const fetchImpl = options.fetchImpl || fetch;
+  const fetchImpl = getFetchImpl(options.fetchImpl);
   const url = buildSearchIssuesUrl(queryText, filters, { mode });
 
   try {
@@ -788,7 +792,7 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
 export async function fetchGitHubRateLimitStatus(options = {}) {
   const url = 'https://api.github.com/rate_limit';
   const token = options.token ?? store.githubToken;
-  const fetchImpl = options.fetchImpl || fetch;
+  const fetchImpl = getFetchImpl(options.fetchImpl);
   const response = await fetchImpl(url, createGitHubRequestOptions(url, token));
 
   if (!response.ok) {
@@ -801,7 +805,7 @@ export async function fetchGitHubRateLimitStatus(options = {}) {
 
 export async function fetchGitHubUserForToken(token, options = {}) {
   const url = 'https://api.github.com/user';
-  const fetchImpl = options.fetchImpl || fetch;
+  const fetchImpl = getFetchImpl(options.fetchImpl);
   const response = await fetchImpl(url, createGitHubRequestOptions(url, token));
   const rateLimit = rateLimitFromResponse(response, 'core');
   const tokenValue = String(token || '').trim();

@@ -305,6 +305,97 @@ test.describe('A1 board layout', () => {
     expect(metrics.summaryDisplay).toBe('none');
   });
 
+  test('difficulty searches run through browser fetch without illegal invocation', async ({ page }) => {
+    const runtimeErrors = [];
+    page.on('console', message => {
+      if (message.type() === 'error') runtimeErrors.push(message.text());
+    });
+    page.on('pageerror', error => {
+      runtimeErrors.push(error.message);
+    });
+
+    await page.route('https://api.github.com/**', async route => {
+      const url = new URL(route.request().url());
+      let body = {};
+      let resource = url.pathname.includes('/search/') ? 'search' : 'core';
+
+      if (url.pathname === '/search/issues') {
+        body = { items: [] };
+      } else if (url.pathname === '/search/repositories') {
+        body = {
+          items: [{
+            full_name: 'owner/high-stars',
+            name: 'high-stars',
+            stargazers_count: 6200,
+            forks_count: 120,
+            open_issues_count: 12,
+            archived: false,
+            disabled: false,
+            default_branch: 'main',
+            language: 'JavaScript',
+            topics: ['cli']
+          }]
+        };
+      } else if (url.pathname === '/repos/owner/high-stars/issues') {
+        body = [{
+          id: 62001,
+          number: 7,
+          title: 'Fix focused setup docs',
+          body: 'Expected behavior: setup docs should include the missing command.\n\n- Add the command.\n- Update the docs.',
+          state: 'open',
+          labels: [],
+          assignee: null,
+          assignees: [],
+          comments: 1,
+          created_at: '2026-05-20T12:00:00Z',
+          updated_at: '2026-05-29T12:00:00Z',
+          html_url: 'https://github.com/owner/high-stars/issues/7',
+          repository_url: 'https://api.github.com/repos/owner/high-stars',
+          user: { login: 'layout-smoke' }
+        }];
+      } else if (url.pathname === '/repos/owner/high-stars') {
+        body = {
+          full_name: 'owner/high-stars',
+          name: 'high-stars',
+          stargazers_count: 6200,
+          forks_count: 120,
+          open_issues_count: 12,
+          archived: false,
+          disabled: false,
+          default_branch: 'main',
+          language: 'JavaScript',
+          topics: ['cli']
+        };
+      } else {
+        resource = 'core';
+        body = [];
+      }
+
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'x-ratelimit-resource': resource,
+          'x-ratelimit-limit': resource === 'search' ? '30' : '5000',
+          'x-ratelimit-remaining': resource === 'search' ? '29' : '4990',
+          'x-ratelimit-used': '1',
+          'x-ratelimit-reset': '1770000000'
+        },
+        body: JSON.stringify(body)
+      });
+    });
+
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(`${baseURL}/#find-issues`);
+    await page.locator('input.difficulty-filter-radio[data-value="Beginner"]').check();
+    await page.locator('input.stars-filter-radio[data-value="5k+"]').check();
+    await page.locator('#search-trigger-btn').click();
+
+    await expect(page.locator('.issue-card')).toHaveCount(1);
+    await expect(page.locator('#results-count-label')).toContainText('Showing 1 open issue');
+    expect(runtimeErrors.filter(error => /Illegal invocation|Failed to execute 'fetch'/.test(error))).toEqual([]);
+  });
+
   test('mobile audit controls expose API limits, touch targets, collapsed filters, and tooltip dismissal', async ({ page }) => {
     await page.route('https://api.github.com/rate_limit', async route => {
       await route.fulfill({
