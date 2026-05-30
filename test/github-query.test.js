@@ -33,6 +33,43 @@ test('buildQueryString uses OR for selected beginner-friendly labels by default'
   assert.doesNotMatch(query, /label:"good first issue" label:"help wanted"/);
 });
 
+test('buildQueryString adds difficulty labels separately from availability labels', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('config', {
+    languages: [],
+    labels: ['help wanted'],
+    labelMode: 'OR',
+    difficulty: 'Intermediate',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false
+  });
+
+  assert.match(query, /label:"level:intermediate","difficulty:intermediate"/);
+  assert.match(query, /label:"help wanted"/);
+});
+
+test('buildQueryString quotes languages with GitHub search punctuation', async () => {
+  const { buildQueryString } = await import('../src/api/github.js');
+
+  const query = buildQueryString('parser', {
+    languages: ['C#', 'C++', 'Python'],
+    labels: [],
+    labelMode: 'OR',
+    difficulty: 'Any',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    sortMode: 'Fit Score',
+    includeClosed: false
+  });
+
+  assert.match(query, /\(language:"C#" OR language:"C\+\+" OR language:Python\)/);
+});
+
 test('buildQueryString supports explicit AND label behavior', async () => {
   const { buildQueryString } = await import('../src/api/github.js');
 

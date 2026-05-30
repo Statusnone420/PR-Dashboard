@@ -70,6 +70,9 @@ const inspectorRepoHistoryEnrichmentStates = new Map();
 // Let cached advanced-context scans read as intentional instead of a 300ms flash.
 const ADVANCED_CONTEXT_MIN_LOADING_MS = 1200;
 const FIND_FILTERS_EXPANDED_STORAGE_KEY = 'pr_dashboard_find_filters_expanded_v1';
+const FINDER_LANGUAGE_OPTIONS = ['TypeScript', 'Rust', 'Go', 'JavaScript', 'Python', 'Swift', 'Java', 'C#', 'C++', 'Kotlin', 'Ruby', 'PHP', 'CSS', 'HTML'];
+const FINDER_LABEL_OPTIONS = ['good first issue', 'help wanted', 'bug', 'enhancement', 'docs', 'performance', 'testing', 'security', 'feature', 'refactor', 'onboarding'];
+const FINDER_DIFFICULTY_OPTIONS = ['Any', 'Beginner', 'Intermediate', 'Advanced'];
 let activeAdvancedContextIssueKey = '';
 let inspectorAdvancedContextRefreshPendingKey = '';
 let boardViewMode = 'auto';
@@ -198,12 +201,19 @@ function getIssueLabelCount(labels = []) {
 
 function getPrimaryIssueLabel(labels = []) {
   const names = getIssueLabelNames(labels);
-  const preferred = names.find(name => /good first issue|help wanted|documentation|docs|bug/i.test(name));
+  const preferred = names.find(name => /^level:/i.test(name))
+    || names.find(name => /^difficulty:/i.test(name))
+    || names.find(name => /^type:/i.test(name))
+    || names.find(name => /good first issue|documentation|docs|bug/i.test(name))
+    || names.find(name => /help wanted/i.test(name));
   return preferred || names[0] || '';
 }
 
 function getIssueLabelTone(name = '') {
-  if (/help wanted|good first/i.test(name)) return 'border-primary/30 bg-primary/10 text-primary';
+  if (/^level:(advanced|intermediate)|^difficulty:(advanced|intermediate)/i.test(name)) return 'border-tertiary/30 bg-tertiary/10 text-tertiary';
+  if (/^level:beginner|^difficulty:beginner|good first/i.test(name)) return 'border-primary/30 bg-primary/10 text-primary';
+  if (/^type:/i.test(name)) return 'border-primary/20 bg-primary/5 text-primary';
+  if (/help wanted/i.test(name)) return 'border-outline-variant bg-surface-container text-on-surface-variant';
   if (/enhancement|feature/i.test(name)) return 'border-tertiary/30 bg-tertiary/10 text-tertiary';
   return 'border-outline-variant bg-surface-dim text-on-surface-variant';
 }
@@ -1951,6 +1961,7 @@ function bindBoardFlowInteractions() {
 function describeActiveFilters(filters) {
   const parts = [];
   if (filters.languages?.length) parts.push(`Languages: ${filters.languages.join(', ')}`);
+  if (filters.difficulty && filters.difficulty !== 'Any') parts.push(`Difficulty: ${filters.difficulty}`);
   if (filters.labels?.length) parts.push(`Labels: ${filters.labels.join(' OR ')}`);
   if (filters.stars && filters.stars !== 'Any') parts.push(`Stars: ${filters.stars}`);
   if (filters.comments && filters.comments !== 'Any') parts.push(`Comments: ${filters.comments}`);
@@ -1967,6 +1978,7 @@ function describeActiveFilters(filters) {
 }
 
 function getFirstRelaxationHint(filters) {
+  if (filters.difficulty && filters.difficulty !== 'Any') return 'Broaden search first: switch difficulty to Any.';
   if (filters.labels?.length) return 'Broaden search first: remove label filters.';
   if (filters.stars && filters.stars !== 'Any') return 'Relax stars first: switch stars to Any.';
   if (filters.comments && filters.comments !== 'Any') return 'Relax comments first: switch comments to Any.';
@@ -1998,6 +2010,7 @@ function hasActiveMobileFilterDetails(filters = {}) {
   return (
     !sameStringSet(filters.languages || [], defaults.languages) ||
     !sameStringSet(filters.labels || [], defaults.labels) ||
+    (filters.difficulty || defaults.difficulty) !== defaults.difficulty ||
     (filters.stars || defaults.stars) !== defaults.stars ||
     (filters.comments || defaults.comments) !== defaults.comments ||
     (filters.updatedDate || defaults.updatedDate) !== defaults.updatedDate ||
@@ -2134,8 +2147,7 @@ function renderFindIssues(container) {
   const moreFiltersOpenAttr = moreFiltersOpen ? ' open' : '';
 
   // Language checkboxes HTML
-  const languages = ['TypeScript', 'Rust', 'Go', 'JavaScript', 'CSS', 'HTML'];
-  const languageCheckboxes = languages.map(lang => {
+  const languageCheckboxes = FINDER_LANGUAGE_OPTIONS.map(lang => {
     const checked = filters.languages.includes(lang) ? 'checked' : '';
     const safeLang = escapeHTML(lang);
     return `
@@ -2146,9 +2158,19 @@ function renderFindIssues(container) {
     `;
   }).join('');
 
+  const difficultyRadioHTML = FINDER_DIFFICULTY_OPTIONS.map(option => {
+    const checked = (filters.difficulty || 'Any') === option ? 'checked' : '';
+    const safeOption = escapeHTML(option);
+    return `
+      <label class="flex items-center gap-3 group cursor-pointer">
+        <input class="difficulty-filter-radio" type="radio" name="difficulty" data-value="${safeOption}" ${checked} />
+        <span class="text-sm text-on-surface-variant group-hover:text-on-surface transition-colors">${safeOption}</span>
+      </label>
+    `;
+  }).join('');
+
   // Labels clickable HTML
-  const labelOptions = ['good first issue', 'help wanted', 'bug', 'enhancement', 'docs', 'performance'];
-  const labelsBadges = labelOptions.map(label => {
+  const labelsBadges = FINDER_LABEL_OPTIONS.map(label => {
     const active = filters.labels.includes(label);
     const btnClass = active 
       ? 'border-primary bg-primary/10 text-primary' 
@@ -2335,6 +2357,9 @@ function renderFindIssues(container) {
               <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="docs-only">
                 <span class="material-symbols-outlined text-[16px]" aria-hidden="true">description</span> Docs
               </button>
+              <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="tests">
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">fact_check</span> Tests
+              </button>
               <button class="interactive-chip bg-surface-container border-outline-variant text-on-surface-variant preset-search-btn" data-preset="low-noise">
                 <span class="material-symbols-outlined text-[16px]" aria-hidden="true">volume_down</span> Low Noise
               </button>
@@ -2347,6 +2372,14 @@ function renderFindIssues(container) {
               ${filtersChanged ? '<span class="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Changed</span>' : '<span class="rounded-full border border-outline-variant px-2 py-0.5 text-[10px] text-on-surface-variant">Optional</span>'}
             </summary>
             <div class="mobile-filter-body">
+              <!-- Difficulty Filter -->
+              <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
+                <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Difficulty</h3>
+                <div class="flex flex-col gap-2">
+                  ${difficultyRadioHTML}
+                </div>
+              </div>
+
               <!-- Language Filter -->
               <div class="flex flex-col gap-3 pb-5 border-b border-outline-variant/30">
                 <h3 class="text-xs font-semibold text-on-surface uppercase tracking-wider">Language</h3>
@@ -2520,6 +2553,14 @@ function renderFindIssues(container) {
         current.push(label);
       }
       applyFilterPatch(store, { labels: current });
+    });
+  });
+
+  document.querySelectorAll('.difficulty-filter-radio').forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.checked) {
+        applyFilterPatch(store, { difficulty: radio.getAttribute('data-value') });
+      }
     });
   });
 

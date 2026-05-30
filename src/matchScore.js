@@ -2,14 +2,15 @@ import { isClosedIssue } from './boardModel.js';
 import { getFeedbackScoreAdjustment } from './matchFeedback.js';
 import { getPlatformEvidence, getPlatformMismatchReason, issueMatchesTargetPlatforms } from './platformFilters.js';
 
-const BEGINNER_LABELS = ['good first issue', 'help wanted', 'beginner', 'starter'];
+const STARTER_LABELS = ['good first issue', 'level:beginner', 'difficulty:beginner', 'beginner', 'starter', 'easy', 'low-hanging-fruit', 'low hanging fruit'];
+const AVAILABILITY_LABELS = ['help wanted'];
 const STRONG_FIT_LABELS = [
   'good first issue',
-  'help wanted',
   'documentation',
   'docs',
   'test',
   'tests',
+  'testing',
   'starter',
   'beginner',
   'easy',
@@ -17,7 +18,11 @@ const STRONG_FIT_LABELS = [
   'low hanging fruit'
 ];
 const STALE_LABELS = ['stale', 'blocked', 'duplicate', 'wontfix', "won't fix", 'invalid'];
-const ADVANCED_DIFFICULTY_LABELS = ['level:advanced', 'difficulty:advanced', 'advanced'];
+const EXPLICIT_DIFFICULTY_LABELS = {
+  beginner: ['level:beginner', 'difficulty:beginner', 'beginner'],
+  intermediate: ['level:intermediate', 'difficulty:intermediate', 'intermediate'],
+  advanced: ['level:advanced', 'difficulty:advanced', 'advanced']
+};
 const SMALL_SCOPE_TERMS = ['docs', 'readme', 'typo', 'config', 'cleanup', 'spelling', 'documentation'];
 const CLEAR_BEHAVIOR_TERMS = ['expected', 'actual', 'should', 'steps to reproduce', 'acceptance criteria', 'repro'];
 const COMPLEX_SCOPE_TERMS = ['rewrite', 'entire', 'architecture', 'large refactor', 'across everything', 'migration', 'redesign'];
@@ -162,8 +167,27 @@ function hasWholeTerm(value, term) {
   return new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(value);
 }
 
-function hasAdvancedDifficultyLabel(labels) {
-  return labels.some(label => ADVANCED_DIFFICULTY_LABELS.some(advanced => label === advanced || label.includes(advanced)));
+function labelMatchesTerm(label, term) {
+  if (label === term) return true;
+  if (term.includes(':')) return label.includes(term);
+  return hasWholeTerm(label, term);
+}
+
+function hasAnyLabel(labels, terms) {
+  return labels.some(label => terms.some(term => labelMatchesTerm(label, term)));
+}
+
+function getExplicitDifficulty(labels) {
+  if (hasAnyLabel(labels, EXPLICIT_DIFFICULTY_LABELS.advanced)) return 'advanced';
+  if (hasAnyLabel(labels, EXPLICIT_DIFFICULTY_LABELS.intermediate)) return 'intermediate';
+  if (hasAnyLabel(labels, EXPLICIT_DIFFICULTY_LABELS.beginner)) return 'beginner';
+  return null;
+}
+
+function getIssueDifficulty(labels) {
+  const explicit = getExplicitDifficulty(labels);
+  if (explicit) return explicit;
+  return hasAnyLabel(labels, STARTER_LABELS) ? 'beginner' : 'unknown';
 }
 
 function normalizedHeading(line) {
@@ -470,6 +494,8 @@ function workTypeMatches(term, labels, issueText) {
 }
 
 function scopeLabel(signals) {
+  if (signals.difficulty === 'advanced') return 'Large/unclear';
+  if (signals.difficulty === 'intermediate') return 'Medium';
   if (signals.hasComplexScope) return 'Large/unclear';
   if (signals.hasSmallScope || signals.hasActionableTaskList || signals.hasBoundedFix) return 'Small';
   return 'Medium';
@@ -655,16 +681,17 @@ export function calculateMatchScore(issue, options = {}) {
   };
 
   const isAssigned = Boolean(issue?.assignee || (Array.isArray(issue?.assignees) && issue.assignees.length > 0));
-  const hasBeginnerLabel = labels.some(label => BEGINNER_LABELS.some(beginner => label.includes(beginner)));
-  const hasStrongFitLabel = labels.some(label => STRONG_FIT_LABELS.some(strong => label.includes(strong)));
-  const hasStaleLabel = labels.some(label => STALE_LABELS.some(stale => label.includes(stale)));
+  const difficulty = getIssueDifficulty(labels);
+  const hasBeginnerLabel = difficulty === 'beginner';
+  const hasAvailabilityLabel = hasAnyLabel(labels, AVAILABILITY_LABELS);
+  const hasStrongFitLabel = hasAnyLabel(labels, STRONG_FIT_LABELS);
+  const hasStaleLabel = hasAnyLabel(labels, STALE_LABELS);
   const hasBugLabel = labels.some(label => label === 'bug' || label.includes('bug'));
   const hasClearBehavior = hasAny(issueText, CLEAR_BEHAVIOR_TERMS);
   const hasSmallScope = hasSmallScopeSignal(issueText);
   const hasActionableTaskList = hasTaskList(`${issue?.body || ''}`);
   const hasBoundedFix = hasBoundedFixWording(issueText);
   const hasComplexScope = hasAny(issueText, COMPLEX_SCOPE_TERMS);
-  const hasAdvancedDifficulty = hasAdvancedDifficultyLabel(labels);
   const hasMetaGrowth = hasAny(issueText, META_GROWTH_TERMS) || labels.some(label => /marketing|community|growth/.test(label));
   const updatedDays = daysSince(issue?.updated_at, now);
   const stage = options.stage || (options.enrichment ? 'enriched' : 'preview');
@@ -687,7 +714,9 @@ export function calculateMatchScore(issue, options = {}) {
     issueText,
     updatedDays,
     isAssigned,
+    difficulty,
     hasBeginnerLabel,
+    hasAvailabilityLabel,
     hasStrongFitLabel,
     hasStaleLabel,
     hasSmallScope,
@@ -695,7 +724,6 @@ export function calculateMatchScore(issue, options = {}) {
     hasBoundedFix,
     hasClearBehavior,
     hasComplexScope,
-    hasAdvancedDifficulty,
     hasMetaGrowth
   };
   const hasSubstantiveBody = hasSubstantiveIssueBody(bodyText, signals);
@@ -715,7 +743,7 @@ export function calculateMatchScore(issue, options = {}) {
       rating: getMatchScoreRating(0),
       rows,
       passReasons: [...passReasons],
-      flags: { isAssigned, hasBeginnerLabel, hasStaleLabel },
+      flags: { isAssigned, hasBeginnerLabel, hasStaleLabel, hasAvailabilityLabel, difficulty },
       isContributionCandidate: false,
       stage,
       confidence: {
@@ -735,11 +763,30 @@ export function calculateMatchScore(issue, options = {}) {
       : 'Beginner-friendly label needs issue detail');
   }
 
+  if (hasAvailabilityLabel) {
+    add(3, 'Help wanted availability signal');
+  }
+
+  if (difficulty === 'intermediate') {
+    add(-6, 'Intermediate difficulty label', 'Intermediate difficulty');
+  } else if (difficulty === 'advanced') {
+    add(-14, 'Advanced difficulty label', 'Advanced difficulty');
+  }
+
   if (selectedLabels.length) {
     if (matchedSelectedLabels.length) {
       add(5, `Matches selected label filter: ${matchedSelectedLabels.slice(0, 2).join(', ')}`);
     } else {
       add(-10, 'Does not match selected label filter', 'Filter mismatch');
+    }
+  }
+
+  if (intent.difficulty && intent.difficulty !== 'Any') {
+    const requestedDifficulty = String(intent.difficulty).toLowerCase();
+    if (difficulty === requestedDifficulty) {
+      add(4, `Matches selected difficulty filter: ${intent.difficulty}`);
+    } else {
+      add(-12, `Outside selected difficulty filter: ${intent.difficulty}`, 'Filter mismatch');
     }
   }
 
@@ -753,10 +800,6 @@ export function calculateMatchScore(issue, options = {}) {
 
   if (hasActionableTaskList) {
     add(6, 'Clear task list');
-  }
-
-  if (hasAdvancedDifficulty) {
-    add(-14, 'Advanced difficulty label', 'Advanced difficulty');
   }
 
   const commentCount = Number(issue?.comments || 0);
@@ -952,8 +995,10 @@ export function calculateMatchScore(issue, options = {}) {
     score = applyScoreCap(score, 69, 'Thin issue detail cap', add);
   }
 
-  if (hasAdvancedDifficulty && score > 84) {
+  if (difficulty === 'advanced' && score > 84) {
     score = applyScoreCap(score, 84, 'Advanced difficulty cap', add);
+  } else if (difficulty === 'intermediate' && score > 84) {
+    score = applyScoreCap(score, 84, 'Intermediate difficulty cap', add);
   }
 
   if (selectedStarsThreshold && repoStars < selectedStarsThreshold && !(repo.metadataUnavailable || issue?.repository_metadata_unavailable) && score > 49) {
@@ -975,7 +1020,7 @@ export function calculateMatchScore(issue, options = {}) {
     rating: getMatchScoreRating(score),
     rows,
     passReasons: [...passReasons],
-    flags: { isAssigned, hasBeginnerLabel, hasStaleLabel },
+    flags: { isAssigned, hasBeginnerLabel, hasStaleLabel, hasAvailabilityLabel, difficulty },
     isContributionCandidate: score >= 50 && !platformMismatch,
     stage,
     confidence,

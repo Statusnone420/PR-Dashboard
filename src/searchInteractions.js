@@ -21,6 +21,8 @@ const UPDATED_DATE_DAYS = {
   'Last month': 30
 };
 
+const DIFFICULTY_OPTIONS = new Set(['Any', 'Beginner', 'Intermediate', 'Advanced']);
+
 function cleanStringList(value) {
   if (!Array.isArray(value)) return [];
   const seen = new Set();
@@ -32,6 +34,11 @@ function cleanStringList(value) {
       seen.add(key);
       return true;
     });
+}
+
+function normalizeDifficulty(value) {
+  const difficulty = String(value || 'Any');
+  return DIFFICULTY_OPTIONS.has(difficulty) ? difficulty : 'Any';
 }
 
 export function getStarsThreshold(value) {
@@ -54,6 +61,7 @@ export function buildFinderIntent(filters = {}, profile = null) {
     commentsRange: getCommentRange(filters.comments),
     updatedDateDays: getUpdatedDateDays(filters.updatedDate),
     unassignedOnly: Boolean(filters.unassigned),
+    difficulty: normalizeDifficulty(filters.difficulty),
     targetPlatforms: normalizeTargetPlatforms(filters.targetPlatforms),
     profile: profile || null
   };
@@ -80,38 +88,66 @@ export function getScoreTargetPlatformsForMode(filters = {}, mode = 'find') {
 export function getPresetFilterPatch(preset) {
   if (preset === 'quick-wins') {
     return {
-      labels: ['good first issue', 'help wanted'],
+      difficulty: 'Beginner',
+      labels: [],
       labelMode: 'OR',
       comments: 'Low (0-5)',
-      stars: '1k+'
+      stars: 'Any',
+      updatedDate: 'Any',
+      includeClosed: false,
+      unassigned: true
     };
   }
 
   if (preset === 'deep-dives') {
     return {
+      difficulty: 'Advanced',
       labels: ['help wanted'],
       labelMode: 'OR',
-      comments: 'High (15+)',
-      stars: '5k+'
+      comments: 'Any',
+      stars: 'Any',
+      updatedDate: 'Any',
+      includeClosed: false,
+      unassigned: false
     };
   }
 
   if (preset === 'docs-only') {
     return {
-      labels: ['docs'],
+      difficulty: 'Any',
+      labels: ['docs', 'documentation'],
       labelMode: 'OR',
       comments: 'Any',
-      stars: 'Any'
+      stars: 'Any',
+      updatedDate: 'Any',
+      includeClosed: false,
+      unassigned: false
     };
   }
 
   if (preset === 'low-noise') {
     return {
+      difficulty: 'Any',
       labels: ['help wanted'],
       labelMode: 'OR',
       comments: 'Low (0-5)',
       stars: 'Any',
-      updatedDate: 'Last month'
+      updatedDate: 'Last month',
+      includeClosed: false,
+      unassigned: true
+    };
+  }
+
+  if (preset === 'tests') {
+    return {
+      difficulty: 'Any',
+      labels: ['testing', 'type:testing'],
+      labelMode: 'OR',
+      comments: 'Low (0-5)',
+      stars: 'Any',
+      updatedDate: 'Any',
+      includeClosed: false,
+      unassigned: true
     };
   }
 
@@ -123,6 +159,7 @@ export function getRelaxedFilters() {
     languages: [],
     labels: [],
     labelMode: 'OR',
+    difficulty: 'Any',
     stars: 'Any',
     comments: 'Any',
     updatedDate: 'Any',

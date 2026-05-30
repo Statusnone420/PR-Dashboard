@@ -484,6 +484,7 @@ test('advanced difficulty labels cap inflated help-wanted matches', async () => 
       '- A short note in the PR explains why the new scheme is race-free.'
     ].join('\n'),
     labels: [
+      { name: 'good first issue' },
       { name: 'help wanted' },
       { name: 'performance' },
       { name: 'level:advanced' },
@@ -518,7 +519,103 @@ test('advanced difficulty labels cap inflated help-wanted matches', async () => 
   assert.ok(result.score <= 84);
   assert.ok(result.passReasons.includes('Advanced difficulty'));
   assert.ok(result.rows.some(row => row.label === 'Advanced difficulty label'));
-  assert.ok(result.rows.some(row => row.label === 'Advanced difficulty cap'));
+  assert.ok(result.score < 85);
+  assert.equal(result.flags.difficulty, 'advanced');
+  assert.equal(result.flags.hasBeginnerLabel, false);
+});
+
+test('intermediate difficulty labels cap testing issues away from perfect first-pr matches', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'test(config): cover WAGGLE_HTTP_PORT env override',
+    body: [
+      '## Context',
+      'AppConfig reads WAGGLE_HTTP_PORT, but there is no regression coverage proving the env var wins over the default.',
+      '',
+      '## What to do',
+      '- Add a focused test for WAGGLE_HTTP_PORT.',
+      '- Keep the test isolated from the real environment.',
+      '- Assert the configured HTTP port changes only for that case.',
+      '',
+      '## Acceptance criteria',
+      '- The test fails without the override behavior.',
+      '- No runtime behavior changes are required.'
+    ].join('\n'),
+    labels: [
+      { name: 'help wanted' },
+      { name: 'testing' },
+      { name: 'performance' },
+      { name: 'level:intermediate' },
+      { name: 'type:testing' }
+    ],
+    comments: 0,
+    repository: strongRepo({
+      full_name: 'Abhigyan-Shekhar/Waggle-mcp',
+      stargazers_count: 6,
+      forks_count: 19,
+      open_issues_count: 0,
+      language: 'Python'
+    })
+  }), {
+    intent: buildFinderIntent({
+      labels: ['good first issue', 'help wanted'],
+      labelMode: 'OR',
+      stars: 'Any',
+      comments: 'Any',
+      updatedDate: 'Any',
+      unassigned: false
+    }),
+    enrichment: {
+      comments: { inspected: true },
+      timeline: { inspected: true },
+      setup: { inspected: true, setupDocsPresent: true },
+      history: { inspected: true, recentMergedPrs: true, activeSameLabelIssues: true }
+    }
+  });
+
+  assert.equal(result.rating, 'Good candidate');
+  assert.equal(result.flags.difficulty, 'intermediate');
+  assert.equal(result.flags.hasBeginnerLabel, false);
+  assert.ok(result.score < 100);
+  assert.ok(result.score <= 84);
+  assert.ok(result.passReasons.includes('Intermediate difficulty'));
+  assert.ok(result.rows.some(row => row.label === 'Intermediate difficulty label'));
+  assert.ok(result.rows.some(row => row.label === 'Intermediate difficulty cap'));
+  assert.ok(!result.rows.some(row => row.label.includes('Beginner-friendly')));
+});
+
+test('help wanted alone is availability, not beginner difficulty', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Add regression test for CLI config loading',
+    body: 'Expected behavior: the CLI should load config from the documented path. Add a focused test and keep the implementation unchanged.',
+    labels: [{ name: 'help wanted' }, { name: 'testing' }],
+    comments: 0,
+    repository: strongRepo({ language: 'Python' })
+  }));
+
+  assert.equal(result.flags.hasBeginnerLabel, false);
+  assert.equal(result.flags.difficulty, 'unknown');
+  assert.ok(result.rows.some(row => row.label === 'Help wanted availability signal'));
+  assert.ok(!result.rows.some(row => row.label.includes('Beginner-friendly')));
+});
+
+test('explicit beginner difficulty still allows true starter issues to score strongly', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    labels: [{ name: 'help wanted' }, { name: 'level:beginner' }, { name: 'type:docs' }],
+    repository: strongRepo({ language: 'Python' })
+  }));
+
+  assert.equal(result.rating, 'Strong candidate');
+  assert.equal(result.flags.difficulty, 'beginner');
+  assert.equal(result.flags.hasBeginnerLabel, true);
+  assert.ok(result.score >= 85);
+  assert.ok(result.rows.some(row => row.label === 'Beginner-friendly label with actionable details'));
 });
 
 test('mini-scores expose all dimensions with stable labels', async () => {

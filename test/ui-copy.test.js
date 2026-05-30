@@ -97,6 +97,26 @@ test('contribution coach UI exposes a best-for chip and inspector brief', () => 
   assert.match(mainJs, /Contribution Brief/);
 });
 
+test('finder filters expose difficulty, broader languages, work labels, and tests preset', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Difficulty/);
+  assert.match(mainJs, /Beginner/);
+  assert.match(mainJs, /Intermediate/);
+  assert.match(mainJs, /Advanced/);
+  assert.match(mainJs, /Python/);
+  assert.match(mainJs, /Swift/);
+  assert.match(mainJs, /C#/);
+  assert.match(mainJs, /C\+\+/);
+  assert.match(mainJs, /Kotlin/);
+  assert.match(mainJs, /testing/);
+  assert.match(mainJs, /security/);
+  assert.match(mainJs, /refactor/);
+  assert.match(mainJs, /onboarding/);
+  assert.match(mainJs, /data-preset="tests"/);
+  assertSourceOrder(mainJs, '^level:', 'good first issue|documentation');
+});
+
 test('settings exposes hidden results management copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
