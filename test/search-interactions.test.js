@@ -189,7 +189,7 @@ test('finder intent normalizes applied filters for match scoring', async () => {
   });
 
   assert.deepEqual(intent.selectedLabels, ['help wanted', 'docs']);
-  assert.equal(intent.labelMode, 'AND');
+  assert.equal(intent.labelMode, 'OR');
   assert.equal(intent.starsThreshold, 5000);
   assert.deepEqual(intent.commentsRange, { min: 0, max: 5, label: 'Low (0-5)' });
   assert.equal(intent.updatedDateDays, 30);

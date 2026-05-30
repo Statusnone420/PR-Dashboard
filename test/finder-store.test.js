@@ -25,6 +25,7 @@ test('filter draft changes do not alter applied filters until Apply Filters is u
   appStore.setDraftFilters({ stars: '5k+' });
 
   assert.deepEqual(appStore.filters.targetPlatforms, TARGET_PLATFORM_KEYS);
+  assert.deepEqual(appStore.filters.labels, []);
   assert.equal(appStore.draftFilters.stars, '5k+');
   assert.equal(appStore.filters.stars, 'Any');
   assert.equal(appStore.hasDraftFilterChanges(), true);

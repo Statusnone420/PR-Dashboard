@@ -42,7 +42,7 @@ const PASSED_HIDDEN_ISSUE_KEY = 'passed_hidden_issue_key';
 export function createDefaultFilters() {
   return {
     languages: [],
-    labels: ['good first issue', 'help wanted'],
+    labels: [],
     labelMode: 'OR',
     difficulty: 'Any',
     stars: 'Any',
@@ -157,6 +157,7 @@ export class AppStore {
     this.finderMode = 'find';
     this.lastSearchMode = 'find';
     this.lastAppliedQueryPreview = '';
+    this.lastSearchDiagnostics = null;
     this.lookupRepoContext = '';
 
     // 5. Details Inspector Panel
@@ -626,9 +627,10 @@ export class AppStore {
     this.notify();
   }
 
-  setLastSearchMetadata({ mode, queryPreview, lookupRepoContext } = {}) {
+  setLastSearchMetadata({ mode, queryPreview, lookupRepoContext, diagnostics } = {}) {
     if (mode) this.lastSearchMode = mode;
     if (queryPreview !== undefined) this.lastAppliedQueryPreview = queryPreview;
+    if (diagnostics !== undefined) this.lastSearchDiagnostics = diagnostics || null;
     if (lookupRepoContext !== undefined) this.lookupRepoContext = lookupRepoContext || '';
   }
 

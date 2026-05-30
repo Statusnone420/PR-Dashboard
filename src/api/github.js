@@ -1,16 +1,14 @@
 import { store } from '../state/store.js';
 import { isGitHubApiUrl } from '../security.js';
 import { buildExactIssueApiUrl } from '../lookup.js';
-import { extractRepoFullName, filterIssuesByStars, hydrateIssueRepositories } from './repoMetadata.js';
+import { extractRepoFullName, filterIssuesByStars, getStarsThreshold, hydrateIssueRepositories, setCachedRepoMetadata } from './repoMetadata.js';
 
 // Simple in-memory cache
 let recentSearchCache = null;
 
-const DIFFICULTY_LABELS = {
-  Beginner: ['good first issue', 'level:beginner', 'difficulty:beginner', 'beginner'],
-  Intermediate: ['level:intermediate', 'difficulty:intermediate', 'intermediate'],
-  Advanced: ['level:advanced', 'difficulty:advanced', 'advanced']
-};
+const REPO_DISCOVERY_REPO_LIMIT = 5;
+const REPO_DISCOVERY_ISSUE_LIMIT = 20;
+const CURATED_REPO_DISCOVERY_STARS = 5000;
 
 function quoteGitHubValue(value) {
   const clean = String(value || '').trim().replace(/"/g, '\\"');
@@ -22,14 +20,14 @@ function quoteGitHubLabel(value) {
   return `"${String(value || '').trim().replace(/"/g, '\\"')}"`;
 }
 
-function appendLabelFilters(parts, labels = [], labelMode = 'OR') {
+function appendLabelFilters(parts, labels = []) {
   const labelQueries = labels
     .map(label => String(label || '').trim())
     .filter(Boolean)
     .map(quoteGitHubLabel);
   if (!labelQueries.length) return;
 
-  if (labelQueries.length === 1 || labelMode === 'AND') {
+  if (labelQueries.length === 1) {
     parts.push(...labelQueries.map(label => `label:${label}`));
   } else {
     parts.push(`label:${labelQueries.join(',')}`);
@@ -76,13 +74,9 @@ export function buildQueryString(queryText, filters, options = {}) {
     }
   }
 
-  if (DIFFICULTY_LABELS[filters.difficulty]) {
-    appendLabelFilters(parts, DIFFICULTY_LABELS[filters.difficulty], 'OR');
-  }
-
   // Labels filter
   if (filters.labels && filters.labels.length > 0) {
-    appendLabelFilters(parts, filters.labels, filters.labelMode);
+    appendLabelFilters(parts, filters.labels);
   }
 
   // Comments filter
@@ -138,6 +132,254 @@ export function buildSearchIssuesUrl(queryText, filters, options = {}) {
     url += `&sort=${sortParam}&order=${orderParam}`;
   }
   return url;
+}
+
+function cleanList(value) {
+  return Array.isArray(value)
+    ? value.map(item => String(item || '').trim()).filter(Boolean)
+    : [];
+}
+
+function getLabelNames(labels = []) {
+  return (Array.isArray(labels) ? labels : [])
+    .map(label => typeof label === 'string' ? label : label?.name)
+    .map(label => String(label || '').trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function issueMatchesSelectedLabels(issue, filters = {}) {
+  const selectedLabels = cleanList(filters.labels).map(label => label.toLowerCase());
+  if (!selectedLabels.length) return true;
+  const issueLabels = getLabelNames(issue?.labels);
+  return selectedLabels.some(label => issueLabels.includes(label));
+}
+
+function issueMatchesCommentFilter(issue, filters = {}) {
+  const comments = Number(issue?.comments || 0);
+  if (filters.comments === 'Low (0-5)') return comments >= 0 && comments <= 5;
+  if (filters.comments === 'Medium (6-15)') return comments >= 6 && comments <= 15;
+  if (filters.comments === 'High (15+)') return comments > 15;
+  return true;
+}
+
+function getUpdatedSinceDate(updatedDate) {
+  const now = new Date();
+  if (updatedDate === 'Last 24h') return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (updatedDate === 'Last week') return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (updatedDate === 'Last month') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  return null;
+}
+
+function issueMatchesUpdatedDateFilter(issue, filters = {}) {
+  const since = getUpdatedSinceDate(filters.updatedDate);
+  if (!since) return true;
+  const updatedAt = Date.parse(issue?.updated_at || '');
+  return Number.isFinite(updatedAt) && updatedAt >= since.getTime();
+}
+
+function issueMatchesLanguageFilter(issue, filters = {}) {
+  const languages = cleanList(filters.languages).map(language => language.toLowerCase());
+  if (!languages.length) return true;
+  return languages.includes(String(issue?.repository?.language || '').toLowerCase());
+}
+
+function issueMatchesSearchText(issue, searchText = '') {
+  const terms = String(searchText || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const labelText = getLabelNames(issue?.labels).join(' ');
+  const haystack = [
+    issue?.title,
+    issue?.body,
+    issue?.repository?.full_name,
+    labelText
+  ].map(value => String(value || '').toLowerCase()).join(' ');
+  return terms.every(term => haystack.includes(term));
+}
+
+function issueMatchesAssignmentFilter(issue, filters = {}) {
+  if (!filters.unassigned) return true;
+  return !issue?.assignee && !(Array.isArray(issue?.assignees) && issue.assignees.length);
+}
+
+function issueMatchesStateFilter(issue, filters = {}) {
+  if (filters.includeClosed) return true;
+  return String(issue?.state || 'open').toLowerCase() === 'open';
+}
+
+function filterIssuesByHardFilters(issues, filters = {}) {
+  return filterIssuesByStars(issues, filters.stars)
+    .filter(issue => issueMatchesStateFilter(issue, filters))
+    .filter(issue => issueMatchesSelectedLabels(issue, filters))
+    .filter(issue => issueMatchesCommentFilter(issue, filters))
+    .filter(issue => issueMatchesUpdatedDateFilter(issue, filters))
+    .filter(issue => issueMatchesAssignmentFilter(issue, filters))
+    .filter(issue => issueMatchesLanguageFilter(issue, filters));
+}
+
+function issueDiscoveryKey(issue) {
+  if (issue?.id !== undefined && issue?.id !== null) return `id:${issue.id}`;
+  const fullName = extractRepoFullName(issue) || issue?.repository?.full_name || '';
+  const number = Number.parseInt(issue?.number, 10);
+  if (fullName && Number.isFinite(number)) return `${fullName.toLowerCase()}#${number}`;
+  return String(issue?.html_url || '').toLowerCase();
+}
+
+function dedupeIssues(issues = []) {
+  const seen = new Set();
+  const unique = [];
+  for (const issue of issues) {
+    const key = issueDiscoveryKey(issue);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(issue);
+  }
+  return unique;
+}
+
+function encodeOwnerRepo(fullName) {
+  const [owner, repo] = String(fullName || '').split('/');
+  if (!owner || !repo) return null;
+  return {
+    owner,
+    repo,
+    ownerPath: encodeURIComponent(owner),
+    repoPath: encodeURIComponent(repo)
+  };
+}
+
+function parseRepoDiscoveryContext(queryText = '') {
+  const source = String(queryText || '').trim();
+  const repos = [];
+  let remaining = source;
+  const repoPattern = /(?:^|\s)(repo:)?([a-z0-9_.-]+\/[a-z0-9_.-]+)(?=\s|$)/ig;
+  remaining = source.replace(repoPattern, (match, prefix, fullName) => {
+    if (prefix || match.trim() === fullName) {
+      repos.push(fullName);
+      return ' ';
+    }
+    return match;
+  });
+
+  return {
+    repos: [...new Set(repos.map(repo => repo.toLowerCase()))],
+    remainingText: remaining.replace(/\s+/g, ' ').trim()
+  };
+}
+
+function buildRepositorySearchQueries(queryText, filters = {}) {
+  const { repos, remainingText } = parseRepoDiscoveryContext(queryText);
+  if (repos.length) return [];
+
+  const threshold = getStarsThreshold(filters.stars);
+  const shouldUseCuratedHighStars = !threshold && filters.difficulty && filters.difficulty !== 'Any';
+  if (!threshold && !shouldUseCuratedHighStars) return [];
+
+  const baseParts = [];
+  if (remainingText) baseParts.push(remainingText);
+  baseParts.push(`stars:>=${threshold || CURATED_REPO_DISCOVERY_STARS}`);
+  baseParts.push('archived:false');
+
+  const languages = cleanList(filters.languages);
+  const languageVariants = languages.length ? languages : [null];
+  return languageVariants.map(language => {
+    const parts = [...baseParts];
+    if (language) parts.push(`language:${quoteGitHubValue(language)}`);
+    return parts.join(' ');
+  });
+}
+
+function buildRepositorySearchUrl(query) {
+  return `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${REPO_DISCOVERY_REPO_LIMIT}`;
+}
+
+function buildRepositoryIssuesUrl(fullName, filters = {}) {
+  const parts = encodeOwnerRepo(fullName);
+  if (!parts) return null;
+  const params = new URLSearchParams({
+    state: filters.includeClosed ? 'all' : 'open',
+    sort: 'updated',
+    direction: 'desc',
+    per_page: String(REPO_DISCOVERY_ISSUE_LIMIT)
+  });
+  const since = getUpdatedSinceDate(filters.updatedDate);
+  if (since) params.set('since', since.toISOString());
+  if (filters.unassigned) params.set('assignee', 'none');
+  return `https://api.github.com/repos/${parts.ownerPath}/${parts.repoPath}/issues?${params.toString()}`;
+}
+
+function tagDiscoverySource(issue, source) {
+  const sources = Array.isArray(issue.discovery_sources) ? issue.discovery_sources : [];
+  return {
+    ...issue,
+    discovery_sources: sources.includes(source) ? sources : [...sources, source],
+    discovery_source: issue.discovery_source || source
+  };
+}
+
+async function fetchRepoIssues(fullName, filters, options) {
+  const url = buildRepositoryIssuesUrl(fullName, filters);
+  if (!url) return [];
+  const response = await options.fetchImpl(url, createGitHubRequestOptions(url, options.token));
+  store.setRateLimit(rateLimitFromResponse(response, 'core'), 'core');
+
+  if (!response.ok) return [];
+  const data = await response.json();
+  return (Array.isArray(data) ? data : [])
+    .filter(item => !item.pull_request)
+    .map(normalizeGitHubIssue)
+    .map(issue => tagDiscoverySource(issue, 'repo-discovery'));
+}
+
+async function fetchRepositoryDiscoveryIssues(queryText, filters, options) {
+  const context = parseRepoDiscoveryContext(queryText);
+  const sourceQueries = [];
+  const repos = new Map();
+
+  for (const fullName of context.repos) {
+    repos.set(fullName, { full_name: fullName });
+  }
+
+  for (const query of buildRepositorySearchQueries(queryText, filters)) {
+    const url = buildRepositorySearchUrl(query);
+    sourceQueries.push(`repos: ${query}`);
+    const response = await options.fetchImpl(url, createGitHubRequestOptions(url, options.token));
+    store.setRateLimit(rateLimitFromResponse(response, 'search'), 'search');
+    if (!response.ok) continue;
+    const data = await response.json();
+    for (const repo of data.items || []) {
+      if (!repo?.full_name || repos.has(String(repo.full_name).toLowerCase())) continue;
+      repos.set(String(repo.full_name).toLowerCase(), repo);
+      setCachedRepoMetadata(repo.full_name, repo);
+    }
+  }
+
+  const issues = [];
+  for (const repo of repos.values()) {
+    if (!repo?.full_name) continue;
+    sourceQueries.push(`GET /repos/${repo.full_name}/issues`);
+    const repoIssues = await fetchRepoIssues(repo.full_name, filters, options);
+    issues.push(...repoIssues.filter(issue => issueMatchesSearchText(issue, context.repos.length ? context.remainingText : '')));
+  }
+
+  return { issues, sourceQueries };
+}
+
+function normalizeSearchCacheFilters(filters = {}) {
+  return {
+    languages: cleanList(filters.languages),
+    labels: cleanList(filters.labels),
+    difficulty: filters.difficulty || 'Any',
+    stars: filters.stars || 'Any',
+    comments: filters.comments || 'Any',
+    updatedDate: filters.updatedDate || 'Any',
+    includeClosed: Boolean(filters.includeClosed),
+    unassigned: Boolean(filters.unassigned)
+  };
+}
+
+function buildQueryPreviewFromDiagnostics(fallbackQuery, diagnostics) {
+  const sourceQueries = diagnostics?.sourceQueries || [];
+  return sourceQueries.length ? sourceQueries.join('\n') : fallbackQuery;
 }
 
 function repositoryFromApiUrl(repositoryUrl) {
@@ -421,7 +663,13 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
   }
 
   // Check in-memory cache
-  const cacheKey = `${mode}::${q}::${sortParam}::${orderParam}`;
+  const cacheKey = JSON.stringify({
+    mode,
+    q,
+    sortParam,
+    orderParam,
+    filters: normalizeSearchCacheFilters(filters)
+  });
   if (!forceRefresh && recentSearchCache && recentSearchCache.key === cacheKey) {
     // Update store with cached rate limits
     if (recentSearchCache.rateLimit) {
@@ -429,8 +677,9 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
     }
     store.setLastSearchMetadata({
       mode,
-      queryPreview: q,
-      lookupRepoContext: recentSearchCache.results.map(getLookupRepoContextFromIssue).find(Boolean) || store.lookupRepoContext
+      queryPreview: recentSearchCache.queryPreview || q,
+      lookupRepoContext: recentSearchCache.results.map(getLookupRepoContextFromIssue).find(Boolean) || store.lookupRepoContext,
+      diagnostics: recentSearchCache.diagnostics || null
     });
     store.setSearchState(false, null, recentSearchCache.results);
     return recentSearchCache.results;
@@ -438,11 +687,12 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
 
   store.setSearchState(true, null);
 
-  const token = store.githubToken;
+  const token = options.token ?? store.githubToken;
+  const fetchImpl = options.fetchImpl || fetch;
   const url = buildSearchIssuesUrl(queryText, filters, { mode });
 
   try {
-    const response = await fetch(url, createGitHubRequestOptions(url, token));
+    const response = await fetchImpl(url, createGitHubRequestOptions(url, token));
 
     // Parse rate limits from headers
     const rateLimitInfo = rateLimitFromResponse(response, 'search');
@@ -469,27 +719,61 @@ export async function searchGitHubIssues(queryText, forceRefresh = false, option
     const data = await response.json();
     
     // Filter out pull requests just in case (is:issue usually takes care of it, but good to be safe)
-    const items = (data.items || []).filter(item => !item.pull_request).map(normalizeGitHubIssue);
+    const directItems = (data.items || [])
+      .filter(item => !item.pull_request)
+      .map(normalizeGitHubIssue)
+      .map(issue => tagDiscoverySource(issue, 'issue-search'));
+    const diagnostics = {
+      sourceQueries: [`issues: ${q}`],
+      fetchedCount: directItems.length,
+      dedupedCount: 0,
+      hydratedCount: 0,
+      hardFilteredCount: 0,
+      visibleCount: null
+    };
+    let discoveredItems = [];
+    if (mode === 'find') {
+      const discovery = await fetchRepositoryDiscoveryIssues(queryText, filters, {
+        token,
+        fetchImpl,
+        forceRefresh: Boolean(options.forceRepoRefresh)
+      });
+      discoveredItems = discovery.issues;
+      diagnostics.sourceQueries.push(...discovery.sourceQueries);
+      diagnostics.fetchedCount += discoveredItems.length;
+    }
+
+    const items = dedupeIssues([...directItems, ...discoveredItems]);
+    diagnostics.dedupedCount = items.length;
+
     const hydratedItems = await hydrateIssueRepositories(items, {
       token,
-      forceRefresh: Boolean(options.forceRepoRefresh)
+      forceRefresh: Boolean(options.forceRepoRefresh),
+      fetchImpl
     });
+    diagnostics.hydratedCount = hydratedItems.length;
+
     const locallyFilteredItems = (mode === 'find' || filters.useFiltersInLookup)
-      ? filterIssuesByStars(hydratedItems, filters.stars)
+      ? filterIssuesByHardFilters(hydratedItems, filters)
       : hydratedItems;
+    diagnostics.hardFilteredCount = locallyFilteredItems.length;
+    const queryPreview = buildQueryPreviewFromDiagnostics(q, diagnostics);
 
     // Save in-memory cache
     recentSearchCache = {
       key: cacheKey,
       results: locallyFilteredItems,
-      rateLimit: rateLimitInfo
+      rateLimit: rateLimitInfo,
+      queryPreview,
+      diagnostics
     };
 
     const firstRepo = locallyFilteredItems.map(getLookupRepoContextFromIssue).find(Boolean) || store.lookupRepoContext;
     store.setLastSearchMetadata({
       mode,
-      queryPreview: q,
-      lookupRepoContext: firstRepo
+      queryPreview,
+      lookupRepoContext: firstRepo,
+      diagnostics
     });
     store.setSearchState(false, null, locallyFilteredItems);
     return locallyFilteredItems;

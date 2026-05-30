@@ -442,6 +442,16 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
   assert.match(moreFilters, /Unassigned only/);
 });
 
+test('empty finder results show applied query proof instead of draft filter proof', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const finder = sliceBetween(mainJs, 'function renderFindIssues(container)', 'function renderIssueCardsList');
+
+  assert.match(finder, /appliedQueryPreview/);
+  assert.match(finder, /store\.lastAppliedQueryPreview/);
+  assert.match(finder, /renderNoResults\(appliedQueryPreview,\s*appliedFilters,\s*diagnostics\)/);
+  assert.doesNotMatch(finder, /renderNoResults\(queryPreview,\s*filters/);
+});
+
 test('board exposes compact mode without importing inspector tabs', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const board = sliceBetween(mainJs, 'function renderBoard(container)', 'function getFeedbackIssueUrl');

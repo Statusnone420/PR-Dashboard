@@ -56,7 +56,7 @@ export function getUpdatedDateDays(value) {
 export function buildFinderIntent(filters = {}, profile = null) {
   return {
     selectedLabels: cleanStringList(filters.labels),
-    labelMode: filters.labelMode === 'AND' ? 'AND' : 'OR',
+    labelMode: 'OR',
     starsThreshold: getStarsThreshold(filters.stars),
     commentsRange: getCommentRange(filters.comments),
     updatedDateDays: getUpdatedDateDays(filters.updatedDate),

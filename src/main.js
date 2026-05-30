@@ -1988,6 +1988,26 @@ function getFirstRelaxationHint(filters) {
   return 'PR Dashboard searches GitHub issues, not users or profiles. Try an issue topic, repo name, or owner/repo.';
 }
 
+function renderSearchDiagnostics(diagnostics = null) {
+  if (!diagnostics) return '';
+  const rows = [
+    `Fetched: ${safeInteger(diagnostics.fetchedCount)}`,
+    `Hydrated: ${safeInteger(diagnostics.hydratedCount)}`,
+    `After hard filters: ${safeInteger(diagnostics.hardFilteredCount)}`
+  ];
+  if (diagnostics.visibleCount !== null && diagnostics.visibleCount !== undefined) {
+    rows.push(`Visible: ${safeInteger(diagnostics.visibleCount)}`);
+  }
+  return `
+    <div class="rounded border border-outline-variant bg-surface-container-lowest p-4">
+      <div class="text-xs uppercase tracking-wider text-on-surface-variant mb-2">Search diagnostics</div>
+      <ul class="list-disc list-inside text-on-surface-variant space-y-1">
+        ${rows.map(row => `<li>${escapeHTML(row)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
 function hasActiveMoreFilters(filters = {}) {
   return (
     (filters.comments && filters.comments !== 'Any') ||
@@ -2050,10 +2070,11 @@ function saveMoreFiltersOpen(open) {
   }
 }
 
-function renderNoResults(queryPreview, filters) {
+function renderNoResults(queryPreview, filters, diagnostics = null) {
   const filtersHTML = describeActiveFilters(filters)
     .map(filter => `<li>${escapeHTML(filter)}</li>`)
     .join('');
+  const diagnosticsHTML = renderSearchDiagnostics(diagnostics);
 
   return `
     <div class="p-8 rounded-lg bg-surface-container border border-outline-variant flex flex-col gap-5">
@@ -2066,13 +2087,14 @@ function renderNoResults(queryPreview, filters) {
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
         <div class="rounded border border-outline-variant bg-surface-container-lowest p-4">
-          <div class="text-xs uppercase tracking-wider text-on-surface-variant mb-2">Exact query sent</div>
+          <div class="text-xs uppercase tracking-wider text-on-surface-variant mb-2">GitHub requests sent</div>
           <code class="text-xs text-on-surface break-words">${escapeHTML(queryPreview)}</code>
         </div>
         <div class="rounded border border-outline-variant bg-surface-container-lowest p-4">
           <div class="text-xs uppercase tracking-wider text-on-surface-variant mb-2">Active filters</div>
           <ul class="list-disc list-inside text-on-surface-variant space-y-1">${filtersHTML}</ul>
         </div>
+        ${diagnosticsHTML}
       </div>
       <div class="flex flex-wrap items-center justify-between gap-3 rounded border border-primary/20 bg-primary/10 p-4">
         <span class="text-sm text-on-surface">${escapeHTML(getFirstRelaxationHint(filters))} Broaden Search keeps your search text and removes contribution filters.</span>
@@ -2133,6 +2155,9 @@ function renderFindIssues(container) {
   const queryPreview = exactLookup
     ? `GET ${buildExactIssueApiUrl(exactLookup)}`
     : buildQueryPreview(store.searchQuery, filters, { mode });
+  const appliedQueryPreview = store.lastAppliedQueryPreview || (exactLookup
+    ? `GET ${buildExactIssueApiUrl(exactLookup)}`
+    : buildQueryPreview(store.searchQuery, appliedFilters, { mode: resultMode }));
   const filtersChanged = store.hasDraftFilterChanges();
   const isLookupMode = mode === 'lookup';
   const findModeClass = !isLookupMode
@@ -2235,7 +2260,10 @@ function renderFindIssues(container) {
   } else if (visibleResults !== null) {
     countText = `Showing ${visibleResults.length} ${appliedFilters.includeClosed || store.lastSearchMode === 'lookup' ? 'issues' : 'open issues'}`;
     if (visibleResults.length === 0) {
-      resultsHTML = renderNoResults(queryPreview, filters);
+      const diagnostics = store.lastSearchDiagnostics
+        ? { ...store.lastSearchDiagnostics, visibleCount: visibleResults.length }
+        : null;
+      resultsHTML = renderNoResults(appliedQueryPreview, appliedFilters, diagnostics);
     } else {
       resultsHTML = renderIssueCardsList(visibleResults, { mode: resultMode, setupSummaryResolver });
     }
@@ -2691,6 +2719,12 @@ function renderIssueCardsList(issuesList, options = {}) {
         Not a contribution candidate
       </div>
     ` : '';
+    const discoverySources = Array.isArray(issue.discovery_sources) ? issue.discovery_sources : [];
+    const discoverySourceHTML = discoverySources.includes('issue-search')
+      ? '<span class="rounded border border-outline-variant bg-surface-container-high px-2 py-0.5 text-xs text-on-surface-variant">GitHub query</span>'
+      : discoverySources.includes('repo-discovery')
+        ? '<span class="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs text-primary">Inferred fit</span>'
+        : '';
     const repoUnavailableHTML = repoMetadataUnavailable ? `
       <span class="rounded border border-outline-variant bg-surface-dim px-2 py-0.5 text-xs text-on-surface-variant">Repo metadata unavailable</span>
     ` : '';
@@ -2729,6 +2763,7 @@ function renderIssueCardsList(issuesList, options = {}) {
         
         <div class="mt-auto flex flex-wrap items-center gap-2">
           <span class="interactive-chip rounded border ${rating.bgClass} px-2 py-0.5 text-xs">${fitObj.score}% Match</span>
+          ${discoverySourceHTML}
           ${platformEvidenceHTML}
           ${primaryLabelHTML}
           ${labelOverflowHTML}

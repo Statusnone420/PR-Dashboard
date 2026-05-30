@@ -201,7 +201,7 @@ export async function hydrateIssueRepositories(issues, options = {}) {
   });
 }
 
-function starsThreshold(stars) {
+export function getStarsThreshold(stars) {
   if (stars === '50+') return 50;
   if (stars === '100+') return 100;
   if (stars === '500+') return 500;
@@ -212,7 +212,7 @@ function starsThreshold(stars) {
 }
 
 export function repoMeetsStarsFilter(issue, stars) {
-  const threshold = starsThreshold(stars);
+  const threshold = getStarsThreshold(stars);
   if (!threshold) return true;
   if (issue?.repository_metadata_unavailable || issue?.repository?.metadataUnavailable) return true;
   return Number(issue?.repository?.stargazers_count || 0) >= threshold;
