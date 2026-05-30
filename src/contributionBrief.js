@@ -142,7 +142,7 @@ function getRepoHealth(issue, now) {
 }
 
 function getScope(issue, text, scoreData) {
-  if (includesAny(text, COMPLEX_TERMS) || hasScoreSignal(scoreData, 'complex') || hasScoreSignal(scoreData, 'large')) {
+  if (includesAny(text, COMPLEX_TERMS) || hasScoreSignal(scoreData, 'complex') || hasScoreSignal(scoreData, 'large') || hasScoreSignal(scoreData, 'advanced difficulty')) {
     return 'Large/unclear scope';
   }
   if (includesAny(text, SMALL_SCOPE_TERMS) || hasTaskList(issue) || hasScoreSignal(scoreData, 'small')) {
@@ -257,6 +257,7 @@ function buildRisks({ issue, text, scoreData, scope, clarity, socialRisk, issueU
   if (repoHealth.inactive || repoHealth.hard) pushUnique(risks, `${repoHealth.label}; validate the repo before investing time.`);
   if (hasHardPassLabel) pushUnique(risks, 'Blocked, duplicate, or wontfix label makes this a poor target.');
   if (hasScoreSignal(scoreData, 'platform mismatch')) pushUnique(risks, 'Selected target platforms do not match the setup requirements.');
+  if (hasScoreSignal(scoreData, 'advanced difficulty')) pushUnique(risks, 'Advanced difficulty label; treat this as deeper repo work.');
   if (isMeta) pushUnique(risks, 'Roadmap or meta work is hard to finish as a focused PR.');
   if (scope === 'Large/unclear scope') pushUnique(risks, 'Large scope or refactor language may hide substantial design work.');
   if (clarity !== 'Clear enough') pushUnique(risks, 'Vague body; ask what outcome would be accepted.');

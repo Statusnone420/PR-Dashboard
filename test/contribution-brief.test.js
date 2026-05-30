@@ -80,6 +80,26 @@ test('complex rewrite issue is treated as a deep dive maybe', async () => {
   assert.ok(brief.risks.some(risk => /scope|refactor|rewrite/i.test(risk)));
 });
 
+test('advanced difficulty label routes help-wanted issues away from first PR', async () => {
+  const brief = await briefFor(issue({
+    title: 'perf(rate_limit): reduce lock contention across keys',
+    body: [
+      'Expected behavior: independent keys should not block each other on a single global lock.',
+      'This is a design-level change and the PR must explain why the new locking scheme is race-free.',
+      'Acceptance criteria:',
+      '- Add a concurrent access test.',
+      '- Keep the limit semantics correct under load.'
+    ].join('\n'),
+    labels: [{ name: 'help wanted' }, { name: 'level:advanced' }, { name: 'performance' }]
+  }));
+
+  assert.equal(brief.verdict, 'Maybe');
+  assert.equal(brief.bestFor, 'Deep Dive');
+  assert.equal(brief.scope, 'Large/unclear scope');
+  assert.equal(brief.guidanceFit, 'Needs repo inspection');
+  assert.ok(brief.risks.some(risk => /advanced difficulty/i.test(risk)));
+});
+
 test('assigned high-comment stale issue is a likely pass with concrete risk reasons', async () => {
   const brief = await briefFor(issue({
     title: 'Fix intermittent release failure',

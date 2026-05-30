@@ -461,6 +461,66 @@ test('selected filters change match score after apply/search intent', async () =
   assert.ok(filteredScore.rows.some(row => row.label === 'Below selected repo stars cap'));
 });
 
+test('advanced difficulty labels cap inflated help-wanted matches', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'perf(rate_limit): a single global lock serializes every rate check across all keys',
+    body: [
+      '## Context',
+      'RateLimiter guards all of its state with one asyncio.Lock. Under high concurrency this turns the limiter into a serialization point.',
+      '',
+      'This is a design-level change, so it is worth discussing the approach before a large PR.',
+      '',
+      '## What to do',
+      '- Per-key locks, with a strategy for creating and reclaiming them safely.',
+      '- Sharded locks to bound the number of lock objects while cutting cross-key contention.',
+      '- Atomic-ish counter updates that avoid holding a lock across the whole check.',
+      '',
+      '## Acceptance criteria',
+      '- Independent keys no longer block each other on a single global lock.',
+      '- Limits remain correct under concurrent access.',
+      '- A short note in the PR explains why the new scheme is race-free.'
+    ].join('\n'),
+    labels: [
+      { name: 'help wanted' },
+      { name: 'performance' },
+      { name: 'level:advanced' },
+      { name: 'type:performance' }
+    ],
+    comments: 0,
+    repository: strongRepo({
+      full_name: 'Abhigyan-Shekhar/Waggle-mcp',
+      stargazers_count: 6,
+      forks_count: 19,
+      open_issues_count: 0,
+      language: 'Python'
+    })
+  }), {
+    intent: buildFinderIntent({
+      labels: ['good first issue', 'help wanted'],
+      labelMode: 'OR',
+      stars: 'Any',
+      comments: 'Any',
+      updatedDate: 'Any',
+      unassigned: false
+    }),
+    enrichment: {
+      comments: { inspected: true },
+      timeline: { inspected: true },
+      setup: { inspected: true, setupDocsPresent: true },
+      history: { inspected: true, recentMergedPrs: true, activeSameLabelIssues: true }
+    }
+  });
+
+  assert.equal(result.rating, 'Good candidate');
+  assert.ok(result.score <= 84);
+  assert.ok(result.passReasons.includes('Advanced difficulty'));
+  assert.ok(result.rows.some(row => row.label === 'Advanced difficulty label'));
+  assert.ok(result.rows.some(row => row.label === 'Advanced difficulty cap'));
+});
+
 test('mini-scores expose all dimensions with stable labels', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 

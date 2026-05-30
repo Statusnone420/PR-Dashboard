@@ -17,6 +17,7 @@ const STRONG_FIT_LABELS = [
   'low hanging fruit'
 ];
 const STALE_LABELS = ['stale', 'blocked', 'duplicate', 'wontfix', "won't fix", 'invalid'];
+const ADVANCED_DIFFICULTY_LABELS = ['level:advanced', 'difficulty:advanced', 'advanced'];
 const SMALL_SCOPE_TERMS = ['docs', 'readme', 'typo', 'config', 'cleanup', 'spelling', 'documentation'];
 const CLEAR_BEHAVIOR_TERMS = ['expected', 'actual', 'should', 'steps to reproduce', 'acceptance criteria', 'repro'];
 const COMPLEX_SCOPE_TERMS = ['rewrite', 'entire', 'architecture', 'large refactor', 'across everything', 'migration', 'redesign'];
@@ -159,6 +160,10 @@ function hasAny(value, terms) {
 
 function hasWholeTerm(value, term) {
   return new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(value);
+}
+
+function hasAdvancedDifficultyLabel(labels) {
+  return labels.some(label => ADVANCED_DIFFICULTY_LABELS.some(advanced => label === advanced || label.includes(advanced)));
 }
 
 function normalizedHeading(line) {
@@ -659,6 +664,7 @@ export function calculateMatchScore(issue, options = {}) {
   const hasActionableTaskList = hasTaskList(`${issue?.body || ''}`);
   const hasBoundedFix = hasBoundedFixWording(issueText);
   const hasComplexScope = hasAny(issueText, COMPLEX_SCOPE_TERMS);
+  const hasAdvancedDifficulty = hasAdvancedDifficultyLabel(labels);
   const hasMetaGrowth = hasAny(issueText, META_GROWTH_TERMS) || labels.some(label => /marketing|community|growth/.test(label));
   const updatedDays = daysSince(issue?.updated_at, now);
   const stage = options.stage || (options.enrichment ? 'enriched' : 'preview');
@@ -689,6 +695,7 @@ export function calculateMatchScore(issue, options = {}) {
     hasBoundedFix,
     hasClearBehavior,
     hasComplexScope,
+    hasAdvancedDifficulty,
     hasMetaGrowth
   };
   const hasSubstantiveBody = hasSubstantiveIssueBody(bodyText, signals);
@@ -746,6 +753,10 @@ export function calculateMatchScore(issue, options = {}) {
 
   if (hasActionableTaskList) {
     add(6, 'Clear task list');
+  }
+
+  if (hasAdvancedDifficulty) {
+    add(-14, 'Advanced difficulty label', 'Advanced difficulty');
   }
 
   const commentCount = Number(issue?.comments || 0);
@@ -939,6 +950,10 @@ export function calculateMatchScore(issue, options = {}) {
 
   if (thinIssue && score > 69) {
     score = applyScoreCap(score, 69, 'Thin issue detail cap', add);
+  }
+
+  if (hasAdvancedDifficulty && score > 84) {
+    score = applyScoreCap(score, 84, 'Advanced difficulty cap', add);
   }
 
   if (selectedStarsThreshold && repoStars < selectedStarsThreshold && !(repo.metadataUnavailable || issue?.repository_metadata_unavailable) && score > 49) {
