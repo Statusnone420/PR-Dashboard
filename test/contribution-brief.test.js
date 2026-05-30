@@ -80,6 +80,66 @@ test('complex rewrite issue is treated as a deep dive maybe', async () => {
   assert.ok(brief.risks.some(risk => /scope|refactor|rewrite/i.test(risk)));
 });
 
+test('advanced difficulty label routes help-wanted issues away from first PR', async () => {
+  const brief = await briefFor(issue({
+    title: 'perf(rate_limit): reduce lock contention across keys',
+    body: [
+      'Expected behavior: independent keys should not block each other on a single global lock.',
+      'This is a design-level change and the PR must explain why the new locking scheme is race-free.',
+      'Acceptance criteria:',
+      '- Add a concurrent access test.',
+      '- Keep the limit semantics correct under load.'
+    ].join('\n'),
+    labels: [{ name: 'help wanted' }, { name: 'level:advanced' }, { name: 'performance' }]
+  }));
+
+  assert.equal(brief.verdict, 'Maybe');
+  assert.equal(brief.bestFor, 'Deep Dive');
+  assert.equal(brief.scope, 'Large/unclear scope');
+  assert.equal(brief.guidanceFit, 'Needs repo inspection');
+  assert.ok(brief.risks.some(risk => /advanced difficulty/i.test(risk)));
+});
+
+test('intermediate help-wanted testing issue is standard, not first PR', async () => {
+  const brief = await briefFor(issue({
+    title: 'test(config): cover WAGGLE_HTTP_PORT env override',
+    body: [
+      'Expected behavior: WAGGLE_HTTP_PORT should override the default HTTP port when the app config is loaded.',
+      'Acceptance criteria:',
+      '- Add a focused test for WAGGLE_HTTP_PORT.',
+      '- Keep the test isolated from the real environment.',
+      '- No runtime behavior changes are required.'
+    ].join('\n'),
+    labels: [
+      { name: 'help wanted' },
+      { name: 'testing' },
+      { name: 'level:intermediate' },
+      { name: 'type:testing' }
+    ],
+    comments: 0,
+    repository: activeRepo({ full_name: 'Abhigyan-Shekhar/Waggle-mcp', language: 'Python' })
+  }));
+
+  assert.equal(brief.verdict, 'Good candidate');
+  assert.equal(brief.bestFor, 'Standard');
+  assert.equal(brief.scope, 'Medium scope');
+  assert.equal(brief.guidanceFit, 'Well-bounded');
+  assert.ok(brief.risks.some(risk => /intermediate difficulty/i.test(risk)));
+  assert.doesNotMatch(brief.why.join(' '), /Beginner-friendly label/);
+});
+
+test('help wanted without starter difficulty is not first-pr routed', async () => {
+  const brief = await briefFor(issue({
+    title: 'Add focused config regression coverage',
+    body: 'Expected behavior: the documented config path should be covered by a focused regression test with no runtime behavior changes.',
+    labels: [{ name: 'help wanted' }, { name: 'testing' }],
+    comments: 0
+  }));
+
+  assert.equal(brief.bestFor, 'Standard');
+  assert.doesNotMatch(brief.why.join(' '), /Beginner-friendly label/);
+});
+
 test('assigned high-comment stale issue is a likely pass with concrete risk reasons', async () => {
   const brief = await briefFor(issue({
     title: 'Fix intermittent release failure',

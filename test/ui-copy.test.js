@@ -97,6 +97,26 @@ test('contribution coach UI exposes a best-for chip and inspector brief', () => 
   assert.match(mainJs, /Contribution Brief/);
 });
 
+test('finder filters expose difficulty, broader languages, work labels, and tests preset', () => {
+  const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(mainJs, /Difficulty/);
+  assert.match(mainJs, /Beginner/);
+  assert.match(mainJs, /Intermediate/);
+  assert.match(mainJs, /Advanced/);
+  assert.match(mainJs, /Python/);
+  assert.match(mainJs, /Swift/);
+  assert.match(mainJs, /C#/);
+  assert.match(mainJs, /C\+\+/);
+  assert.match(mainJs, /Kotlin/);
+  assert.match(mainJs, /testing/);
+  assert.match(mainJs, /security/);
+  assert.match(mainJs, /refactor/);
+  assert.match(mainJs, /onboarding/);
+  assert.match(mainJs, /data-preset="tests"/);
+  assertSourceOrder(mainJs, '^level:', 'good first issue|documentation');
+});
+
 test('settings exposes hidden results management copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
 
@@ -168,16 +188,17 @@ test('profile, proof log, export import, and review reminders are visible produc
   assert.doesNotMatch(indexHtml, />\s*JD\s*</);
 });
 
-test('match score v3 UI exposes compact confidence and inspector diagnostics', () => {
+test('match score UI keeps Match visible without separate confidence copy', () => {
   const mainJs = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   const resultCards = sliceBetween(mainJs, 'function renderIssueCardsList', 'function bindIssueCardListEvents');
   const inspector = sliceBetween(mainJs, 'function openInspector', 'function closeInspector');
 
   assert.match(resultCards, /% Match/);
   assert.match(resultCards, /Why:/);
-  assert.match(resultCards, /Confidence:/);
+  assert.doesNotMatch(resultCards, /Confidence:/);
   assert.doesNotMatch(inspector, /Score diagnostics/);
-  assert.match(inspector, /Confidence/);
+  assert.doesNotMatch(inspector, /Confidence:/);
+  assert.doesNotMatch(inspector, />\s*Confidence\s*</);
   assert.match(inspector, /Mini-scores/);
   assert.match(inspector, /Opportunity Fit/);
   assert.match(inspector, /Issue Clarity/);
@@ -223,9 +244,9 @@ test('inspector source order keeps decision brief before evidence and action pla
   assertSourceOrder(inspector, '<!-- inspector-section:score-evidence -->', 'Action Plan');
 
   assert.match(evidence, /Why this score\?/);
-  assert.match(evidence, /Confidence/);
+  assert.doesNotMatch(evidence, /Confidence:/);
+  assert.doesNotMatch(evidence, />\s*Confidence\s*</);
   assert.match(evidence, /Mini-scores/);
-  assert.match(evidence, /\$\{confidenceReasonsHTML\}/);
   assert.match(evidence, /\$\{miniScoresHTML\}/);
   assert.match(evidence, /\$\{fitScoreReasonsHTML\}/);
   assert.match(evidence, /\$\{passChipsHTML\}/);
@@ -396,7 +417,7 @@ test('find contributions keeps exact scores while reducing card chip noise', () 
   const moreFilters = sliceBetween(finder, '<details class="filter-disclosure"', '</details>');
 
   assert.match(resultCards, /% Match/);
-  assert.match(resultCards, /Confidence:/);
+  assert.doesNotMatch(resultCards, /Confidence:/);
   assert.match(resultCards, /renderPlatformEvidenceBadge/);
   assert.match(inspector, /renderPlatformEvidenceBadge/);
   assert.match(mainJs, /platform-evidence-chip/);
@@ -494,8 +515,10 @@ test('lookup and search keep hidden results out of result cards', () => {
   assert.match(mainJs, /const setupSummaryResolver = Array\.isArray\(results\) \? createPlatformFilterSetupSummaryResolver\(\) : null/);
   assert.match(mainJs, /filterVisibleIssueResults\(results, appliedFilters, \{ mode: resultMode, setupSummaryResolver \}\)/);
   assert.match(mainJs, /shouldApplyTargetPlatformResultFilter/);
+  assert.match(mainJs, /getScoreFiltersForMode/);
   assert.match(mainJs, /getScoreTargetPlatformsForMode/);
-  assert.match(mainJs, /targetPlatforms: options\.targetPlatforms \|\| getScoreTargetPlatformsForMode\(store\.filters, mode\)/);
+  assert.match(mainJs, /getScoreFiltersForMode\(store\.filters, mode, \{ currentScreen: store\.currentScreen \}\)/);
+  assert.match(mainJs, /targetPlatforms: options\.targetPlatforms \|\| getScoreTargetPlatformsForMode\(filtersForScore, mode\)/);
   assert.match(mainJs, /filterHiddenIssues\(items\)\.filter/);
   assert.match(mainJs, /platformFilterSetupScanResults/);
   assert.match(mainJs, /schedulePlatformFilterSetupRerender/);

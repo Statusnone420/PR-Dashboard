@@ -1,6 +1,12 @@
 import { isClosedIssue } from './boardModel.js';
 
-const BEGINNER_LABELS = ['good first issue', 'help wanted', 'beginner', 'starter'];
+const STARTER_LABELS = ['good first issue', 'level:beginner', 'difficulty:beginner', 'beginner', 'starter', 'easy', 'low-hanging-fruit', 'low hanging fruit'];
+const AVAILABILITY_LABELS = ['help wanted'];
+const EXPLICIT_DIFFICULTY_LABELS = {
+  beginner: ['level:beginner', 'difficulty:beginner', 'beginner'],
+  intermediate: ['level:intermediate', 'difficulty:intermediate', 'intermediate'],
+  advanced: ['level:advanced', 'difficulty:advanced', 'advanced']
+};
 const HARD_PASS_LABELS = ['blocked', 'duplicate', 'wontfix', "won't fix", 'invalid'];
 const SMALL_SCOPE_TERMS = ['docs', 'readme', 'typo', 'config', 'cleanup', 'spelling', 'copy', 'documentation'];
 const CLEAR_TERMS = ['expected', 'actual', 'should', 'steps to reproduce', 'acceptance criteria', 'repro'];
@@ -34,6 +40,31 @@ function escapedRegex(value) {
 
 function includesWholeTerm(value, term) {
   return new RegExp(`(^|[^a-z0-9])${escapedRegex(term)}([^a-z0-9]|$)`, 'i').test(value);
+}
+
+function labelMatchesTerm(label, term) {
+  if (label === term) return true;
+  if (term.includes(':')) return label.includes(term);
+  return includesWholeTerm(label, term);
+}
+
+function labelsMatchAny(labels, terms) {
+  return labels.some(label => terms.some(term => labelMatchesTerm(label, term)));
+}
+
+function getExplicitDifficulty(labels) {
+  if (labelsMatchAny(labels, EXPLICIT_DIFFICULTY_LABELS.advanced)) return 'advanced';
+  if (labelsMatchAny(labels, EXPLICIT_DIFFICULTY_LABELS.intermediate)) return 'intermediate';
+  if (labelsMatchAny(labels, EXPLICIT_DIFFICULTY_LABELS.beginner)) return 'beginner';
+  return null;
+}
+
+function getIssueDifficulty(labels, scoreData) {
+  const scoreDifficulty = String(scoreData?.flags?.difficulty || '').toLowerCase();
+  if (['beginner', 'intermediate', 'advanced'].includes(scoreDifficulty)) return scoreDifficulty;
+  const explicit = getExplicitDifficulty(labels);
+  if (explicit) return explicit;
+  return labelsMatchAny(labels, STARTER_LABELS) ? 'beginner' : 'unknown';
 }
 
 function includesAnyWholeTerm(value, terms) {
@@ -74,6 +105,58 @@ function firstItems(list, count) {
   return list.filter(Boolean).slice(0, count);
 }
 
+function formatCompactNumber(value) {
+  const count = Number(value || 0);
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}k`;
+  return `${count}`;
+}
+
+function hasPositiveScoreSignal(scoreData, needle) {
+  const normalized = needle.toLowerCase();
+  return (scoreData?.rows || []).some(row => Number(row?.points || 0) > 0 && String(row?.label || '').toLowerCase().includes(normalized));
+}
+
+function buildPrimaryScoreReason(issue, scoreData) {
+  const score = Number(scoreData?.score || 0);
+  const rows = scoreData?.rows || [];
+  const negativeRows = rows
+    .filter(row => Number(row?.points || 0) < 0)
+    .map(row => String(row?.label || '').toLowerCase());
+
+  if (score < 70) {
+    const risks = [];
+    if (negativeRows.some(label => label.includes('unfilled issue template'))) pushUnique(risks, 'unfilled issue template');
+    if (negativeRows.some(label => label.includes('assigned'))) pushUnique(risks, 'already assigned');
+    if (negativeRows.some(label => label.includes('below selected repo stars'))) pushUnique(risks, 'below selected stars filter');
+    if (negativeRows.some(label => label.includes('thin issue') || label.includes('vague'))) pushUnique(risks, 'not enough issue detail');
+    if (negativeRows.some(label => label.includes('too many comments') || label.includes('comment'))) pushUnique(risks, 'comment noise');
+    if (risks.length) return `${risks.join(', ')}.`;
+    if (score < 50) return null;
+  }
+
+  const parts = [];
+  const preferenceRows = rows
+    .filter(row => Number(row?.points || 0) > 0 && /^Matches .* preference$/.test(String(row?.label || '')))
+    .map(row => String(row.label).replace(/^Matches\s+/i, '').replace(/\s+preference$/i, ''));
+  if (preferenceRows.length) pushUnique(parts, `matches ${firstItems(preferenceRows, 2).join('/')} preference`);
+  if (hasPositiveScoreSignal(scoreData, 'selected label filter')) pushUnique(parts, 'matches selected labels');
+  if (hasPositiveScoreSignal(scoreData, 'unassigned')) pushUnique(parts, 'unassigned');
+  if (hasPositiveScoreSignal(scoreData, 'small') || hasPositiveScoreSignal(scoreData, 'task list')) pushUnique(parts, 'bounded work');
+  if (hasPositiveScoreSignal(scoreData, 'expected behavior')) pushUnique(parts, 'clear expected behavior');
+
+  const stars = Number(issue?.repository?.stargazers_count || 0);
+  if (stars >= 5000) {
+    const repoActivity = hasPositiveScoreSignal(scoreData, 'pushed recently') || hasPositiveScoreSignal(scoreData, 'repo prs are merging')
+      ? 'active '
+      : '';
+    pushUnique(parts, `${repoActivity}${formatCompactNumber(stars)}-star repo`);
+  } else if (hasPositiveScoreSignal(scoreData, 'selected repo stars filter')) {
+    pushUnique(parts, 'meets selected star filter');
+  }
+
+  return parts.length ? `${firstItems(parts, 3).join(', ')}.` : null;
+}
+
 function getRepoHealth(issue, now) {
   const repo = issue?.repository || {};
   if (repo.archived) return { label: 'Archived repo', inactive: true, hard: true };
@@ -89,9 +172,12 @@ function getRepoHealth(issue, now) {
   return { label: 'Repo activity unclear', inactive: false, hard: false };
 }
 
-function getScope(issue, text, scoreData) {
-  if (includesAny(text, COMPLEX_TERMS) || hasScoreSignal(scoreData, 'complex') || hasScoreSignal(scoreData, 'large')) {
+function getScope(issue, text, scoreData, difficulty = 'unknown') {
+  if (difficulty === 'advanced' || includesAny(text, COMPLEX_TERMS) || hasScoreSignal(scoreData, 'complex') || hasScoreSignal(scoreData, 'large') || hasScoreSignal(scoreData, 'advanced difficulty')) {
     return 'Large/unclear scope';
+  }
+  if (difficulty === 'intermediate' || hasScoreSignal(scoreData, 'intermediate difficulty')) {
+    return 'Medium scope';
   }
   if (includesAny(text, SMALL_SCOPE_TERMS) || hasTaskList(issue) || hasScoreSignal(scoreData, 'small')) {
     return 'Small scope';
@@ -165,8 +251,11 @@ function getBestFor({ verdict, assigned, hasBeginnerLabel, scope, clarity }) {
   return 'Standard';
 }
 
-function buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }) {
+function buildWhy({ verdict, issue, score, scoreData, hasBeginnerLabel, hasAvailabilityLabel, difficulty, scope, clarity, socialRisk, repoHealth, hardPassReasons }) {
   const why = [];
+  const primaryScoreReason = buildPrimaryScoreReason(issue, scoreData);
+  if (primaryScoreReason) pushUnique(why, primaryScoreReason);
+
   if (verdict === 'Likely pass') {
     if (score < 50) {
       pushUnique(why, `Match score is ${score}, below the usual contribution bar.`);
@@ -180,7 +269,10 @@ function buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, soc
     return firstItems(why, 3);
   }
 
-  if (hasBeginnerLabel) pushUnique(why, 'Beginner-friendly labels match the contribution search intent.');
+  if (hasBeginnerLabel) pushUnique(why, 'Beginner-friendly label is present, but the score uses the issue details too.');
+  if (hasAvailabilityLabel && !hasBeginnerLabel) pushUnique(why, 'Help wanted marks availability, not starter difficulty.');
+  if (difficulty === 'intermediate') pushUnique(why, 'Intermediate difficulty keeps this in the standard contributor lane.');
+  if (difficulty === 'advanced') pushUnique(why, 'Advanced difficulty routes this to deeper repo work.');
   if (scope === 'Small scope') pushUnique(why, 'The visible work looks small and bounded.');
   if (scope === 'Medium scope') pushUnique(why, 'The issue looks approachable after a normal repo read-through.');
   if (scope === 'Large/unclear scope') pushUnique(why, 'This looks like deeper repo work, not a quick first PR.');
@@ -202,6 +294,8 @@ function buildRisks({ issue, text, scoreData, scope, clarity, socialRisk, issueU
   if (repoHealth.inactive || repoHealth.hard) pushUnique(risks, `${repoHealth.label}; validate the repo before investing time.`);
   if (hasHardPassLabel) pushUnique(risks, 'Blocked, duplicate, or wontfix label makes this a poor target.');
   if (hasScoreSignal(scoreData, 'platform mismatch')) pushUnique(risks, 'Selected target platforms do not match the setup requirements.');
+  if (hasScoreSignal(scoreData, 'intermediate difficulty')) pushUnique(risks, 'Intermediate difficulty label; expect normal repo inspection before coding.');
+  if (hasScoreSignal(scoreData, 'advanced difficulty')) pushUnique(risks, 'Advanced difficulty label; treat this as deeper repo work.');
   if (isMeta) pushUnique(risks, 'Roadmap or meta work is hard to finish as a focused PR.');
   if (scope === 'Large/unclear scope') pushUnique(risks, 'Large scope or refactor language may hide substantial design work.');
   if (clarity !== 'Clear enough') pushUnique(risks, 'Vague body; ask what outcome would be accepted.');
@@ -228,14 +322,15 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
   const issueUpdatedDays = daysSince(issue?.updated_at, now);
   const closed = isClosedIssue(issue);
   const assigned = Boolean(issue?.assignee || (Array.isArray(issue?.assignees) && issue.assignees.length > 0));
-  const hasBeginnerLabel = Boolean(scoreData?.flags?.hasBeginnerLabel)
-    || labels.some(label => BEGINNER_LABELS.some(beginner => label.includes(beginner)));
+  const difficulty = getIssueDifficulty(labels, scoreData);
+  const hasBeginnerLabel = difficulty === 'beginner';
+  const hasAvailabilityLabel = Boolean(scoreData?.flags?.hasAvailabilityLabel) || labelsMatchAny(labels, AVAILABILITY_LABELS);
   const hasHardPassLabel = labels.some(label => HARD_PASS_LABELS.some(hardPass => includesWholeTerm(label, hardPass)));
   const hasPlatformMismatch = hasScoreSignal(scoreData, 'platform mismatch');
   const isMeta = isMetaWork(text, labels);
   const stale = issueUpdatedDays > 180 || hasScoreSignal(scoreData, 'old');
   const repoHealth = getRepoHealth(issue, now);
-  const scope = getScope(issue, text, scoreData);
+  const scope = getScope(issue, text, scoreData, difficulty);
   const clarity = getClarity(issue, text, scoreData);
   const socialRisk = getSocialRisk(issue, issueUpdatedDays);
   const hardPassReasons = getHardPassReasons({ closed, assigned, comments, stale, repoHealth, scope, clarity, hasHardPassLabel, hasPlatformMismatch });
@@ -265,7 +360,7 @@ export function buildContributionBrief(issue, scoreData = {}, options = {}) {
     socialRisk,
     repoHealth: repoHealth.label,
     guidanceFit,
-    why: buildWhy({ verdict, issue, score, hasBeginnerLabel, scope, clarity, socialRisk, repoHealth, hardPassReasons }),
+    why: buildWhy({ verdict, issue, score, scoreData, hasBeginnerLabel, hasAvailabilityLabel, difficulty, scope, clarity, socialRisk, repoHealth, hardPassReasons }),
     risks: buildRisks({ issue, text, scoreData, scope, clarity, socialRisk, issueUpdatedDays, repoHealth, hasHardPassLabel, isMeta }),
     firstMove: getFirstMove({ verdict, bestFor, guidanceFit }),
     maintainerQuestion

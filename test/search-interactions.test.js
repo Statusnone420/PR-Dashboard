@@ -18,7 +18,7 @@ test('filter changes update state without running a GitHub search', async () => 
   assert.equal(searchCalls, 0);
 });
 
-test('quick-wins preset keeps beginner labels in OR mode and runs one explicit search', async () => {
+test('quick-wins preset uses beginner difficulty, low comments, and unassigned routing', async () => {
   const { applyPresetSearch } = await import('../src/searchInteractions.js');
   let searchCalls = 0;
   const fakeStore = {
@@ -33,12 +33,46 @@ test('quick-wins preset keeps beginner labels in OR mode and runs one explicit s
   });
 
   assert.deepEqual(fakeStore.patch, {
-    labels: ['good first issue', 'help wanted'],
+    difficulty: 'Beginner',
+    labels: [],
     labelMode: 'OR',
     comments: 'Low (0-5)',
-    stars: '1k+'
+    stars: 'Any',
+    updatedDate: 'Any',
+    includeClosed: false,
+    unassigned: true
   });
   assert.equal(searchCalls, 1);
+});
+
+test('deep-dives preset uses advanced difficulty and availability labels', async () => {
+  const { getPresetFilterPatch } = await import('../src/searchInteractions.js');
+
+  assert.deepEqual(getPresetFilterPatch('deep-dives'), {
+    difficulty: 'Advanced',
+    labels: ['help wanted'],
+    labelMode: 'OR',
+    comments: 'Any',
+    stars: 'Any',
+    updatedDate: 'Any',
+    includeClosed: false,
+    unassigned: false
+  });
+});
+
+test('tests preset targets testing work without assuming starter difficulty', async () => {
+  const { getPresetFilterPatch } = await import('../src/searchInteractions.js');
+
+  assert.deepEqual(getPresetFilterPatch('tests'), {
+    difficulty: 'Any',
+    labels: ['testing', 'type:testing'],
+    labelMode: 'OR',
+    comments: 'Low (0-5)',
+    stars: 'Any',
+    updatedDate: 'Any',
+    includeClosed: false,
+    unassigned: true
+  });
 });
 
 test('low-noise preset applies quiet filters and runs one explicit search', async () => {
@@ -56,11 +90,14 @@ test('low-noise preset applies quiet filters and runs one explicit search', asyn
   });
 
   assert.deepEqual(fakeStore.patch, {
+    difficulty: 'Any',
     labels: ['help wanted'],
     labelMode: 'OR',
     comments: 'Low (0-5)',
     stars: 'Any',
-    updatedDate: 'Last month'
+    updatedDate: 'Last month',
+    includeClosed: false,
+    unassigned: true
   });
   assert.equal(searchCalls, 1);
 });
@@ -73,6 +110,7 @@ test('broaden search clears contribution filters instead of swapping labels', as
     languages: [],
     labels: [],
     labelMode: 'OR',
+    difficulty: 'Any',
     stars: 'Any',
     comments: 'Any',
     updatedDate: 'Any',
@@ -106,4 +144,57 @@ test('target platform scoring respects lookup filter opt-in', async () => {
     targetPlatforms: ['windows'],
     useFiltersInLookup: false
   }, 'find'), ['windows']);
+});
+
+test('score filters apply only to finder result contexts by default', async () => {
+  const { getRelaxedFilters, getScoreFiltersForMode } = await import('../src/searchInteractions.js');
+  const activeFilters = {
+    languages: ['Python'],
+    labels: ['good first issue'],
+    labelMode: 'OR',
+    difficulty: 'Beginner',
+    stars: 'Any',
+    comments: 'Low (0-5)',
+    updatedDate: 'Any',
+    includeClosed: false,
+    unassigned: true,
+    useFiltersInLookup: false,
+    targetPlatforms: ['linux']
+  };
+
+  assert.equal(getScoreFiltersForMode(activeFilters, 'find', { currentScreen: 'find-issues' }), activeFilters);
+  assert.deepEqual(getScoreFiltersForMode(activeFilters, 'find', { currentScreen: 'dashboard' }), getRelaxedFilters());
+  assert.deepEqual(getScoreFiltersForMode(activeFilters, 'lookup', { currentScreen: 'find-issues' }), getRelaxedFilters());
+  assert.equal(getScoreFiltersForMode({
+    ...activeFilters,
+    useFiltersInLookup: true
+  }, 'lookup', { currentScreen: 'find-issues' }).difficulty, 'Beginner');
+});
+
+test('finder intent normalizes applied filters for match scoring', async () => {
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+
+  const intent = buildFinderIntent({
+    labels: ['help wanted', 'help wanted', 'docs'],
+    labelMode: 'AND',
+    stars: '5k+',
+    comments: 'Low (0-5)',
+    updatedDate: 'Last month',
+    unassigned: true,
+    difficulty: 'Intermediate',
+    targetPlatforms: ['linux']
+  }, {
+    preferredWork: ['docs'],
+    avoidWork: ['migration']
+  });
+
+  assert.deepEqual(intent.selectedLabels, ['help wanted', 'docs']);
+  assert.equal(intent.labelMode, 'AND');
+  assert.equal(intent.starsThreshold, 5000);
+  assert.deepEqual(intent.commentsRange, { min: 0, max: 5, label: 'Low (0-5)' });
+  assert.equal(intent.updatedDateDays, 30);
+  assert.equal(intent.unassignedOnly, true);
+  assert.equal(intent.difficulty, 'Intermediate');
+  assert.deepEqual(intent.targetPlatforms, ['linux']);
+  assert.deepEqual(intent.profile.preferredWork, ['docs']);
 });

@@ -82,7 +82,7 @@ test('clear beginner docs issues score as strong candidates with signed breakdow
 
   assert.equal(result.rating, 'Strong candidate');
   assert.ok(result.score >= 85);
-  assert.ok(result.rows.some(row => row.points > 0 && row.label === 'Beginner-friendly label'));
+  assert.ok(result.rows.some(row => row.points > 0 && row.label === 'Beginner-friendly label with actionable details'));
   assert.ok(result.rows.every(row => Number.isInteger(row.points)));
 });
 
@@ -342,7 +342,7 @@ test('preview advisory enrichment gaps do not make strong hydrated issues low co
   assert.ok(result.confidence.reasons.includes('Comments not inspected'));
 });
 
-test('low confidence requires current data weakness and caps score at 88', async () => {
+test('missing reliable score evidence lowers match score directly', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 
   const result = calculateMatchScore(issue({
@@ -352,10 +352,10 @@ test('low confidence requires current data weakness and caps score at 88', async
   assert.equal(result.confidence.level, 'Low');
   assert.ok(result.confidence.reasons.includes('Repository metadata unavailable'));
   assert.ok(result.score <= 88);
-  assert.ok(result.rows.some(row => row.label === 'Low confidence cap'));
+  assert.ok(result.rows.some(row => row.label === 'Missing reliable score evidence'));
 });
 
-test('medium confidence caps score at 94', async () => {
+test('medium evidence risk lowers match score without a visible confidence cap', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 
   const result = calculateMatchScore(issue({
@@ -365,7 +365,287 @@ test('medium confidence caps score at 94', async () => {
 
   assert.equal(result.confidence.level, 'Medium');
   assert.ok(result.score <= 94);
-  assert.ok(result.rows.some(row => row.label === 'Medium confidence cap'));
+  assert.ok(result.rows.some(row => row.label === 'Score evidence needs review'));
+  assert.ok(!result.rows.some(row => /confidence cap/i.test(row.label)));
+});
+
+test('empty template good-first issues cannot score as strong matches', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Lab',
+    body: [
+      '<!-- If you have time, send us a pull request. Otherwise fill out the fields. -->',
+      '## Language name',
+      'Lab',
+      '',
+      '## URL of example repository',
+      '',
+      '## URL of syntax highlighting grammar',
+      '',
+      '## Most popular extensions',
+      '',
+      '## Detected language'
+    ].join('\n'),
+    labels: [{ name: 'Good First Issue' }],
+    comments: 0,
+    repository: strongRepo({
+      full_name: 'github-linguist/linguist',
+      stargazers_count: 13000,
+      language: 'Ruby'
+    })
+  }));
+
+  assert.ok(result.score < 50);
+  assert.ok(result.passReasons.includes('Too vague'));
+  assert.ok(result.rows.some(row => row.label === 'Unfilled issue template'));
+});
+
+test('filled issue templates are not marked unfilled just because the title is short', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Crash on startup',
+    body: [
+      '## Expected behavior',
+      'The app should open the dashboard after loading local storage and should keep the saved board cards visible.',
+      '',
+      '## Actual behavior',
+      'The app crashes before the dashboard renders when a saved card contains an imported repository payload.',
+      '',
+      '## Steps to reproduce',
+      '1. Import the attached local data payload.',
+      '2. Reload the app.',
+      '3. Confirm the dashboard renders without throwing.',
+      '',
+      '## Environment',
+      'Windows 11, Chrome, local Vite dev server.'
+    ].join('\n'),
+    labels: [{ name: 'bug' }],
+    comments: 1,
+    repository: strongRepo()
+  }));
+
+  assert.ok(result.score >= 70);
+  assert.ok(!result.passReasons.includes('Too vague'));
+  assert.ok(!result.rows.some(row => row.label === 'Unfilled issue template'));
+});
+
+test('assigned issues are demoted even when labels and body look good', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Fix README install command typo',
+    body: [
+      'Expected behavior: the README should show the correct install command.',
+      'Actual behavior: it shows the old package name.',
+      'Proposed fix:',
+      '- Update README.md.',
+      '- Add a tiny docs regression check if the repo has one.'
+    ].join('\n'),
+    assignee: { login: 'maintainer' },
+    assignees: [{ login: 'maintainer' }],
+    labels: [{ name: 'good first issue' }, { name: 'documentation' }],
+    repository: strongRepo()
+  }));
+
+  assert.ok(result.score <= 69);
+  assert.ok(result.passReasons.includes('Assigned'));
+  assert.ok(result.rows.some(row => row.label === 'Assigned issue cap'));
+});
+
+test('selected filters change match score after apply/search intent', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+  const candidate = issue({
+    repository: strongRepo({
+      full_name: 'fullsend-ai/fullsend',
+      stargazers_count: 65,
+      language: 'TypeScript'
+    })
+  });
+
+  const defaultIntent = buildFinderIntent({
+    labels: ['good first issue', 'help wanted'],
+    labelMode: 'OR',
+    stars: 'Any',
+    comments: 'Any',
+    updatedDate: 'Any',
+    unassigned: false
+  });
+  const highStarIntent = buildFinderIntent({
+    labels: ['good first issue', 'help wanted'],
+    labelMode: 'OR',
+    stars: '5k+',
+    comments: 'Low (0-5)',
+    updatedDate: 'Last month',
+    unassigned: true
+  });
+
+  const defaultScore = calculateMatchScore(candidate, { intent: defaultIntent });
+  const filteredScore = calculateMatchScore(candidate, { intent: highStarIntent });
+
+  assert.ok(defaultScore.score > filteredScore.score);
+  assert.ok(filteredScore.score < 50);
+  assert.ok(filteredScore.passReasons.includes('Below stars filter'));
+  assert.ok(filteredScore.rows.some(row => row.label === 'Below selected repo stars cap'));
+});
+
+test('advanced difficulty labels cap inflated help-wanted matches', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'perf(rate_limit): a single global lock serializes every rate check across all keys',
+    body: [
+      '## Context',
+      'RateLimiter guards all of its state with one asyncio.Lock. Under high concurrency this turns the limiter into a serialization point.',
+      '',
+      'This is a design-level change, so it is worth discussing the approach before a large PR.',
+      '',
+      '## What to do',
+      '- Per-key locks, with a strategy for creating and reclaiming them safely.',
+      '- Sharded locks to bound the number of lock objects while cutting cross-key contention.',
+      '- Atomic-ish counter updates that avoid holding a lock across the whole check.',
+      '',
+      '## Acceptance criteria',
+      '- Independent keys no longer block each other on a single global lock.',
+      '- Limits remain correct under concurrent access.',
+      '- A short note in the PR explains why the new scheme is race-free.'
+    ].join('\n'),
+    labels: [
+      { name: 'good first issue' },
+      { name: 'help wanted' },
+      { name: 'performance' },
+      { name: 'level:advanced' },
+      { name: 'type:performance' }
+    ],
+    comments: 0,
+    repository: strongRepo({
+      full_name: 'Abhigyan-Shekhar/Waggle-mcp',
+      stargazers_count: 6,
+      forks_count: 19,
+      open_issues_count: 0,
+      language: 'Python'
+    })
+  }), {
+    intent: buildFinderIntent({
+      labels: ['good first issue', 'help wanted'],
+      labelMode: 'OR',
+      stars: 'Any',
+      comments: 'Any',
+      updatedDate: 'Any',
+      unassigned: false
+    }),
+    enrichment: {
+      comments: { inspected: true },
+      timeline: { inspected: true },
+      setup: { inspected: true, setupDocsPresent: true },
+      history: { inspected: true, recentMergedPrs: true, activeSameLabelIssues: true }
+    }
+  });
+
+  assert.equal(result.rating, 'Good candidate');
+  assert.ok(result.score <= 84);
+  assert.ok(result.passReasons.includes('Advanced difficulty'));
+  assert.ok(result.rows.some(row => row.label === 'Advanced difficulty label'));
+  assert.ok(result.score < 85);
+  assert.equal(result.flags.difficulty, 'advanced');
+  assert.equal(result.flags.hasBeginnerLabel, false);
+});
+
+test('intermediate difficulty labels cap testing issues away from perfect first-pr matches', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+  const { buildFinderIntent } = await import('../src/searchInteractions.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'test(config): cover WAGGLE_HTTP_PORT env override',
+    body: [
+      '## Context',
+      'AppConfig reads WAGGLE_HTTP_PORT, but there is no regression coverage proving the env var wins over the default.',
+      '',
+      '## What to do',
+      '- Add a focused test for WAGGLE_HTTP_PORT.',
+      '- Keep the test isolated from the real environment.',
+      '- Assert the configured HTTP port changes only for that case.',
+      '',
+      '## Acceptance criteria',
+      '- The test fails without the override behavior.',
+      '- No runtime behavior changes are required.'
+    ].join('\n'),
+    labels: [
+      { name: 'help wanted' },
+      { name: 'testing' },
+      { name: 'performance' },
+      { name: 'level:intermediate' },
+      { name: 'type:testing' }
+    ],
+    comments: 0,
+    repository: strongRepo({
+      full_name: 'Abhigyan-Shekhar/Waggle-mcp',
+      stargazers_count: 6,
+      forks_count: 19,
+      open_issues_count: 0,
+      language: 'Python'
+    })
+  }), {
+    intent: buildFinderIntent({
+      labels: ['good first issue', 'help wanted'],
+      labelMode: 'OR',
+      stars: 'Any',
+      comments: 'Any',
+      updatedDate: 'Any',
+      unassigned: false
+    }),
+    enrichment: {
+      comments: { inspected: true },
+      timeline: { inspected: true },
+      setup: { inspected: true, setupDocsPresent: true },
+      history: { inspected: true, recentMergedPrs: true, activeSameLabelIssues: true }
+    }
+  });
+
+  assert.equal(result.rating, 'Good candidate');
+  assert.equal(result.flags.difficulty, 'intermediate');
+  assert.equal(result.flags.hasBeginnerLabel, false);
+  assert.ok(result.score < 100);
+  assert.ok(result.score <= 84);
+  assert.ok(result.passReasons.includes('Intermediate difficulty'));
+  assert.ok(result.rows.some(row => row.label === 'Intermediate difficulty label'));
+  assert.ok(result.rows.some(row => row.label === 'Intermediate difficulty cap'));
+  assert.ok(!result.rows.some(row => row.label.includes('Beginner-friendly')));
+});
+
+test('help wanted alone is availability, not beginner difficulty', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Add regression test for CLI config loading',
+    body: 'Expected behavior: the CLI should load config from the documented path. Add a focused test and keep the implementation unchanged.',
+    labels: [{ name: 'help wanted' }, { name: 'testing' }],
+    comments: 0,
+    repository: strongRepo({ language: 'Python' })
+  }));
+
+  assert.equal(result.flags.hasBeginnerLabel, false);
+  assert.equal(result.flags.difficulty, 'unknown');
+  assert.ok(result.rows.some(row => row.label === 'Help wanted availability signal'));
+  assert.ok(!result.rows.some(row => row.label.includes('Beginner-friendly')));
+});
+
+test('explicit beginner difficulty still allows true starter issues to score strongly', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    labels: [{ name: 'help wanted' }, { name: 'level:beginner' }, { name: 'type:docs' }],
+    repository: strongRepo({ language: 'Python' })
+  }));
+
+  assert.equal(result.rating, 'Strong candidate');
+  assert.equal(result.flags.difficulty, 'beginner');
+  assert.equal(result.flags.hasBeginnerLabel, true);
+  assert.ok(result.score >= 85);
+  assert.ok(result.rows.some(row => row.label === 'Beginner-friendly label with actionable details'));
 });
 
 test('mini-scores expose all dimensions with stable labels', async () => {

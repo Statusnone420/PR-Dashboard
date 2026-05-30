@@ -6,6 +6,36 @@ import { extractRepoFullName, filterIssuesByStars, hydrateIssueRepositories } fr
 // Simple in-memory cache
 let recentSearchCache = null;
 
+const DIFFICULTY_LABELS = {
+  Beginner: ['good first issue', 'level:beginner', 'difficulty:beginner', 'beginner'],
+  Intermediate: ['level:intermediate', 'difficulty:intermediate', 'intermediate'],
+  Advanced: ['level:advanced', 'difficulty:advanced', 'advanced']
+};
+
+function quoteGitHubValue(value) {
+  const clean = String(value || '').trim().replace(/"/g, '\\"');
+  if (!clean) return '';
+  return /^[a-z0-9_.-]+$/i.test(clean) ? clean : `"${clean}"`;
+}
+
+function quoteGitHubLabel(value) {
+  return `"${String(value || '').trim().replace(/"/g, '\\"')}"`;
+}
+
+function appendLabelFilters(parts, labels = [], labelMode = 'OR') {
+  const labelQueries = labels
+    .map(label => String(label || '').trim())
+    .filter(Boolean)
+    .map(quoteGitHubLabel);
+  if (!labelQueries.length) return;
+
+  if (labelQueries.length === 1 || labelMode === 'AND') {
+    parts.push(...labelQueries.map(label => `label:${label}`));
+  } else {
+    parts.push(`label:${labelQueries.join(',')}`);
+  }
+}
+
 /**
  * Build standard GitHub search query q parameter
  */
@@ -35,22 +65,24 @@ export function buildQueryString(queryText, filters, options = {}) {
   if (filters.languages && filters.languages.length > 0) {
     // If multiple languages are selected, we search for them
     // E.g. (language:TypeScript OR language:Rust)
-    const langQueries = filters.languages.map(lang => `language:${lang}`);
+    const langQueries = filters.languages
+      .map(lang => quoteGitHubValue(lang))
+      .filter(Boolean)
+      .map(lang => `language:${lang}`);
     if (langQueries.length === 1) {
       parts.push(langQueries[0]);
-    } else {
+    } else if (langQueries.length > 1) {
       parts.push(`(${langQueries.join(' OR ')})`);
     }
   }
 
+  if (DIFFICULTY_LABELS[filters.difficulty]) {
+    appendLabelFilters(parts, DIFFICULTY_LABELS[filters.difficulty], 'OR');
+  }
+
   // Labels filter
   if (filters.labels && filters.labels.length > 0) {
-    const labelQueries = filters.labels.map(label => `"${String(label).replace(/"/g, '\\"')}"`);
-    if (labelQueries.length === 1 || filters.labelMode === 'AND') {
-      parts.push(...labelQueries.map(label => `label:${label}`));
-    } else {
-      parts.push(`label:${labelQueries.join(',')}`);
-    }
+    appendLabelFilters(parts, filters.labels, filters.labelMode);
   }
 
   // Comments filter

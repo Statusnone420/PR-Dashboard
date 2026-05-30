@@ -44,6 +44,7 @@ export function createDefaultFilters() {
     languages: [],
     labels: ['good first issue', 'help wanted'],
     labelMode: 'OR',
+    difficulty: 'Any',
     stars: 'Any',
     comments: 'Any',
     updatedDate: 'Any',
@@ -56,7 +57,10 @@ export function createDefaultFilters() {
 }
 
 function cloneFilters(filters) {
-  const cloned = JSON.parse(JSON.stringify(filters));
+  const cloned = {
+    ...createDefaultFilters(),
+    ...JSON.parse(JSON.stringify(filters || {}))
+  };
   cloned.targetPlatforms = normalizeTargetPlatforms(cloned.targetPlatforms);
   return cloned;
 }
