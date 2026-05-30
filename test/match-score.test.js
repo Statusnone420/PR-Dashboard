@@ -401,6 +401,36 @@ test('empty template good-first issues cannot score as strong matches', async ()
   assert.ok(result.rows.some(row => row.label === 'Unfilled issue template'));
 });
 
+test('filled issue templates are not marked unfilled just because the title is short', async () => {
+  const { calculateMatchScore } = await import('../src/matchScore.js');
+
+  const result = calculateMatchScore(issue({
+    title: 'Crash on startup',
+    body: [
+      '## Expected behavior',
+      'The app should open the dashboard after loading local storage and should keep the saved board cards visible.',
+      '',
+      '## Actual behavior',
+      'The app crashes before the dashboard renders when a saved card contains an imported repository payload.',
+      '',
+      '## Steps to reproduce',
+      '1. Import the attached local data payload.',
+      '2. Reload the app.',
+      '3. Confirm the dashboard renders without throwing.',
+      '',
+      '## Environment',
+      'Windows 11, Chrome, local Vite dev server.'
+    ].join('\n'),
+    labels: [{ name: 'bug' }],
+    comments: 1,
+    repository: strongRepo()
+  }));
+
+  assert.ok(result.score >= 70);
+  assert.ok(!result.passReasons.includes('Too vague'));
+  assert.ok(!result.rows.some(row => row.label === 'Unfilled issue template'));
+});
+
 test('assigned issues are demoted even when labels and body look good', async () => {
   const { calculateMatchScore } = await import('../src/matchScore.js');
 

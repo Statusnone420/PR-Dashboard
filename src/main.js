@@ -1,7 +1,7 @@
 import { createDefaultFilters, store } from './state/store.js';
 import { buildQueryPreview, fetchExactIssue, fetchGitHubRateLimitStatus, fetchGitHubUserForToken, fetchIssueMetadataForRefresh, searchGitHubIssues } from './api/github.js';
 import { screenFromHash } from './routing.js';
-import { applyFilterPatch, applyPresetSearch, buildFinderIntent, getRelaxedFilters, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
+import { applyFilterPatch, applyPresetSearch, buildFinderIntent, getRelaxedFilters, getScoreFiltersForMode, getScoreTargetPlatformsForMode, shouldApplyTargetPlatformResultFilter } from './searchInteractions.js';
 import { escapeHTML, formatDate, getSafeGitHubAvatarUrl, getSafeIssueHtmlUrl, safeInteger, safePercent } from './security.js';
 import { isClosedIssue, markIssueMetadataUnchanged, mergeIssueMetadata } from './boardModel.js';
 import { ACTIVE_BOARD_COLUMNS, BOARD_COLUMNS, BOARD_LAYOUT_MAX_WIDTH, COMPLETED_BOARD_COLUMNS } from './boardConstants.js';
@@ -121,13 +121,13 @@ function getCurrentScoreMode() {
 
 function calculateFitScore(issue, options = {}) {
   const mode = options.mode || getCurrentScoreMode();
-  const filtersForScore = options.filters || store.filters;
+  const filtersForScore = options.filters || getScoreFiltersForMode(store.filters, mode, { currentScreen: store.currentScreen });
   const result = calculateMatchScore(issue, {
     profile: store.contributionPreferences,
     intent: buildFinderIntent(filtersForScore, store.contributionPreferences),
     feedback: store.matchFeedback,
     enrichment: options.enrichment,
-    targetPlatforms: options.targetPlatforms || getScoreTargetPlatformsForMode(store.filters, mode)
+    targetPlatforms: options.targetPlatforms || getScoreTargetPlatformsForMode(filtersForScore, mode)
   });
   return {
     ...result,

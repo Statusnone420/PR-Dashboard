@@ -146,6 +146,31 @@ test('target platform scoring respects lookup filter opt-in', async () => {
   }, 'find'), ['windows']);
 });
 
+test('score filters apply only to finder result contexts by default', async () => {
+  const { getRelaxedFilters, getScoreFiltersForMode } = await import('../src/searchInteractions.js');
+  const activeFilters = {
+    languages: ['Python'],
+    labels: ['good first issue'],
+    labelMode: 'OR',
+    difficulty: 'Beginner',
+    stars: 'Any',
+    comments: 'Low (0-5)',
+    updatedDate: 'Any',
+    includeClosed: false,
+    unassigned: true,
+    useFiltersInLookup: false,
+    targetPlatforms: ['linux']
+  };
+
+  assert.equal(getScoreFiltersForMode(activeFilters, 'find', { currentScreen: 'find-issues' }), activeFilters);
+  assert.deepEqual(getScoreFiltersForMode(activeFilters, 'find', { currentScreen: 'dashboard' }), getRelaxedFilters());
+  assert.deepEqual(getScoreFiltersForMode(activeFilters, 'lookup', { currentScreen: 'find-issues' }), getRelaxedFilters());
+  assert.equal(getScoreFiltersForMode({
+    ...activeFilters,
+    useFiltersInLookup: true
+  }, 'lookup', { currentScreen: 'find-issues' }).difficulty, 'Beginner');
+});
+
 test('finder intent normalizes applied filters for match scoring', async () => {
   const { buildFinderIntent } = await import('../src/searchInteractions.js');
 

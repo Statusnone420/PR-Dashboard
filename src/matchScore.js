@@ -334,8 +334,7 @@ function looksLikeUnfilledTemplate(issue) {
   if (fieldCount < 3) return false;
 
   const remainingContent = strippedTemplateContent(body);
-  const titleIsThin = wordCount(getIssueTitle(issue)) <= 3;
-  return titleIsThin || remainingContent.length < 120;
+  return remainingContent.length < 120;
 }
 
 function looksGeneratedDump(issueText) {

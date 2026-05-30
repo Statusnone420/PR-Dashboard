@@ -85,6 +85,13 @@ export function getScoreTargetPlatformsForMode(filters = {}, mode = 'find') {
     : [...TARGET_PLATFORM_KEYS];
 }
 
+export function getScoreFiltersForMode(filters = {}, mode = 'find', options = {}) {
+  const screen = options.currentScreen || 'find-issues';
+  const shouldApplyFinderFilters = screen === 'find-issues'
+    && (mode !== 'lookup' || Boolean(filters?.useFiltersInLookup));
+  return shouldApplyFinderFilters ? filters : getRelaxedFilters();
+}
+
 export function getPresetFilterPatch(preset) {
   if (preset === 'quick-wins') {
     return {
